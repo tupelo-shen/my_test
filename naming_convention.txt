@@ -1,0 +1,19 @@
+naming convention
+
+1 naming identifiers
+
+1.1 First, it is a convention in C++ that variable names should begin with a lower-case letter.If the variable name is one word, the whole thing should be written in lower-case letters.
+	int value;	// correct
+	int Value;	// incorrect(should start with lower case letter)
+	int VALUE;	// incorrect
+	int ValuE;	// incorrect
+
+1.2 Identifier names that start with a capital letter are typically used for structs, classes, and enumerations.
+
+1.3 Functions are also started with a lower-case letter.If the  variable or function name is multi-word, intercapped(sometimes called CamelCase, since he capital letters stick up like the humps on a camel).
+	int myVariableName;	// correct(intercapped/CamelCase)
+	int myFunctionName;	// correct(intercapped/CamelCase)
+	int MyVariableName;	// valid but incorrect(should start with lower-case letter)
+	int MyFunctionName;	// valid but not best practice
+
+
