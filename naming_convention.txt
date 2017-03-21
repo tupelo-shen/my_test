@@ -16,4 +16,46 @@ naming convention
 	int MyVariableName;	// valid but incorrect(should start with lower-case letter)
 	int MyFunctionName;	// valid but not best practice
 
+2 Basic Formatting
 
+2.1 The tabs should be set to 4 spaces.The reason to use spaces instead of tab characters is so that if you open your code in another viewer, it'll retain the correct indentation.
+
+2.2 The braces that tell where a function begins and ends should be aligned with the function name, and be on their own lines.
+
+for example:
+int main()
+{
+}
+
+2.3 Each statement within braces should start one tab in from the opening brace of the function it belongs to.
+
+for example:
+#include <iostream>
+int main()
+{
+	std::cout << "Hello World!" << std::endl;	// tabbed in one tab(4 spaces)
+}
+
+2.4 Lines should not be too long.
+
+2.5 If a long line that is broken into piece is broken with an operator(eg. << or +),the operator should be placed at the end of the line, not the start of the next line:
+
+for example:
+std::cout << "This is a really,really,really,really,really,really," <<
+	"really long line" << std::endl;
+NOT
+std::cout << "This is a really,really,really,really,really,really,"
+	<< "really long line" << std::endl;
+
+2.6 Use whitespace to make your code easier to read.
+Harder to read:
+	nCost = 57;
+	nPricePerItem = 24;
+	nValue = 5;
+	nNumberOfItems = 17;
+Easier to read:
+	nCost		= 57;
+	nPricePerItem	= 24;
+	nValue		= 5;
+	nNumberOfItems	= 17;
+	
