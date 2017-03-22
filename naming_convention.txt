@@ -58,4 +58,9 @@ Easier to read:
 	nPricePerItem	= 24;
 	nValue		= 5;
 	nNumberOfItems	= 17;
-	
+
+3 Headers
+3.1 Rule1: Use angled brackets to include header files that come with the compilUse double quotes to include any other header files.
+3.2 Rule2: Each .cpp file should explicitly #include all of the header files it needs to compile.
+3.3 Rule3: Use the non .h version of a library if it exists, and access the functionality through the std namespace. If the non .h version does not exist, or you are creation your own headers, use the .h version.
+
