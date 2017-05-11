@@ -1,5 +1,6 @@
 SIM_OBJS = main.o
-SRC_OBJS = src/test.o
+SRC_OBJS = src/test.o \
+			src/Average.o
 
 SIMULATOR = simulator.exe
 # -----<< Tool chaine >>-----
@@ -20,7 +21,7 @@ ARMCC	= wine /home/30015139/.wine/drive_c/Keil_v5/ARM/ARMCC/bin/armcc
 ARMLINK	= wine /home/30015139/.wine/drive_c/Keil_v5/ARM/ARMCC/bin/armlink
 FROMELF	= wine /home/30015139/.wine/drive_c/Keil_v5/ARM/ARMCC/bin/fromelf
 WINE_INC = -I/home/30015139/.wine/drive_c/Keil_v5/ARM/Pack/Keil/Kinetis_K60_DFP/1.4.0/Device/Include \
-	   -I/home/30015139/.wine/drive_c/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS_RTX/INC \
+	   -3-I/home/30015139/.wine/drive_c/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS_RTX/INC \
 	   -I/home/30015139/.wine/drive_c/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS/Include \
 	   -I/home/30015139/.wine/drive_c/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS/Driver/Include
 else
