@@ -1,6 +1,7 @@
 SIM_OBJS = main.o
 SRC_OBJS = src/test.o \
-			src/Average.o
+			src/Average.o \
+			src/IntArray.o
 
 SIMULATOR = simulator.exe
 # -----<< Tool chaine >>-----

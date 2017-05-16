@@ -1,31 +1,17 @@
 #include <iostream>
 #include <unistd.h>
-#include "test.h"
-#include "Average.h"
+#include "Person.h"
 
-int main(void)
+int main()
 {
-    Average avg(0, 0);
+    // Create a new BaseballPlayer object
+    BaseballPlayer joe;
+    // Assign it a name (we can do this directly because m_name is public)
+    joe.m_name = "Joe";
+    // Print out the name
+    std::cout << joe.getName() << '\n';
+
+    sleep(10);
     
-    avg += 4;
-    std::cout << avg << '\n'; // 4 / 1 = 4
-    
-    avg += 8;
-    std::cout << avg << '\n'; // (4 + 8) / 2 = 6
-
-    avg += 24;
-    std::cout << avg << '\n'; // (4 + 8 + 24) / 3 = 12
-
-    avg += -10;
-    std::cout << avg << '\n'; // (4 + 8 + 24 - 10) / 4 = 6.5
-
-    (avg += 6) += 10; // 2 calls chained together
-    std::cout << avg << '\n'; // (4 + 8 + 24 - 10 + 6 + 10) / 6 = 7
-
-    Average copy = avg;
-    std::cout << copy << '\n';
-
-	sleep(10);
-	
-	return 0;
+    return 0;
 }
