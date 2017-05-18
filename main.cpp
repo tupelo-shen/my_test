@@ -1,17 +1,16 @@
 #include <iostream>
-#include <unistd.h>
-#include "Person.h"
+#include "Common.h"
+#include "basicDerived.h"
+#include "BindingTest.h"
+#include "VirtualTest.h"
 
 int main()
 {
-    // Create a new BaseballPlayer object
-    BaseballPlayer joe;
-    // Assign it a name (we can do this directly because m_name is public)
-    joe.m_name = "Joe";
-    // Print out the name
-    std::cout << joe.getName() << '\n';
-
-    sleep(10);
+    Derived1 *derived1 = new Derived1(5);
+    Base1 *base1 = derived1;
+    delete base1;
+    
+    SystemPause();
     
     return 0;
 }

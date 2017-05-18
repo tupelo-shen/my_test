@@ -2,6 +2,7 @@
 #define _INTARRAY_H_
 
 #include <cassert>       // for assert
+// #include <initializer_list>
 
 class IntArray
 {
@@ -18,17 +19,17 @@ public:
         m_data = new int[length];
     }
     // allow IntArray to be initialized via list initialization
-    IntArray(const std::initializer_list<int> &list): 
-        IntArray(list.size()) // use delegating constructor to set up initial array
-    {
-        // Now initialize our array from the list
-        int count = 0;
-        for (auto &element : list)
-        {
-            m_data[count] = element;
-            ++count;
-        }
-    }
+    // IntArray(const std::initializer_list<int> &list): 
+    //     IntArray(list.size()) // use delegating constructor to set up initial array
+    // {
+    //     // Now initialize our array from the list
+    //     int count = 0;
+    //     for (auto &element : list)
+    //     {
+    //         m_data[count] = element;
+    //         ++count;
+    //     }
+    // }
     ~IntArray()
     {
         delete[] m_data;
