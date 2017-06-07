@@ -14,7 +14,7 @@ GCCFLAGS = -g -Wall -pipe -m32 -finput-charset=UTF-8 -fexec-charset=UTF-8 \
 			$(CMNINC) \
 			`pkg-config --cflags --libs gtk+-3.0`
 #			-D_WIN32_WINNT=0x0501
-GPPFLAGS =  -std=c++11 $(GCCFLAGS) -DBOOST_THREAD_USE_LIB
+GPPFLAGS =  -std=c++0x $(GCCFLAGS) -DBOOST_THREAD_USE_LIB
 
 ifndef MINGW32_HOME
 LIBS = 
