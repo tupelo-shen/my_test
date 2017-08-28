@@ -1,4 +1,5 @@
 #include "Average.h"
+#include "Common.h"
 
 Average::Average(double sum = 0, double nbr = 0) 
     : m_sum(sum), m_nbr(nbr)
