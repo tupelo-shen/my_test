@@ -23,93 +23,21 @@
 #include <cstddef>
 #include <cstdlib>
 #include <string>
+#include <stdio.h>
 #include <iostream>
 #include "Common.h"
 
 using namespace std;
 
-template <typename T>
-inline void safe_delete(T *&target)
-{
-    if(nullptr != target)
-    {
-        delete target;
-        target = nullptr;
-    }
-}
 
-template <typename T>
-inline void safe_delete_void_ptr(void *&target)
-{
-    if(nullptr != target)
-    {
-        T* temp = static_cast<T*>(target);
-        delete temp;
-        temp = nullptr;
-        target = nullptr;
-    }
-}
-
-class  A
-{
-public:
-     A(string name)
-     {
-        this->name = name;
-     };
-    virtual ~ A()
-    {
-        cout << "base class A's destructor" << ",name:" << this->name << endl;
-    };
-public:
-    string name;    
-};
-
-class AChild : public A
-{
-public:
-    AChild(string name, string school)
-    : A(name),
-    school(school)
-    {
-    };
-    ~AChild()
-    {
-        cout << "child class AChild's destructor" << ", name: " << this->name
-            << ", school: " << this->school << endl;
-    };
-
-public:
-    string school;
-};
-/*
- * FUNCTION NAME:   main
- * DESCRIPTION:     main loop
- */
 int main()
 {
-    // 测试safe_delete释放普通类指针
-    cout << "safe_delete pointer of type AChild" << endl;
-    AChild *a_child = new AChild("jacky", "Shenzhen University");
-    safe_delete(a_child);
-    cout << endl;
+    float test_a = 1.001f;
+    char str[100] = {0};
+    char format[10] = {'%','d',0};
 
-    // 测试safe_delete释放 void* 指针 
-    cout << "safe_delete  pointer of type void *" << endl;
-    void *vp = new AChild("Polyn", "Southern University of Science and Technology");
-    safe_delete(vp);
-    cout << endl;
+    sprintf(str, format, test_a);
 
-    // 测试safe_delete_void_ptr释放模板实例化为基类的void*指针
-    std::cout<<"safe_delete_void_ptr pointer of type void * ==> A *" << endl;  
-    void *vpA = new AChild("Heral", "Renmin University of China");  
-    safe_delete_void_ptr<A>(vpA);  
-    cout << endl;
-
-    // 测试safe_delete_void_ptr释放模板实例化为子类的void*指针  
-    std::cout<<"safe_delete_void_ptr pointer of type void * ==> AChild *" << endl;  
-    void *vpAChild = new AChild("pevly", "Southeast University");  
-    safe_delete_void_ptr<AChild>(vpAChild);
-
+    printf("%s\n", str);
     SystemPause();
 }
