@@ -3,6 +3,40 @@
 #include <cmath>
 #include "Common.h"
 
+class ClassA
+{
+private:
+    int m_a,m_b,m_sum;
+
+public:
+    ClassA(int a, int b);
+    virtual ~ClassA();
+
+    void            add(int a, int b);
+    void            printClassA(void);
+
+};
+
+ClassA::ClassA(int a, int b) :
+m_a(a),
+m_b(b)
+{
+
+}
+ClassA::~ClassA()
+{
+    
+}
+void ClassA::add(int a, int b)
+{
+    this->m_sum = a + b;
+}
+void ClassA::printClassA(void)
+{
+    printf("ClassA.m_a,ClassA.m_b: %d, %d\n", this->m_a, this->m_b);
+    printf("ClassA.m_sum: %d\n", m_sum);
+}
+
 bool IsFloatEqual(float compare_value, float ref_value)
 {
 
@@ -54,6 +88,12 @@ bool IsFloatEqual(float compare_value, float ref_value)
 
 int main(int argc, char *argv[])
 {
+    ClassA *a = new ClassA(5, 4);
+    a->printClassA();
+    a->add(1000, 2000);
+    a->printClassA();
+
+    #if 0
     int max_size = 100;
     float a[max_size] = 
     {
@@ -158,6 +198,6 @@ int main(int argc, char *argv[])
         std::cout << "---------------------------------------------------" << std::endl;
     }
 
-
-    //SystemPause();
+    #endif
+    SystemPause();
 }
