@@ -102,9 +102,11 @@ bool IsFloatEqual(float compare_value, float ref_value)
         {
             float ref_value_mantissa = ref_value / base_exponent_array[i];
 
+            ref_value_mantissa = fabs(ref_value_mantissa);
             if(ref_value_mantissa >= 1.0f && ref_value_mantissa < 10.0f)
             {
                 ref_value_exponent = base_exponent_array[i];
+                break;
             }
             
         }       
@@ -218,7 +220,8 @@ int main(int argc, char *argv[])
         -0.01f,
         -0.1f,
     };
-
+    IsFloatEqual(-0.1, -0.1);
+#if 0
     for (int i = 0; i < max_size; i++)
     {
 
@@ -242,6 +245,7 @@ int main(int argc, char *argv[])
         }
         std::cout << "---------------------------------------------------" << std::endl;
     }
+    #endif
 
     #endif
     //SystemPause();
