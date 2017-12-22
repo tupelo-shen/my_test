@@ -134,13 +134,24 @@ bool IsFloatEqual(float compare_value, float ref_value)
 
 int main(int argc, char *argv[])
 {
+    int a = 10;
+    std::cout << "a = " << a << std::endl;
+    std::cout << "&a = " << &a << std::endl;
+    void* point_1 = &a;
+    float b = *((float *)point_1);
+    float c = (float) a;
+
+    std::cout << "float_b = " << b << std::endl;
+    std::cout << "float_c = " << c << std::endl;
+
+    SystemPause();
 #if 0
     ClassA *a = new ClassA(5, 4);
     a->printClassA();
     a->add(1000, 2000);
     a->printClassA();
 #endif
-    #if 1
+    #if 0
     int max_size = 100;
     float a[max_size] = 
     {
