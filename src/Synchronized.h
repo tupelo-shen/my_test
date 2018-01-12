@@ -189,11 +189,8 @@ void Synchronized::notify()
     result = pthread_cond_signal(&cond);  
 
     if(result)  
-
     {  
-
         throw runtime_error("Synchronized: notify failed!");  
-
     }  
 }  
    

@@ -1,22 +1,25 @@
 #include <iostream>
 #include <vector>
 #include <thread>
-
+#include <mutex>
+#include <condition_variable>
 #include <queue>
-
-using namespace std;
 
 // 这个是线程安全的队列，Synchoronized类的实现在下面
 template <class Type>
-class SyncQueue : public Synchronized
+class SyncQueue
 {
 public:
     SyncQueue();
     ~SyncQueue();
-    void        push(const Type&);
-    Type        pop();
+    void                push(const Type&);
+    Type                pop();
+    Type
 private:
-    queue<Type> *pQueue;
+    std::mutex          m_mutex;
+    std::condition_variable     
+    queue<Type>         *m_queue;
+
 };
 
 /*
@@ -24,9 +27,9 @@ private:
  * @Desc:   构造函数
  */
 template <class Type>
-SyncQueue<Type>::~SyncQueue()
+SyncQueue<Type>::SyncQueue()
 {
-    pQueue = new queue<Type>() ;
+    m_queue = new queue<Type>() ;
 }
 
 /*
@@ -36,7 +39,7 @@ SyncQueue<Type>::~SyncQueue()
 template <class Type>
 SyncQueue<Type>::~SyncQueue()
 {
-    delete pQueue;
+    delete m_queue;
 }
 
 /*
@@ -44,27 +47,47 @@ SyncQueue<Type>::~SyncQueue()
  * @Desc:   从队列中弹出一项
  */
 template <class Type>     
-Type SyncQueue<Type>::pop()
+Type SyncQueue<Type>::pop_nonblock()
 {  
     Type type;  
    
-    lock();
-    while(pQueue->empty())
+    m_mutex.lock();
+    while(!m_queue->empty())
     {  
-        try  
-        {  
-            wait();
-        }
-        catch(exception& ex)
-        {
-            cout<< ex.what()<<endl;  
-            throw;  
-        }                  
-    }  
+        type = m_queue->front();  
+        m_queue->pop();                 
+    }
+    m_mutex.unlock();
 
-    type = pQueue->front();  
-    pQueue->pop();
-    unlock();
+    return type; 
+}
+
+/*
+ * @func:   pop()
+ * @Desc:   从队列中弹出一项
+ */
+template <class Type>     
+Type SyncQueue<Type>::pop_block()
+{  
+    Type type;  
+   
+    m_mutex.lock();
+    // while(m_queue->empty())
+    // {  
+    //     try  
+    //     {  
+    //         wait();
+    //     }
+    //     catch(exception& ex)
+    //     {
+    //         cout<< ex.what()<<endl;  
+    //         throw;  
+    //     }                  
+    // }  
+
+    type = m_queue->front();  
+    m_queue->pop();
+    m_mutex.unlock();
 
     return type; 
 }
@@ -77,8 +100,8 @@ template <class Type>
 void SyncQueue<Type>::push(const Type &type)
 {  
    
-    lock();  
-    pQueue->push(type);  
+    m_mutex.lock();  
+    m_queue->push(type);  
     try  
     {  
         notify();  
@@ -88,7 +111,7 @@ void SyncQueue<Type>::push(const Type &type)
         cout<<ex.what()<<endl;  
         throw;  
     }                  
-    unlock();     
+    m_mutex.unlock();     
 }  
 
 int f()
