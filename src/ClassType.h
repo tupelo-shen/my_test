@@ -64,7 +64,7 @@ SCCore::~SCCore(
  * @retval  false
  */
 /****************************************************************************/
-bool    SCCore::isClass(const ClassInfo* classInfo) const
+bool SCCore::isClass(const ClassInfo* classInfo) const
 {
     if(this != 0) {
         if(GetClassInfo() == classInfo) {
