@@ -140,7 +140,104 @@ int main()
     std::cout << "main: " << g_i << '\n';
 }
 #endif
-#if 1
+#include <iostream>
+#include "Common.h"
+#include "ClassType.h"
+
+class Test_Base : public SCCore
+{
+M_DELARE_RUNTIME(Test_Base) 
+
+public:
+    Test_Base(const int member);
+    virtual ~Test_Base();
+
+public:
+    int             getMember(void){return m_member;};
+    void            setMember(int data){ m_member = data;};
+
+private:
+    int             m_member;   
+};
+
+M_IMPLEMENT_RUNTIME(Test_Base, 0x01, SCCore)
+/**
+ * @brief   constructor
+ *
+ * @param[in]  
+ */
+Test_Base::Test_Base(const int member) : SCCore(),
+m_member(member)
+{
+
+}
+
+/**
+ * @brief   destructor
+ *
+ * @param[in]  
+ */
+Test_Base::~Test_Base()
+{
+
+}
+
+class Test_A : public Test_Base
+{
+M_DELARE_RUNTIME(Test_A)
+
+public:
+    Test_A(const int cnt, const int member);
+    virtual ~Test_A();
+
+public:
+    int             getCnt(void);
+    void            setCnt(int cnt);
+private:
+    int             m_cnt;
+};
+
+M_IMPLEMENT_RUNTIME(Test_A, 0x01, Test_Base)
+
+/**
+ * @brief   constructor
+ *
+ * @param[in]  
+ */
+Test_A::Test_A(const int cnt, const int member) : Test_Base(member), 
+m_cnt(cnt)
+{
+
+}
+
+/**
+ * @brief   destructor
+ *
+ * @param[in]  
+ */
+Test_A::~Test_A()
+{
+
+}
+
+int Test_A::getCnt(void)
+{
+    return m_cnt;
+}
+    
+void Test_A::setCnt(int cnt)
+{
+    m_cnt = cnt;
+}
+
+int main(void)
+{
+    Test_A test(10,5);
+    test.printClassInfo();
+
+    SystemPause();
+}
+#if 0
 //#include <Windows.h>
 #include <iostream>
 
