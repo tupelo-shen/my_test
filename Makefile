@@ -1,4 +1,6 @@
 SIM_OBJS = main.o
+SRC_DIR = src
+SRC_TEST_DIR = src/thread-test
 SRC_OBJS = src/BindingTest.o \
 			src/Average.o \
 			src/IntArray.o \
@@ -61,4 +63,4 @@ src/%.o : src/%.c
 depend: Makefile-gcc.dep
 	ls -l *.dep
 clean:
-	rm -f $(SRC_OBJS) *.o *.exe 
+	rm -f *.o *.exe $(SRC_DIR)/*.o $(SRC_DIR)/*.exe $(SRC_TEST_DIR)/*.o $(SRC_TEST_DIR)/*.exe 
