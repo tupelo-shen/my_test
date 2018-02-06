@@ -11,7 +11,9 @@ public: \
     static const ClassInfo m_classInfo;
 
 #define M_IMPLEMENT_RUNTIME(class_name, update_type, super_class_name) \
-    const ClassInfo class_name::m_classInfo = { #class_name, update_type, &super_class_name::m_classInfo};
+    const ClassInfo class_name::m_classInfo = { \
+    #class_name, update_type, \
+    &super_class_name::m_classInfo};
 
 #define M_RUNTIME_TYPE(class_name)      (&class_name::m_classInfo)
 
