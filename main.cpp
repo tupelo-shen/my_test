@@ -41,5 +41,4 @@ int main()
     printf("ABC = %s", abc);
 
     SystemPause();
-
 }
