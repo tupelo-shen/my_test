@@ -83,6 +83,37 @@ void f() {
     f(1); // error: ambiguous: D::f(int) or E::f(int)?
     f('a'); // OK: the only f(char) is D::f(char)
 }
+namespace X {
+    namespace M {
+        void g(); // declares, but doesn't define X::M::g()
+    }
+    using M::g;
+    void g();   // Error: attempt to declare X::g which conflicts with X::M::g()
+}
+
+
+void h(int);
+namespace A {
+    class X {
+        friend void f(X); // A::f is a friend
+        class Y {
+            friend void g(); // A::g is a friend
+            friend void h(int); // A::h is a friend, no conflict with ::h
+        };
+    };
+    // A::f, A::g and A::h are not visible at namespace scope
+    // even though they are members of the namespace A
+    X x;
+    void g() {  // definition of A::g
+        f(x); // A::X::f is found through ADL
+    }
+    void f(X) {}       // definition of A::f
+    void h(int) {}     // definition of A::h
+    // A::f, A::g and A::h are now visible at namespace scope
+    // and they are also friends of A::X and A::X::Y
+}
+
+
 
 int main()
 {
