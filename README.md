@@ -1,3 +1,3 @@
-* my_test
+* [my_test]
 ## initialization
 ggg
