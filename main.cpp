@@ -1,41 +1,29 @@
 #include <iostream>
-#include <stdexcept>
  
-class conststr
-{
-    const char* p;
-    std::size_t sz;
-public:
-    template<std::size_t N>
-    constexpr conststr(const char(&a)[N]) : p(a), sz(N - 1) {}
- 
-    constexpr char operator[](std::size_t n) const
-    {
-        return n < sz ? p[n] : throw std::out_of_range("");
-    }
-    constexpr std::size_t size() const { return sz; }
-};
- 
-constexpr std::size_t countlower(conststr s, std::size_t n = 0, 
-    std::size_t c = 0)
-{
-    return n == s.size() ? c :
-           s[n] >= 'a' && s[n] <= 'z' ? countlower(s, n + 1, c + 1) :
-                                        countlower(s, n + 1, c);
-}
- 
-// 输出函数要求编译时计算的常量，测试用
-template<int n>
-struct constN
-{
-    constN() { std::cout << n << '\n'; }
-};
+extern "C" int func();
+// 函数func的定义使用汇编语言编写
+// 原始字符串文字可能非常有用
+asm(R"(
+.globl func
+    .type func, @function
+    func:
+    .cfi_startproc
+    movl $7, %eax
+    ret
+    .cfi_endproc
+)");
  
 int main()
 {
-    std::cout << "the number of lowercase letters in \"Hello, world!\" is ";
-    constN<countlower("Hello, world!")>(); // implicitly converted to conststr
-    constN<5>();
-    unsigned int m = 5;
-    constN<m>();
+    int n = func();
+    // 扩展内联汇编
+    asm ("leal (%0,%0,4),%0"
+         : "=r" (n)
+         : "0" (n));
+    std::cout << "7*5 = " << n << std::endl; // 冲刷
+ 
+    // 标准内联汇编
+    asm ("movq $60, %rax\n\t" // Linux上的退出系统调用数字
+         "movq $2,  %rdi\n\t" // 这个程序返回 2
+         "syscall");
 }
