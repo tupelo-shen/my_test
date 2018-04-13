@@ -10,7 +10,9 @@
 
 这些单元之间的关系如下：
 
-![image_1](D:\Works_YOKOGAWA\git_repository\test_github_repository\my_test\doc\linux\device drivers\images\USB1-1.bmp "Optional title")
+![image_1](D:\Works_YOKOGAWA\git_repository\test_github_repository\my_test\doc\linux\USB1-1.bmp "Optional title")
+
+![image_1](C:\Users\30032183\Desktop\1339207792_1644.jpg "Optional title")
 
 - 设备通常有一个或多个配置；
 - 配置通常有一个或多个接口；
@@ -19,4 +21,4 @@
 
 这样的概念太抽象了，可以这样看：有一个设备，如支持视频和音频的一个播放器。那么，对于上面提到的4个描述符，对它们设置的时候，它们分别对于哪一个描述符呢？  
 
-    从我现在的理解来看，这样一个设备对应一个设备描述符，支持视频的功能对应一个接口描述符，支持音频功能的对应一个接口描述符。为了支持视频，在下层有多个端口同时工作为提供视频数据传输的支持，所以有多个端点描述符。
+从我现在的理解来看，这样一个设备对应一个设备描述符，支持视频的功能对应一个接口描述符，支持音频功能的对应一个接口描述符。为了支持视频，在下层有多个端口同时工作为提供视频数据传输的支持，所以有多个端点描述符。
