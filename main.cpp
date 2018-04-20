@@ -13,5 +13,17 @@ int main(void)
 
     printf("err1 = %f\nerr2 = %f\n", err1, err2);
 
+    char test[10]={'a','b','c','d',0};
+    for(int i=0; i<10; i++)
+    {
+        printf("char i = %c\n", test[i]);
+    }
+
+    sprintf(test, "%d", 5);
+    for(int i=0; i<10; i++)
+    {
+        printf("char i = %c\n", test[i]);
+    }
+
     return 0;   
 }
