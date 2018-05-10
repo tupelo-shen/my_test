@@ -33,7 +33,7 @@ int main()
 }
 #endif
 
-#if 1
+#if 0
 #include <iostream>
 #include <string>
 #include <typeinfo>
@@ -80,5 +80,121 @@ int main() {
     } catch (const std::bad_typeid& e) {
          std::cout << " caught " << e.what() << '\n';
     }
+}
+#endif
+#if 1
+#include <iostream>
+#include <string.h>
+
+#define SC_MS_CODE_STR_NUM              (128)
+#define SC_MS_CODE_DELIMITER_DASH       ("-")
+#define SC_MS_CODE_DELIMITER_SLASH      ("/")
+#define SC_MODEL_FIRST_DELIMITER        (0)
+#define SC_MODEL_END_DELIMITER          (0)
+#define SC_SUFFIX1_FIRST_DELIMITER      (1)
+#define SC_SUFFIX1_END_DELIMITER        (3)
+#define SC_SUFFIX2_FIRST_DELIMITER      (4)
+#define SC_SUFFIX2_END_DELIMITER        (8)
+#define SC_SUFFIX3_FIRST_DELIMITER      (9)
+#define SC_SUFFIX3_END_DELIMITER        (11)
+#define SC_OPTIONS_FIRST_DELIMITER      (1)
+#define SC_OPTIONS_END_DELIMITER        (5)
+
+// const char* str = "FLXA402-A-B-AB-NN-NN-NA-WR-N-N-J-NN/UM/H6/SCT/CB4/K";
+// const char* str = "FLXA402-A-B-AB-NN-NN-NA-WR-N-N-J-/UM/H6/SCT/CB4/K";
+const char* str = "FLXA402-A-B-AB-NN-NN-NA-WR-/UM/H6/SCT/CB4/K";
+void spritMsCodeStr(
+    const char* str,
+    char* str_buff,
+    const char* delimiter,
+    unsigned short first_delimiter_pos,
+    unsigned short end_delimiter_pos
+    )
+{
+    int len, i, j;
+    char* ptr;
+    char buff[SC_MS_CODE_STR_NUM+1];
+
+    strncpy(buff, str, SC_MS_CODE_STR_NUM);
+    buff[SC_MS_CODE_STR_NUM] = '\0';
+
+    ptr = strtok(buff, delimiter);
+    if(first_delimiter_pos == 0 && end_delimiter_pos == 0) {
+        if(ptr != NULL)
+        {
+            // Code title
+            len = strlen(ptr);
+            for(i = 0; i < len; i++) {
+                *str_buff++ = *ptr++;
+            }
+            *str_buff = '\0';
+        }
+    }else {
+        // Code suffix
+        for(i = 1; i <= end_delimiter_pos; i++) {
+            ptr = strtok(NULL, delimiter);
+            if(ptr != NULL) {
+                if(first_delimiter_pos <= i) {
+                    len = strlen(ptr);
+                    *str_buff++ = *delimiter;
+                    for(j=0; j < len; j++) {
+                        *str_buff++ = *ptr++;
+                    }
+                }
+            }
+        }
+        *str_buff = '\0';
+    }
+}
+
+int main()
+{
+    //char ms_code_val[SC_MS_CODE_STR_NUM];
+    char ms_code_title_suffix[SC_MS_CODE_STR_NUM];
+    char ms_code_buff[SC_MS_CODE_STR_NUM];
+
+    printf("ms_code_origin = %s\n", str);
+
+    spritMsCodeStr(str, 
+        ms_code_title_suffix, 
+        SC_MS_CODE_DELIMITER_SLASH, 
+        SC_MODEL_FIRST_DELIMITER, 
+        SC_MODEL_END_DELIMITER);
+    printf("ms_code_title_suffix = %s\n", ms_code_title_suffix);
+
+    spritMsCodeStr(ms_code_title_suffix, 
+        ms_code_buff, 
+        SC_MS_CODE_DELIMITER_DASH, 
+        SC_MODEL_FIRST_DELIMITER, 
+        SC_MODEL_END_DELIMITER);
+    printf("ms_code_title = %s\n", ms_code_buff);
+
+    spritMsCodeStr(ms_code_title_suffix, 
+        ms_code_buff, 
+        SC_MS_CODE_DELIMITER_DASH, 
+        SC_SUFFIX1_FIRST_DELIMITER, 
+        SC_SUFFIX1_END_DELIMITER);
+    printf("ms_code_suffix1 = %s\n", ms_code_buff);
+
+    spritMsCodeStr(ms_code_title_suffix, 
+        ms_code_buff, 
+        SC_MS_CODE_DELIMITER_DASH, 
+        SC_SUFFIX2_FIRST_DELIMITER, 
+        SC_SUFFIX2_END_DELIMITER);
+    printf("ms_code_suffix2 = %s\n", ms_code_buff);
+
+    spritMsCodeStr(ms_code_title_suffix, 
+        ms_code_buff, 
+        SC_MS_CODE_DELIMITER_DASH, 
+        SC_SUFFIX3_FIRST_DELIMITER, 
+        SC_SUFFIX3_END_DELIMITER);
+    printf("ms_code_suffix3 = %s\n", ms_code_buff);
+
+    spritMsCodeStr(str, 
+        ms_code_buff, 
+        SC_MS_CODE_DELIMITER_SLASH, 
+        SC_OPTIONS_FIRST_DELIMITER, 
+        SC_OPTIONS_END_DELIMITER);
+    printf("ms_code_options = %s\n", ms_code_buff);
 }
 #endif
