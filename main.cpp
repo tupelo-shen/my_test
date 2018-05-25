@@ -4,6 +4,7 @@
 #include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <bitset>
 
 using namespace std;
 
@@ -108,6 +109,70 @@ T getMaxIntegerValByDigits(unsigned short digits)
 
     return ret_val;
 }
+//
+typedef struct _FLOAT_INFO
+{
+    unsigned int fract3 : 8;
+    unsigned int fract2 : 8;
+    unsigned int fract1 : 7;
+    unsigned int exp    : 8;
+    unsigned int sign   : 1;
+}FLOAT_INFO;
+
+int explain_float(float a)
+{
+    FLOAT_INFO* p = (FLOAT_INFO*)&a;
+    printf("float : %f\n", a);
+    std::cout << "hex: " << std::bitset<sizeof(int)*8>((int&)a) << '\n';
+    printf("sign: %d\n", p->sign);
+    printf("exp: %d\n", p->exp-127);
+    printf("fract1: %f\n", p->fract1/128.0+1);
+    printf("fract2: %f\n", p->fract2/256.0/128.0);
+    printf("fract3: %f\n", p->fract3/256.0/256.0/128.0);
+    double d = p->fract1/128.0+1 + p->fract2/256.0/128.0 + p->fract3/256.0/256.0/128.0;
+    printf("tail: %lf\n", d);
+    printf("computer number: %lf\n", (p->sign==0?1:-1)*pow(2, p->exp-127)*d);
+    printf("============================\n");
+
+    return 0;
+}
+int ilog2(int a)
+{
+    float x=a;
+    unsigned int ix = (unsigned int&)x;
+    unsigned int exp = (ix >> 23) & 0xFF;
+    int log2 = int(exp) - 127;
+
+    return log2;
+}
+
+short SCGetExp(float value, unsigned short exponent)
+{
+    short e = 0;
+
+    if (value >= 0.0f)  // 正数
+    {
+        if (value > powf(2.0f, static_cast<float>(exponent)) ||
+                value < powf(2.0f, static_cast<float>(-exponent)))
+        {
+            e = static_cast<short>(logf(value)/logf(10.0f)+0.00001f);
+        }
+    }
+    else // 非正数
+    {
+        if (value < -(powf(2.0f, static_cast<float>(exponent))) ||
+                value > -(powf(2.0f, static_cast<float>(-exponent))))
+        {
+            e = -(static_cast<short>(logf(fabsf(value)/logf(10.0f))+0.00001f));
+        }
+    }
+
+    return e;
+}
+unsigned int getFloatIntegerDigits(float value)
+{
+    return (log10f(fabsf(value)) + 1);
+}
 
 LIMIT_INFO  lmt;
 KBD_PARAM   m_info;
@@ -137,10 +202,31 @@ int main()
     printf("int max: %d\n", uint_a);
     printf("============================\n"); 
     long total = 0;
-    int x = 10, y = 0;
+    int x = 10;
     for(int i = 0; i< 9; i++)
     {
         total += 9 * pow(x,i); /*调用pow函数*/
         printf("%ld\n",total);
-    }           
+    }
+    printf("*****************************\n"); 
+    explain_float(0);
+    explain_float(1);
+    explain_float(0.25);
+    explain_float(0.75);
+    explain_float(6);
+    explain_float(128);
+    explain_float(-123.456);  
+
+    printf("*****************************\n");
+    int exp;
+    float float_a = 123.123f;   
+    exp = getFloatIntegerDigits(float_a);
+    printf("%f exp = %d\n",float_a, exp); 
+    float_a = -123.123f;   
+    exp = getFloatIntegerDigits(float_a);
+    printf("%f exp = %d\n",float_a, exp);
+    float_a = -1234.123f;   
+    exp = getFloatIntegerDigits(float_a);
+    printf("%f exp = %d\n",float_a, exp);        
+        
 }
