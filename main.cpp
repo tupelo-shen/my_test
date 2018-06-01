@@ -44,6 +44,40 @@ typedef struct _KBD_PARAM
     }
 }KBD_PARAM;
 
+const float             nkb_dec_digits_max[7]  =
+        {0.0f, 0.9f, 0.99f, 0.999f, 0.9999f, 0.99999f, 0.999999f};
+const float             nkb_float_integer_digits_max[30]  = {
+    9.999999e+7f, 
+    9.999999e+8f, 
+    9.999999e+9f, 
+    9.99999e+10f,
+    9.99999e+11f,
+    9.99999e+12f,
+    9.99999e+13f,
+    9.99999e+14f,
+    9.99999e+15f,
+    9.99999e+16f,
+    9.99999e+17f,
+    9.99999e+18f,
+    9.99999e+19f,
+    9.99999e+20f,
+    9.99999e+21f,
+    9.99999e+22f,
+    9.99999e+23f,
+    9.99999e+24f,
+    9.99999e+25f,
+    9.99999e+26f,
+    9.99999e+27f,
+    9.99999e+28f,
+    9.99999e+29f,
+    9.99999e+30f,
+    9.99999e+31f,
+    9.99999e+32f,
+    9.99999e+33f,
+    9.99999e+34f,
+    9.99999e+35f,
+    9.99999e+36f,
+    };        
 template<typename T>
 void cutValueByLimit(T& val, const LIMIT_INFO& limit)
 {
@@ -89,53 +123,48 @@ T getMaxIntegerValByDigits(unsigned short digits)
         {
             ret_val = static_cast<T>(UINT_MAX);
         }
-        else
+        else if(typeid(T) == typeid(int))
         {
             ret_val = static_cast<T>(INT_MAX);
         }
-        printf("1\n");
-        printf("ret_val = %d\n", ret_val);
+        else if(typeid(T) == typeid(float))
+        {
+            ret_val = static_cast<T>(FLT_MAX);
+        }
     }
     else
     {
-        for(unsigned int i = 0; i < digits; i++)
+        if(typeid(T) == typeid(float))
         {
-            ret_val += (9 * pow(10,i));
-            printf("ret_val = %d\n", ret_val);
+            if(digits > 7)
+            {
+                ret_val = nkb_float_integer_digits_max[digits-7-1];
+            }
+            else
+            {
+                ret_val = static_cast<T>(pow(10.0f,static_cast<int>(digits)) - 1);
+            }
         }
-        printf("2\n");
-
+        else
+        {
+            ret_val = static_cast<T>(pow(10.0f,static_cast<int>(digits)) - 1);
+        }
+        //printf("ret_val = %f\n", ret_val);
     }
 
     return ret_val;
 }
-//
-typedef struct _FLOAT_INFO
+//float getMaxFloatValByDigits
+float getMaxDecValByDpDigits(unsigned short digits)
 {
-    unsigned int fract3 : 8;
-    unsigned int fract2 : 8;
-    unsigned int fract1 : 7;
-    unsigned int exp    : 8;
-    unsigned int sign   : 1;
-}FLOAT_INFO;
-
-int explain_float(float a)
-{
-    FLOAT_INFO* p = (FLOAT_INFO*)&a;
-    printf("float : %f\n", a);
-    std::cout << "hex: " << std::bitset<sizeof(int)*8>((int&)a) << '\n';
-    printf("sign: %d\n", p->sign);
-    printf("exp: %d\n", p->exp-127);
-    printf("fract1: %f\n", p->fract1/128.0+1);
-    printf("fract2: %f\n", p->fract2/256.0/128.0);
-    printf("fract3: %f\n", p->fract3/256.0/256.0/128.0);
-    double d = p->fract1/128.0+1 + p->fract2/256.0/128.0 + p->fract3/256.0/256.0/128.0;
-    printf("tail: %lf\n", d);
-    printf("computer number: %lf\n", (p->sign==0?1:-1)*pow(2, p->exp-127)*d);
-    printf("============================\n");
-
-    return 0;
+    if(digits > (7 - 1))
+    {
+        digits = 7-1;
+    }
+    return nkb_dec_digits_max[digits];
 }
+
+
 int ilog2(int a)
 {
     float x=a;
@@ -146,87 +175,144 @@ int ilog2(int a)
     return log2;
 }
 
-short SCGetExp(float value, unsigned short exponent)
+int getFloatIntegerDigits(float value)
 {
-    short e = 0;
-
-    if (value >= 0.0f)  // 正数
+    int ret_val;
+    
+    if(value == 0.0f)
     {
-        if (value > powf(2.0f, static_cast<float>(exponent)) ||
-                value < powf(2.0f, static_cast<float>(-exponent)))
+        ret_val = 0;
+    }
+    else
+    {
+        int exp = log10f(fabsf(value));
+        if(exp >= 0)
         {
-            e = static_cast<short>(logf(value)/logf(10.0f)+0.00001f);
+            ret_val = exp + 1;
+        }
+        else
+        {
+            ret_val = exp;
         }
     }
-    else // 非正数
-    {
-        if (value < -(powf(2.0f, static_cast<float>(exponent))) ||
-                value > -(powf(2.0f, static_cast<float>(-exponent))))
-        {
-            e = -(static_cast<short>(logf(fabsf(value)/logf(10.0f))+0.00001f));
-        }
-    }
 
-    return e;
+    return ret_val;
 }
-unsigned int getFloatIntegerDigits(float value)
-{
-    return (log10f(fabsf(value)) + 1);
-}
-
-LIMIT_INFO  lmt;
-KBD_PARAM   m_info;
 
 int main()
 {
-    lmt.int_limit.max = 10;
-    lmt.int_limit.min = -10;
-    //m_info.limit.float_limit.min = FLT_MIN;
-    int            uint_a = 20;
-    printf("int orig: %d\n", uint_a);
-    cutValueByLimit(uint_a, lmt);    
-    //cutValueByMaxVal<unsigned int>(uint_a, int_b);
-    printf("int cutted: %d\n", uint_a);
-    printf("============================\n");
-    uint_a = getMaxIntegerValByDigits<unsigned int, NKB_INTEGER_BITS_MAX>(8);
-    printf("uint max: %d\n", uint_a);
-    printf("============================\n");
-    printf("============================\n");
-    uint_a = getMaxIntegerValByDigits<unsigned int, NKB_INTEGER_BITS_MAX>(11);
-    printf("uint max: %u\n", uint_a);
-    printf("============================\n");
-    uint_a = getMaxIntegerValByDigits<int, NKB_INTEGER_BITS_MAX>(8);
-    printf("int max: %d\n", uint_a);
-    printf("============================\n");
-    uint_a = getMaxIntegerValByDigits<int, NKB_INTEGER_BITS_MAX>(11);
-    printf("int max: %d\n", uint_a);
-    printf("============================\n"); 
-    long total = 0;
-    int x = 10;
-    for(int i = 0; i< 9; i++)
-    {
-        total += 9 * pow(x,i); /*调用pow函数*/
-        printf("%ld\n",total);
-    }
-    printf("*****************************\n"); 
-    explain_float(0);
-    explain_float(1);
-    explain_float(0.25);
-    explain_float(0.75);
-    explain_float(6);
-    explain_float(128);
-    explain_float(-123.456);  
 
-    printf("*****************************\n");
-    int exp;
-    float float_a = 123.123f;   
-    exp = getFloatIntegerDigits(float_a);
-    printf("%f exp = %d\n",float_a, exp); 
-    float_a = -123.123f;   
-    exp = getFloatIntegerDigits(float_a);
-    printf("%f exp = %d\n",float_a, exp);
-    float_a = -1234.123f;   
-    exp = getFloatIntegerDigits(float_a);
-    printf("%f exp = %d\n",float_a, exp);        
-        
+    int int_a = getMaxIntegerValByDigits<int, 9>(8);
+    printf("int_a = %d;\n", int_a);
+
+    int_a = getMaxIntegerValByDigits<int, 9>(9);
+    printf("int_a = %d;\n", int_a);
+    float a = int_a;
+    printf("a = %f;\n", a);
+
+    int_a = getMaxIntegerValByDigits<int, 9>(10);
+    printf("int_a = %d;\n", int_a);
+
+
+    float float_c;
+    float float_a = getMaxIntegerValByDigits<float, 37>(3);
+    float float_b = getMaxDecValByDpDigits(5);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c); 
+
+    float_a = getMaxIntegerValByDigits<float, 37>(2);
+    float_b = getMaxDecValByDpDigits(6);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(1);
+    float_b = getMaxDecValByDpDigits(7);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(0);
+    float_b = getMaxDecValByDpDigits(8);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(4);
+    float_b = getMaxDecValByDpDigits(3);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %7f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(5);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %7f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(6);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %7f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(7);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(8);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a;// + float_b;
+    printf("float_a = %x; float_b = %f;\n", *(unsigned int*)&float_a, float_b);
+    printf("float_ab = %f\n", float_a);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(9);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a;// + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(10);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a;// + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(11);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a;// + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(20);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a;// + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+    float_a = getMaxIntegerValByDigits<float, 37>(30);
+    float_b = getMaxDecValByDpDigits(4);
+    float_c = float_a;// + float_b;
+    printf("float_a = %f; float_b = %f;\n", float_a, float_b);
+    printf("float_ab = %f\n", float_c);
+
+
+    int int_b = getFloatIntegerDigits(0.001);
+    printf("int_b = %d;\n", int_b);
+    int_b = getFloatIntegerDigits(0.01);
+    printf("int_b = %d;\n", int_b); 
+    int_b = getFloatIntegerDigits(0.1);
+    printf("int_b = %d;\n", int_b);  
+    int_b = getFloatIntegerDigits(0.0);
+    printf("int_b = %d;\n", int_b);  
+    int_b = getFloatIntegerDigits(1.234);
+    printf("int_b = %d;\n", int_b);     
+    int_b = getFloatIntegerDigits(12.34);
+    printf("int_b = %d;\n", int_b); 
+
+    int_b = getFloatIntegerDigits(-12.34);
+    printf("int_b = %d;\n", int_b);                           
 }
