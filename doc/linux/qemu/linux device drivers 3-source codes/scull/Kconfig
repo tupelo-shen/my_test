@@ -1,0 +1,10 @@
+#
+# scull configuration
+#
+
+menuconfig SCULL
+    tristate "Scull Devices"
+    default m
+    ---help---
+      test for char device
+
