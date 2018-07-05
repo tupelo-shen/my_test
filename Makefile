@@ -4,7 +4,10 @@ SRC_TEST_DIR = src/thread-test
 SRC_OBJS = src/BindingTest.o \
 			src/Average.o \
 			src/IntArray.o \
-			src/Common.o
+			src/Common.o \
+			src/AbstractProduct.o \
+			src/SimpleFactory.o \
+			src/AbstractFactory.o
 
 SIMULATOR = simulator.exe
 
