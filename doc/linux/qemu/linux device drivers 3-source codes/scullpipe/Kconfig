@@ -1,0 +1,10 @@
+#
+# scull configuration
+#
+
+menuconfig SCULLP
+    tristate "Scull Pipe Devices"
+    default m
+    ---help---
+      test for char device
+
