@@ -27,6 +27,7 @@
 <ul>
 <li><a href="#backslash">反斜杠</a></li>
 <li><a href="#autolink">自动链接</a></li>
+<li><a href="#addfondcolor">为字体添加颜色</a></li>
 </ul></li>
 <li><a href="#acknowledgement">感谢</a></li>
 </ul>
@@ -650,3 +651,29 @@ Markdown 支持以下这些符号前面加上反斜杠来帮助插入普通的�
     .   英文句点
     !   惊叹号
 
+<h3 id="addfondcolor">为字体添加颜色</h3>
+
+初用 MarkDown，发现字体颜色经常用到，备份一份给自己看。
+
+    <font face="黑体">我是黑体字</font>
+    <font face="微软雅黑">我是微软雅黑</font>
+    <font face="STCAIYUN">我是华文彩云</font>
+    <font color=#0099ff size=72 face="黑体">color=#0099ff size=72 face="黑体"</font>
+    <font color=#00ffff size=72>color=#00ffff</font>
+    <font color=gray size=72>color=gray</font>
+
+呈现效果：
+
+<style>
+    table,table tr th, table tr td { border:2px solid #0094ff; width: 1000px;}
+    table { width: 600px; min-height: 25px; line-height: 25px; text-align: center; border-collapse: collapse;}
+</style>
+
+<table>
+    <tr><td><font face="黑体">我是黑体字</font></td></tr>
+    <tr><td><font face="微软雅黑">我是微软雅黑</font></td></tr>
+    <tr><td><font face="STCAIYUN">我是华文彩云</font></td></tr>
+    <tr><td><font color=#0099ff size=72 face="黑体">color=#0099ff size=72 face="黑体"</font></td></tr>
+    <tr><td><font color=#00ffff size=72>color=#00ffff</font></td></tr>
+    <tr><td><font color=gray size=72>color=gray</font></td></tr>
+</table>
