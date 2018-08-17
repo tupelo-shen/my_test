@@ -1,6 +1,11 @@
+src/AbstractFactory.o: src/AbstractFactory.cpp src/AbstractFactory.h \
+ src/AbstractProduct.h
+src/AbstractProduct.o: src/AbstractProduct.cpp src/AbstractProduct.h
 src/Association.o: src/Association.cpp src/Association.h
 src/Average.o: src/Average.cpp src/Average.h src/Common.h
 src/BindingTest.o: src/BindingTest.cpp src/BindingTest.h
 src/Callback.o: src/Callback.cpp src/Callback.h
 src/Common.o: src/Common.cpp src/Common.h
 src/IntArray.o: src/IntArray.cpp src/IntArray.h
+src/SimpleFactory.o: src/SimpleFactory.cpp src/SimpleFactory.h \
+ src/AbstractProduct.h
