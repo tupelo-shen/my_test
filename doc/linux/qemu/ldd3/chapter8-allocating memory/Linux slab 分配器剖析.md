@@ -30,4 +30,9 @@ Linux slab 分配器使用了这种思想和其他一些思想来构建一个在
 
 图 1. slab 分配器的主要结构
 
-![slab 分配器的主要结构](/path/to/img.jpg)
+![slab](D:\Works_YOKOGAWA\git_repository\test_github_repository\my_test\doc\linux\qemu\Linux_device_drivers_3_images\slab.gif)
+
+
+(https://github.com/tupelo-shen/my_test/blob/master/doc/linux/qemu/Linux_device_drivers_3_images/slab%E5%88%86%E9%85%8D%E5%99%A8%E7%9A%84%E4%B8%BB%E8%A6%81%E7%BB%93%E6%9E%84.gif)
+
+(D:\Works_YOKOGAWA\git_repository\test_github_repository\my_test\doc\linux\qemu\ldd3\chapter8-allocating memory\slab.gif)
