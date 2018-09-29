@@ -6,7 +6,7 @@
 
 默认情况下， 编译器和编译工具（`gcc`，`make`...）已经有了。
 
-###依赖条件：
+### 依赖条件：
 
 1. 必要安装包：
     * `git`->用于版本管理(在这里可以不要)
@@ -134,4 +134,28 @@ Note that when building QEMU from GIT, 'make' will attempt to checkout various [
 
         加粗部分（`x86_64-linux-gnu`）对应你自己的系统，也可以是`i386-linux-gnu`。
 
+2. 测试KVM
 
+    * 直接在源代码目录树下编译：
+
+            # 切换到QEMU的根目录
+            cd qemu
+            # 只为x86_64系统配置QEMU - 更快编译
+            ./configure --target-list=x86_64-softmmu --enable-debug
+            # 并行编译 - 我的系统有4个CPU
+            make -j4
+
+    * 准备在虚拟机上安装客户操作系统：
+
+            # 为虚拟机创建一个磁盘
+            ./qemu-img create -f qcow2 test.qcow2 16G
+            # 下载要安装的 ISO
+            ls -la Fedora-Live-Desktop-x86_64-20-1.iso
+            -rwxr-xr-x. 1 xxxxx xxxxx 999292928 May  4 16:32
+
+    * 在启用KVM的情况下运行QEMU：
+
+            x86_64-softmmu/qemu-system-x86_64 -m 1024 -enable-kvm \
+            -drive if=virtio,file=test.qcow2,cache=none \
+            -cdrom Fedora-Live-Desktop-x86_64-20-1.iso \
+            -vnc :1
