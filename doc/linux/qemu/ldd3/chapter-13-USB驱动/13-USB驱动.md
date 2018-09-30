@@ -25,9 +25,9 @@
 
 ***
 
-The universal serial bus (USB) is a connection between a host computer and a number of peripheral devices. It was originally created to replace a wide range of slow and different buses—the parallel, serial, and keyboard connections—with a single bus type that all devices could connect to.* USB has grown beyond these slow connections and now supports almost every type of device that can be connected to a PC. The latest revision of the USB specification added high-speed connections with a theoretical speed limit of 480 MBps.
+通用串行总线（USB）是主机连接外设的方式。创建它的最初目的就是，用简单的总线，取代杂乱无章的低速总线-并口，串口，和键盘连接等。现在，USB几乎支持所有连接到PC上的设备类型。理论上，最新的高速USB接口速度达到480 Mbps。
 
-Topologically, a USB subsystem is not laid out as a bus; it is rather a tree built out of several point-to-point links. The links are four-wire cables (ground, power, and two signal wires) that connect a device and a hub, just like twisted-pair Ethernet. The USB host controller is in charge of asking every USB device if it has any data to send. Because of this topology, a USB device can never start sending data without first being asked to by the host controller. This configuration allows for a very easy plug-and-play type of system, whereby devices can be automatically configured by the host computer.
+在拓扑结构上，USB子系统并不是一个总线类型，而是由几个点对点链接构建的树。类似于双绞线的以太网，USB连接需要四根线（地线，电源，2个信号线），连接hub和设备。USB主控制器负责询问每一个USB设备是否有数据需要发送。基于这种拓扑结构，如果主控制器没有主动询问，USB设备绝对不会主动发送数据。这种配置允许“即插即用”，从而主机可以自动配置设备。
 
 The bus is very simple at the technological level, as it’s a single-master implementation in which the host computer polls the various peripheral devices. Despite this intrinsic limitation, the bus has some interesting features, such as the ability for a device to request a fixed bandwidth for its data transfers in order to reliably support video and audio I/O. Another important feature of USB is that it acts merely as a communication channel between the device and the host, without requiring specific meaning or structure to the data it delivers.
 
