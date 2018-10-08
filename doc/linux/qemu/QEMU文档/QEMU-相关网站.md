@@ -11,3 +11,4 @@
 4. [KVM的Howto文档](http://kvm.qumranet.com/kvmwiki/HOWTO)
 5. [Kqemu](http://sourceforge.net/projects/kqemu/)
 6. [Qemu](http://fabrice.bellard.free.fr/qemu/index.html)
+7. [KVM全教程](http://forum.ubuntu.org.cn/viewtopic.php?f=65&t=130210&sid=592708d954990bdd11e60bb7d115ed3a)
