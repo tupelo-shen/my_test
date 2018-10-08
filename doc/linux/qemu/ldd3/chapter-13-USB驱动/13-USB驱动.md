@@ -29,48 +29,46 @@
 
 在拓扑结构上，USB子系统并不是一个总线类型，而是由几个点对点链接构建的树。类似于双绞线的以太网，USB连接需要四根线（地线，电源，2个信号线），连接hub和设备。USB主控制器负责询问每一个USB设备是否有数据需要发送。基于这种拓扑结构，如果主控制器没有主动询问，USB设备绝对不会主动发送数据。这种配置允许“即插即用”，从而主机可以自动配置设备。
 
-The bus is very simple at the technological level, as it’s a single-master implementation in which the host computer polls the various peripheral devices. Despite this intrinsic limitation, the bus has some interesting features, such as the ability for a device to request a fixed bandwidth for its data transfers in order to reliably support video and audio I/O. Another important feature of USB is that it acts merely as a communication channel between the device and the host, without requiring specific meaning or structure to the data it delivers.
+USB总线在技术上非常简单，就是一个单主机，主机负责轮询各种外围设备。尽管有这种固有限制，但是USB总线还是有一些有趣的特点，比如可以为音视频的数据传输提供固定的带宽；另一个重要的特点就是，仅仅是作为主控制器和设备的通信手段，没有特殊的意义或对传输的数据结构有要求。
 
->Actually, some structure is there, but it mostly reduces to a requirement for the communication to fit into one of a few predefined classes: a keyboard won’t allocate bandwidth, for example, while some video cameras will.
+对于某种特定类型的设备，USB协议规范定义了一组标准，如果一设备遵循这个标准，那么就不需要特定的驱动。这些不同的类型称之为类，包括存储设备，键盘，鼠标，游戏杆，网络设备和调制解调器等。对于不符合这些类型的其它设备，就要求特定于厂商的特定驱动了。视频设备和USB转串口就是很好的例子，没有预定义的标准，不同厂商的驱动都不同。
 
-The USB protocol specifications define a set of standards that any device of a specific type can follow. If a device follows that standard, then a special driver for that device is not necessary. These different types are called classes and consist of things like storage devices, keyboards, mice, joysticks, network devices, and modems. Other types of devices that do not fit into these classes require a special vendor-specific driver to be written for that specific device. Video devices and USB-to-serial devices are a good example where there is no defined standard, and a driver is needed for every different device from different manufacturers.
+这些功能，配合设计上固有的“热插拔”功能，使得USB成为一种便捷，低成本的连接设备和主机的方案。
 
-These features, together with the inherent hotplug capability of the design, make USB a handy, low-cost mechanism to connect (and disconnect) several devices to the computer without the need to shut the system down, open the cover, and swear over screws and wires.
+Linux支持两种主要的USB驱动程序：主控制器端的驱动程序和设备上的驱动程序。
 
-The Linux kernel supports two main types of USB drivers: drivers on a host system and drivers on a device. The USB drivers for a host system control the USB devices that are plugged into it, from the host’s point of view (a common USB host is a desktop computer.) The USB drivers in a device, control how that single device looks to the host computer as a USB device. As the term “USB device drivers” is very confusing, the USB developers have created the term “USB gadget drivers” to describe the drivers that control a USB device that connects to a computer (remember that Linux also runs in those tiny embedded devices, too.) This chapter details how the USB system that runs on a desktop computer works. USB gadget drivers are outside the realm of this book at this point in time.
-
-As Figure 13-1 shows, USB drivers live between the different kernel subsytems (block, net, char, etc.) and the USB hardware controllers. The USB core provides an interface for USB drivers to use to access and control the USB hardware, without having to worry about the different types of USB hardware controllers that are present on the system.
+如图13-1所示，USB驱动位于不同的内核子系统（块，网络，字符，等等）和USB硬件控制器之间。USB核为USB驱动提供了一个访问和控制USB硬件的一个接口，而无需担心USB硬件控制器的类型不同。
 
 <h2 id="13.1">13.1 USB设备基础知识</h2>
 
-USB设备是一个复杂的事物，详细描述可以参考[官方USB文档](http://www.usb.org)。幸运的是，Linux内核提供了一个子系统-USB核-负责处理这些复杂的事情。本章主要描述驱动和USB核之间的交互。图13-2展示了USB设备的组成，配置，接口和端点以及USB驱动是如何绑定到USB接口，而不是整个USB设备上。
+USB设备是一个复杂的事物，详细描述可以参考[官方USB文档](http://www.usb.org)。幸运的是，Linux内核提供了一个子系统-USB核-负责处理这些复杂的事情。本章主要描述驱动和USB核之间的交互。图13-2展示了USB设备的组成，配置，接口和端点以及USB驱动是如何绑定到USB接口上，而不是整个USB设备上。
 
 ![Figure 13-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_device_drivers_3_images/13-1.PNG)
 ![Figure 13-2](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_device_drivers_3_images/13-2.PNG)
 
 <h3 id="13.1.1">13.1.1 端点</h3>
 
-USB通信最基本的形式就是端点。USB端点只能在一个方向上传输数据，比如，从主机到设备（称为OUT端点）或从设备到主机（称为IN端点）。端点可以被认为是单向管道。
+USB通信最基本的单元就是端点。USB端点只能在一个方向上传输数据，比如，从主机到设备（称为OUT端点）或从设备到主机（称为IN端点）。端点可以被认为是单向管道。
 
 USB端点有4种类型：
 
 * CONTROL
 
-    CONTROL 端点被用于允许访问USB设备的不同部分。被用来配置设备，检索设备信息，向设备发送命令，或检索设备的状态报告。这些端点通常很小。每个USB设备都有一个称为“端点0”的端点，USB核用来在设备插入时，配置设备使用。这些数据的传输由USB协议保证，保留足够的带宽，以使数据穿过。
+    `CONTROL`端点被用于允许访问USB设备的不同部分。被用来配置设备，检索设备信息，向设备发送命令，或检索设备的状态报告。这些端点通常很小。每个USB设备都有一个称为“端点0”的端点，USB核用来在设备插入时，配置设备使用。这些数据的传输由USB协议保证，保留足够的带宽，以使数据穿过。
 
 * INTERRUPT
 
-    每次USB主机向设备请求数据时，INTERRUPT端点以固定速率传输少量数据。这些端点是USB键盘和鼠标的主要传输方式。常常也会被用来向USB设备发送数据，以便控制设备，但是通常不会传输大量数据。传输由USB协议保证足够的带宽。
+    每次USB主控制器向设备请求数据时，`INTERRUPT`端点以固定速率传输少量数据。这些端点是USB键盘和鼠标的主要传输方式。往往，也会被用来向USB设备发送数据，以便控制设备，但是通常不会传输大量数据。传输由USB协议保证足够的带宽。
 
 * BULK
 
-    BULK端点传输大量数据。传输数据量大于INTERRUPT端点（每次可以携带更多字符）。常常用于保证数据传输没有损失的设备中。USB协议无法保证在特定的时间段内完成。如果总线上没有足够的空间发送整个BULK数据包，它会被分成多个发送到总线上。常常用于打印机，存储和网络设备。
+    `BULK`端点传输大量数据。传输数据量大于`INTERRUPT`端点（每次可以携带更多字符）。常常用于保证数据传输没有损失的设备中。USB协议无法保证在特定的时间段内完成。如果总线上没有足够的空间发送整个BULK数据包，它会被分成多个发送到总线上。常常用于打印机，存储和网络设备。
 
 * ISOCHRONOUS
 
-    ISOCHRONOUS端点也可以传输大量数据，但是不保证数据完成传输。这些端点用于能够处理数据丢失，依赖于保持恒定的数据流的设备。实时数据收集（例如音频和视频设备）总是使用这种端点。
+    `ISOCHRONOUS`端点也可以传输大量数据，但是不保证数据完成传输。这些端点用于能够处理数据丢失，依赖于保持恒定的数据流的设备。实时数据收集（例如音频和视频设备）总是使用这种端点。
 
-CONTROL 和 BULK 端点用于异步数据传输。INTERRUPT 和 ISOCHRONOUS是周期性的。其带宽是由USB核保留。
+`CONTROL`和`BULK`端点用于异步数据传输。`INTERRUPT`和`ISOCHRONOUS`是周期性的。其带宽是由USB核保留。
 
 内核中使用 `struct usb_host_endpoint`描述USB端点。该结构体还包含另一个结构体`struct usb_endpoint_descriptor`，其保存着真实的端点信息。后一个结构体包含USB具体的数据，数据格式是由设备本身指定的。该结构体的主要成员描述如下：
 
@@ -88,15 +86,15 @@ CONTROL 和 BULK 端点用于异步数据传输。INTERRUPT 和 ISOCHRONOUS是�
 
 * bInterval
 
-    端点类型为INTERRUPT类型时，为间隔设置。单位为mS。
+    端点类型为`INTERRUPT`类型时，为间隔设置。单位为mS。
 
 该结构体的成员变量命名并不是遵循Linux内核的常用命名方法。这是因为这些变量都与USB规约有直接关系。所以，USB内核编程者觉得使用指定的名称更为重要，而不是Linux开发者更为熟悉的变量名称。
 
 <h3 id="13.1.2">13.1.2 接口</h3>
 
-把USB端点捆绑起来就称之为`接口`. USB接口只能处理一种类型的逻辑连接，比如鼠标，键盘或音频流。有一些USB设备有多个接口，比如USB扬声器就有2个接口：用于按键的USB键盘类型接口和USB音频流类型接口。因为USB接口代表一种基本的功能，所以每一个USB驱动控制一个接口；那么，扬声器示例中，Linux就需要两个不同的驱动。
+把USB端点捆绑起来就称之为`接口`。 USB接口只能处理一种类型的逻辑连接，比如鼠标，键盘或音频流。有一些USB设备有多个接口，比如USB扬声器就有2个接口：用于按键的USB键盘类型接口和USB音频流类型接口。因为USB接口代表一种基本的功能，所以每一个USB驱动控制一个接口；那么，扬声器示例中，Linux就需要两个不同的驱动。
 
-USB接口可能具有备用设置，这些设置是接口参数的不同选择。一个接口的初始状态就是第一个设置，编号为0。备用设置可以被用于以不同方式控制各个端点，比如为设备保留不同数量的USB带宽。使用isochronous端点的设备使用相同接口的备用设置。
+USB接口可能具有备用设置，这些设置是接口参数的不同选择。一个接口的初始状态就是第一个设置，编号为0。备用设置可以被用于以不同方式控制各个端点，比如为设备保留不同数量的USB带宽。使用`isochronous`端点的设备使用相同接口的备用设置。
 
 在内核中使用结构体 `struct usb_interface`描述USB接口。这个结构体是USB核传递给USB驱动，然后USB驱动负责控制。其中重要的成员有：
 
@@ -114,17 +112,17 @@ USB接口可能具有备用设置，这些设置是接口参数的不同选择�
 
 * int minor
 
-    USB驱动使用major主设备号绑定此接口，使用该变量指定minor设备号，其由USB核指定给接口。 只有成功调用函数 `usb_register_dev` (在本章的后面会描述)后才会有效。
+    USB驱动使用`major`主设备号绑定此接口，使用该变量指定`minor`设备号，其由USB核负责分配给`接口`。 只有成功调用函数 `usb_register_dev` (在本章的后面会描述)后才会有效。
 
 结构体`usb_interface`还有一些其它成员，但是USB驱动不需要关注。
 
 <h3 id="13.1.3">13.1.3 配置</h3>
 
-将USB接口捆绑起来就是配置。USB设备能够拥有多个配置，可以在它们之间切换以改变设备的状态。例如，那些允许固件被下载的设备就包含多个配置来实现。在某一个时间点上只能有一个配置被使能。Linux不处理多种配置的USB设备，但是，幸运的是，它们极少。
+将USB接口捆绑起来就是`配置`。USB设备能够拥有多个配置，可以在它们之间切换以改变设备的状态。例如，那些允许固件被下载的设备就包含多个配置来实现。在某一个时间点上只能有一个配置被使能。Linux不处理多种配置的USB设备，但是，幸运的是，它们极少。
 
 Linux使用结构体`struct usb_host_config`描述USB配置，使用`struct usb_device`描述整个USB设备。USB设备通常不需要读写这些结构体中的数值，所以，在这里没有详细讨论。好奇的读者可以通过源代码树中的文件`include/linux/usb.h`进行查阅。
 
-USB设备驱动通常需要将给定的结构类型为`struct usb_interface`的数据结构数据转化为结构为`struct usb_device`的数据，以满足多种函数调用的需求。Linux内核提供了这个函数接口，`interface_to_usbdev`。但愿在未来，这种接口函数不再被需要。
+USB设备驱动通常需要将给定的结构类型为`struct usb_interface`的数据转化为结构为`struct usb_device`的数据，以满足多种函数调用的需求。Linux内核提供了这个函数接口，`interface_to_usbdev`。但愿在未来，这种接口函数不再被需要。
 
 总而言之，USB设备相当复杂，由不同的逻辑单元组成。这些逻辑单元的关系简单描述如下：
 
@@ -138,7 +136,7 @@ USB设备驱动通常需要将给定的结构类型为`struct usb_interface`的�
 
 <h2 id="13.2">13.2 USB和sysfs</h2>
 
-USB设备在`sysfs`里的表示也比较复杂。物理USB设备（由结构体'struct usb_device'表示）和各个USB接口（由结构体 `struct usb_interface`表示）分别表示为单独的设备。这是因为2中结构体中都包含结构体`device`。例如，只包含一个USB接口的简单的USB鼠标，一下是该设备的'sysfs'目录树：
+USB设备在`sysfs`里的表示也比较复杂。物理USB设备（由结构体'struct usb_device'表示）和各个USB接口（由结构体 `struct usb_interface`表示）分别表示为单独的设备。这是因为2个结构体中都包含结构体`device`。例如，只包含一个USB接口的简单的USB鼠标，以下是该设备的'sysfs'目录树：
 
 结构体`usb_device`在目录树中位置：
 
@@ -148,62 +146,118 @@ USB设备在`sysfs`里的表示也比较复杂。物理USB设备（由结构体'
 
     /sys/devices/pci0000:00/0000:00:09.0/usb2/2-1/2-1:1.0
 
-To help understand what this long device path means, we describe how the kernel labels the USB devices.
+要想理解上面长长的设备路径名的意思，必须先来看一下内核是怎样标记USB设备的。
 
-The first USB device is a root hub. This is the USB controller, usually contained in a PCI device. The controller is so named because it controls the whole USB bus connected to it. The controller is a bridge between the PCI bus and the USB bus, as well as being the first USB device on that bus.
+第一个USB设备是根集线器（`root hub`）。这是USB控制器，通常包含在PCI设备中。之所以如此命名，是因为它控制了连接到它的整个USB总线。这个控制器是PCI总线和USB总线之间的桥梁，也是该总线上的第一个USB设备。
 
-All root hubs are assigned a unique number by the USB core. In our example, the root hub is called usb2, as it is the second root hub that was registered with the USB core. There is no limit on the number of root hubs that can be contained in a single system at any time.
+USB核为所有的根集线器分配了唯一的编号。在我们的例子中，根集线器被称为usb2， 因为它是向USB核注册的第2个根集线器。系统中包含的根集线器的数量没有限制。
 
-Every device that is on a USB bus takes the number of the root hub as the first number in its name. That is followed by a `-` character and then the number of the port that the device is plugged into. As the device in our example is plugged into the first port, a `1` is added to the name. So the device name for the main USB mouse device is 2-1. Because this USB device contains one interface, that causes another device in the tree to be added to the sysfs path. The naming scheme for USB interfaces is the device name up to this point: in our example, it’s 2-1 followed by a colon and the USB configuration number, then a period and the interface number. So for this example, the device name is 2-1:1.0 because it is the first configuration and has interface number zero.
+USB总线上的每一个设备都会选择根集线器（root hub）的编号作为它名称中的第一个数字，后面紧跟`-`，然后就是设备插入的端口号。例子中，端口号是1，所以USB鼠标的名称是2-1。由于此USB设备包含一个接口，所以在sysfs中还有另一个设备。USB接口的命名规则是，设备名称后面紧跟“：”符号，然后就是USB配置编号和接口编号，中间使用符号“.”隔开。例如，在上面的例子中，设备名称是`2-1:1.0`，因为这是第一个配置，接口编号为0。
 
-So to summarize, the USB sysfs device naming scheme is:
+所以总结起来，USB sysfs设备命名规则就是：
 
-    root_hub-hub_port: config. interface
+    根集线器-集线器端口号: 配置.接口
 
-As the devices go further down in the USB tree, and as more and more USB hubs are used, the hub port number is added to the string following the previous hub port number in the chain. For a two-deep tree, the device name looks like:
+随之在USB设备树中，加入越来越多的设备，USB集线器也越来越多，集线器的端口号就添加到前一个集线器端口号的后面。对于一个两级深的树，设备名称看起来应该是：
 
-    root_hub- hub_port- hub_port: config. interface
+    根集线器-集线器端口号-集线器端口号: 配置.接口
 
-As can be seen in the previous directory listing of the USB device and interface, all of the USB specific information is available directly through sysfs (for example, the idVendor, idProduct, and bMaxPower information). One of these files, bConfigurationValue, can be written to in order to change the active USB configuration that is being used. This is useful for devices that have multiple configurations, when the kernel is unable to determine what configuration to select in order to properly operate the device. A number of USB modems need to have the proper configuration value written to this file in order to have the correct USB driver bind to the device.
+通过`sysfs`可以获得所有USB特定的信息（例如，设备厂商号-idVendor，产品id-idProduct，和 bMaxPower信息）。比如，可以修改文件`bConfigurationValue`，改变正在使用的USB配置。对于具有多个配置的USB设备，且内核不能决定选择哪个配置去正确操作设备的时候，这是非常有用的。许多USB调制解调器就需要将正确的配置写入该文件，以便将正确的驱动程序和设备进行绑定。
 
 `Sysfs`只显示到接口层级。设备的备选配置和该接口有关的端点详细信息不显示，这些信息可以在`usbfs`文件系统里找到，其安装在'/proc/bus/usb/'目录下。`/proc/bus/usb/devices`显示系统中存在的所有USB设备的信息，包含备选配置和端点信息。`usbfs`允许用户空间的程序直接访问USB设备，这样许多内核驱动程序就可以被移动到用户空间，方便维护和调试。USB扫描仪驱动程序就是一个很好的例子，它的功能包含在用户空间的SANE库中，所以不再存在于内核中。
 
 <h2 id="13.3">13.3 USB的Urbs</h2>
 
-The USB code in the Linux kernel communicates with all USB devices using something called a urb (USB request block). This request block is described with the struct `urb` structure and can be found in the `include/linux/usb.h` file.
+Linux内核中的USB代码使用USB请求块（urb-USB request block）与所有的USB设备进行通信。使用`struct urb`的结构体描述该请求块，其定义位于`include/linux/usb.h`文件中。
 
-A urb is used to send or receive data to or from a specific USB endpoint on a specific USB device in an asynchronous manner. It is used much like a `kiocb` structure is used in the filesystem async I/O code or as a struct `skbuff` is used in the networking code. A USB device driver may allocate many urbs for a single endpoint or may reuse a single urb for many different endpoints, depending on the need of the driver. Every endpoint in a device can handle a queue of urbs, so that multiple urbs can be sent to the same endpoint before the queue is empty. The typical lifecycle of a urb is as follows:
+urb用于以异步方式向特定USB设备上的特定USB端点发送数据或从其接收数据。它的使用很像在文件系统异步I/O代码中使用的`kiocb`结构或在网络代码中使用的`struct skbuff`。 USB设备驱动程序可以为单个端点分配许多urb，或者可以根据驱动程序的需要为许多不同的端点重用某个urb。 设备中的每个端点都可以处理urb队列，以便在队列为空之前可以将多个urb发送到同一端点。 urb的典型生命周期如下：
 
 1. 由USB设备驱动创建；
-2. 为具体的USB设备指定一个具体的端点；
+2. 分配给特定USB设备的特定端点；
 3. 由USB设备驱动提交给USB核；
-4. 由USB核提交给具体设备对应的USB主控制器的驱动程序；
+4. 由USB核提交给特定设备对应的USB主控制器的驱动程序；
 5. 由USB主控制器驱动程序处理，并发送给设备；
 6. 当urb完成时，由USB主控制器驱动程序通知USB设备驱动程序。
 
-Urbs can also be canceled any time by the driver that submitted the urb, or by the USB core if the device is removed from the system. urbs are dynamically created and contain an internal reference count that enables them to be automatically freed when the last user of the urb releases it.
+`urb`可以随时由提交它的驱动程序取消，或者当设备被移除是，由USB核取消。`urb`是动态创建的，包含一个内部引用计数器，保证当`urb`最后一个使用者释放它时，能够自动地被释放掉。
 
-The procedure described in this chapter for handling urbs is useful, because it permits streaming and other complex, overlapping communications that allow drivers to achieve the highest possible data transfer speeds. But less cumbersome procedures are available if you just want to send individual bulk or control messages and do not care about data throughput rates. (查看 [无urb的USB传送](#13.5))
+本章中描述的用于处理urb的过程很有用，因为它允许数据流传输和其他复杂的重叠通信，允许驱动程序实现尽可能高的数据传输速度。 但是，如果您只想发送单个bulk或控制消息而不关心数据吞吐率，则可以使用较为简单的过程。(查看 [无urb的USB传送](#13.5))
 
 <h3 id="13.3.1">13.3.1 结构体struct urb</h3>
 
 对USB设备驱动很重要的`struct urb`的成员变量：
 
 * struct usb_device *dev
+
+    指向`struct usb_device`的指针。指向`urb`要发送的目的地。这个变量必须在发送给USB核之前由USB驱动完成初始化。
+
 * unsigned int pipe
-* unsigned int usb_sndctrlpipe(struct usb_device *dev, unsigned int endpoint)
+
+    'urb'要发送的具体的`struct usb_device`的端点信息。这个变量必须在发送给USB核之前由USB驱动完成初始化。
+
+    为了设置该字段，使用下面的函数。注意，每个端点只能是一种类型。
+
+        1. unsigned int usb_sndctrlpipe(struct usb_device *dev, unsigned int endpoint)
+        2. unsigned int usb_rcvctrlpipe(struct usb_device *dev, unsigned int endpoint)
+        3. unsigned int usb_sndbulkpipe(struct usb_device *dev, unsigned int endpoint)
+        4. unsigned int usb_rcvbulkpipe(struct usb_device *dev, unsigned int endpoint)
+        5. unsigned int usb_sndintpipe(struct usb_device *dev, unsigned int endpoint)
+        6. unsigned int usb_rcvintpipe(struct usb_device *dev, unsigned int endpoint)
+        7. unsigned int usb_sndisocpipe(struct usb_device *dev, unsigned int endpoint)
+        8. unsigned int usb_rcvisocpipe(struct usb_device *dev, unsigned int endpoint)
+
 * unsigned int transfer_flags
+
+    可以设置不同的位值，依赖于USB驱动想要`urb`做什么。取值可能是：
+
+    * URB_SHORT_NOT_OK
+    * URB_ISO_ASAP
+    * URB_NO_TRANSFER_DMA_MAP
+    * URB_NO_SETUP_DMA_MAP
+    * URB_ASYNC_UNLINK
+    * URB_NO_FSBR
+    * URB_ZERO_PACKET
+    * URB_NO_INTERRUPT
+
 * void *transfer_buffer
+
+    指向收发数据的缓冲区。为了主机控制器能够正确访问该缓冲区，必须调用`kmalloc`分配该空间，而不是在堆栈或静态分配区。对于`CONTROL`端点，该缓冲区用于传输的数据阶段。
+
 * dma_addr_t transfer_dma
+
+    使用DMA发送数据给USB设备的缓冲区。
+
 * int transfer_buffer_length
+
+    `transfer_buffer`和`transfer_dma`的数据长度。（对于一个urb，只能使用一个缓冲区）。如果这是0，USB核没有发送缓冲区。
+
 * unsigned char *setup_packet
+
+    在数据存入到发送缓冲区之前为一个控制`urb`发送的setup包。这个变量只对控制urb有效。
+
 * dma_addr_t setup_dma
+
+    同上，区别只是通过DMA方式而已。
+
 * usb_complete_t complete
+
+    由USB核在`urb`完全发送或当错误发生时调用的回调函数。在这个函数里，USB驱动可以检查urb，释放它，或者再次提交一次发送。（查阅：[完成urb时调用的回调函数](#13.3.4)获取更多详细信息）。
+
+    `usb_complete_t`的类型定义为：
+
+        typedef void (*usb_complete_t)(struct urb *, struct pt_regs *);
+
 * void *context
+
+    指向可由USB驱动程序设置的数据blob的指针。 当urb返回给驱动程序时，它可以在回调函数中使用。
+
 * int actual_length
+
+    当urb完成时，此变量设置为urb发送的数据的实际长度（对于OUT urbs）或由urb接收（对于IN urbs。）对于IN urbs，必须使用此变量而不是transfer_buffer_length 变量，因为接收的数据可能小于整个缓冲区大小。
+
 * int status
 
-    When the urb is finished, or being processed by the USB core, this variable is set to the current status of the urb. The only time a USB driver can safely access this variable is in the urb completion handler function (described in the section “[完成urb时调用的回调函数](#13.3.4)”). This restriction is to prevent race conditions that occur while the urb is being processed by the USB core. For isochronous urbs, a successful value (0) in this variable merely indicates whether the urb has been unlinked. To obtain a detailed status on isochronous urbs, the `iso_frame_desc` variables should be checked.
+    记录当前的`urb`的状态。USB驱动能够安全访问该变量的时间就是在urb完成时调用的回调函数里（[完成urb时调用的回调函数](#13.3.4)）。这种处理避免了和USB核正在处理urb时的数据竞争问题。对于isochronous urb，该值为0仅仅表明urb是否已经被取消链接。要想获得isochronous urb的详细状态，请检查`iso_frame_desc`变量。
 
     合法数值包括：
 
@@ -213,7 +267,7 @@ The procedure described in this chapter for handling urbs is useful, because it 
 
     * -ENOENT
 
-        The urb was stopped by a call to usb_kill_urb.
+        通过调用`usb_kill_urb`来停止urb。
 
     * -ECONNRESET
 
@@ -229,8 +283,6 @@ The procedure described in this chapter for handling urbs is useful, because it 
 
         * A bitstuff error happened during the transfer.
         * No response packet was received in time by the hardware.
-
-
 
     * -EILSEQ
 
@@ -276,21 +328,35 @@ The procedure described in this chapter for handling urbs is useful, because it 
 
         There was a severe error with the USB host controller driver; it has now been disabled, or the device was disconnected from the system, and the urb was submitted after the device was removed. It can also occur if the configuration was changed for the device, while the urb was submitted to the device.
 
-    Generally, the error values -EPROTO, -EILSEQ, and -EOVERFLOW indicate hardware problems with the device, the device firmware, or the cable connectingthe device to the computer.
+    通常，错误值`-EPROTO`，`-EILSEQ`和`-OVERFLOW`表示设备，设备固件或将设备连接到计算机的电缆存在硬件问题。
 
 * int start_frame
+
+    设置或返回要使用的等时传输的初始帧编号。
+
 * int interval
+
+    轮询`urb`的时间间隔。这仅适用于中断或等时`urb`。值的单位根据设备的速度而不同。对于低速和全速设备，单位是帧，相当于毫秒。对于设备，单位是微帧，相当于1/8毫秒。必须在发送给USB核之前由USB驱动设置好。
+
 * int number_of_packets
+
+    指定由该urb处理的等时发送缓存区的数量。只对isochronous urb有效。
+
 * int error_count
+
+    只对isochronous urb有效。
+
 * struct usb_iso_packet_descriptor iso_frame_desc[0]
+
+    只对isochronous urb有效。
 
 <h3 id="13.3.2">13.3.2 创建和销毁urb</h3>
 
-结构体`urb`只能动态创建，因为静态创建会破坏USB核为urb使用的引用计数方法。使用下面的函数创建，原型如下：
+结构体`urb`只能动态创建，因为静态创建会破坏USB核为`urb`使用的引用计数方法。使用下面的函数创建，原型如下：
 
     struct urb *usb_alloc_urb(int iso_packets, int mem_flags);
 
-The first parameter, iso_packets, is the number of isochronous packets this urb should contain. If you do not want to create an isochronous urb, this variable should be set to 0. The second parameter, mem_flags, is the same type of flag that is passed to the kmalloc function call to allocate memory from the kernel (see the section “The Flags Argument” in Chapter 8 for the details on these flags). If the function is successful in allocating enough space for the urb, a pointer to the urb is returned to the caller. If the return value is NULL, some error occurred within the USB core, and the driver needs to clean up properly.
+第一个参数，`iso_packets`，是该`urb`应该包含的等时数据包的数量。如果不想创建一个等时`urb`，这个变量应该被设置为0。第二个参数，`mem_flags`和传递给'kmalloc'函数的`flag`参数具有相同的类型。如果分配空间成功，则返回指向`urb`结构的指针。如果返回值为`NULL`，在USB核里发生错误，驱动程序需要正确地清理处理。
 
 After a urb has been created, it must be properly initialized before it can be used by the USB core. See the next sections for how to initialize different types of urbs.
 
