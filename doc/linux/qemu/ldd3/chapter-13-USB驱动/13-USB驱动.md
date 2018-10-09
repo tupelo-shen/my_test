@@ -11,7 +11,7 @@
         + [13.3.2.3 控制urb](#13.3.2.3)
         + [13.3.2.4 等时urb](#13.3.2.4)
     - [13.3.3 提交urb](#13.3.3)
-    - [13.3.4 完成urb时调用的回调函数](#13.3.4)
+    - [13.3.4 完成urb时调用的服务函数](#13.3.4)
     - [13.3.5 取消urb](#13.3.5)
 * [13.4 编写一个USB驱动](#13.4)
     * [13.4.1 驱动支持什么设备](#13.4.1)
@@ -21,7 +21,7 @@
 * [13.5 无urb的USB传送](#13.5)
     - [13.5.1 usb_bulk_msg接口](#13.5.1)
     - [13.5.2 usb_control_msg接口](#13.5.2)
-    - [13.5.3 使用USB数据函数](#13.5.3)
+    - [13.5.3 其它的USB数据函数](#13.5.3)
 
 ***
 
@@ -241,7 +241,7 @@ urb用于以异步方式向特定USB设备上的特定USB端点发送数据或�
 
 * usb_complete_t complete
 
-    由USB核在`urb`完全发送或当错误发生时调用的回调函数。在这个函数里，USB驱动可以检查urb，释放它，或者再次提交一次发送。（查阅：[完成urb时调用的回调函数](#13.3.4)获取更多详细信息）。
+    由USB核在`urb`完全发送或当错误发生时调用的回调函数。在这个函数里，USB驱动可以检查urb，释放它，或者再次提交一次发送。（查阅：[完成urb时调用的服务函数](#13.3.4)获取更多详细信息）。
 
     `usb_complete_t`的类型定义为：
 
@@ -257,7 +257,7 @@ urb用于以异步方式向特定USB设备上的特定USB端点发送数据或�
 
 * int status
 
-    记录当前的`urb`的状态。USB驱动能够安全访问该变量的时间就是在urb完成时调用的回调函数里（[完成urb时调用的回调函数](#13.3.4)）。这种处理避免了和USB核正在处理urb时的数据竞争问题。对于isochronous urb，该值为0仅仅表明urb是否已经被取消链接。要想获得isochronous urb的详细状态，请检查`iso_frame_desc`变量。
+    记录当前的`urb`的状态。USB驱动能够安全访问该变量的时间就是在urb完成时调用的回调函数里（[完成urb时调用的服务函数](#13.3.4)）。这种处理避免了和USB核正在处理urb时的数据竞争问题。对于isochronous urb，该值为0仅仅表明urb是否已经被取消链接。要想获得isochronous urb的详细状态，请检查`iso_frame_desc`变量。
 
     合法数值包括：
 
@@ -271,11 +271,11 @@ urb用于以异步方式向特定USB设备上的特定USB端点发送数据或�
 
     * -ECONNRESET
 
-        The urb was unlinked by a call to usb_unlink_urb, and the transfer_flags variable of the urb was set to URB_ASYNC_UNLINK.
+        `urb`在调用函数`usb_unlink_urb`后取消了链接。前提是，`transfer_flags`必须被设置为 `URB_ASYNC_UNLINK`。
 
     * -EINPROGRESS
 
-        The urb is still beingprocessed by the USB host controllers. If your driver ever sees this value, it is a bug in your driver.
+        The urb is still being processed by the USB host controllers. If your driver ever sees this value, it is a bug in your driver.
 
     * -EPROTO
 
@@ -356,25 +356,63 @@ urb用于以异步方式向特定USB设备上的特定USB端点发送数据或�
 
     struct urb *usb_alloc_urb(int iso_packets, int mem_flags);
 
-第一个参数，`iso_packets`，是该`urb`应该包含的等时数据包的数量。如果不想创建一个等时`urb`，这个变量应该被设置为0。第二个参数，`mem_flags`和传递给'kmalloc'函数的`flag`参数具有相同的类型。如果分配空间成功，则返回指向`urb`结构的指针。如果返回值为`NULL`，在USB核里发生错误，驱动程序需要正确地清理处理。
+第一个参数，`iso_packets`，是该`urb`应该包含的等时数据包的数量。如果不想创建一个等时`urb`，这个变量应该被设置为0。 第二个参数，`mem_flags`和传递给'kmalloc'函数的`flag`参数具有相同的类型。如果分配空间成功， 则函数返回指向`urb`结构的指针。 如果返回值为`NULL`， 在说明在USB核里发生错误， 驱动程序需要正确地清理处理。
 
-After a urb has been created, it must be properly initialized before it can be used by the USB core. See the next sections for how to initialize different types of urbs.
+在USB核使用`urb`之前，必须进行恰当的初始化。关于初始化看后面的内容。
 
-In order to tell the USB core that the driver is finished with the urb, the driver must call the usb_free_urb function. This function only has one argument:
+为了告知USB核，驱动程序已经完成`urb`，驱动程序必须调用下面的函数：
 
     void usb_free_urb(struct urb *urb);
 
-The argument is a pointer to the struct `urb` you want to release. After this function is called, the urb structure is gone, and the driver cannot access it any more.
+参数就是指向要释放的`urb`的指针。
 
 <h3 id="13.3.2.1">13.3.2.1 中断urb</h3>
 
+辅助函数`usb_fill_int_urb`用来初始化一个要发送给USB设备的中断类型端点的`urb`：
+
+    void usb_fill_int_urb(struct urb *urb,          /* 要初始化的 urb */
+                        struct usb_device *dev,     /* 要发送的目的USB设备 */
+                        unsigned int pipe,          /* 要发送的USB设备的端点 */
+                        void *transfer_buffer,      /* 存储发送和接收数据的地方 */
+                        int buffer_length,          /* 数据长度 */
+                        usb_complete_t complete,    /* urb完成时调用的函数 */
+                        void *context,              /* 指向blob数据的指针，供完成时调用函数检索使用 */
+                        int interval);              /* 该urb被调度的间隔 */
+
 <h3 id="13.3.2.2">13.3.2.2 块urb</h3>
+
+初始化块`urb`时的函数为：
+
+    void usb_fill_bulk_urb(struct urb *urb,
+                        struct usb_device *dev,
+                        unsigned int pipe,
+                        void *transfer_buffer,
+                        int buffer_length,
+                        usb_complete_t complete,
+                        void *context);
+
+与初始化中断`urb`的函数极为相似，只是没有间隔参数-interval。`pipe`参数的初始化函数也不同。
 
 <h3 id="13.3.2.3">13.3.2.3 控制urb</h3>
 
+初始化函数：
+
+    void usb_fill_control_urb(struct urb *urb,
+                            struct usb_device *dev,
+                            unsigned int pipe,
+                            unsigned char *setup_packet,
+                            void *transfer_buffer,
+                            int buffer_length,
+                            usb_complete_t complete,
+                            void *context);
+
+它的参数和`usb_fill_bulk_urb`函数极为相似，只是新添加了一个参数`setup_packet`,它指向发送给端点的setup包数据。`pipe`使用函数`usb_sndctrlpipe`和`usb_rcvictrlpipe`进行初始化。
+
+大部分驱动都不使用这个函数，因为正如[13.5 无urb的USB传送](#13.5)所描述的那样，使用synchronous API更为简单。
+
 <h3 id="13.3.2.4">13.3.2.4 等时urb</h3>
 
-Isochronous urbs unfortunately do not have an initializer function like the interrupt, control, and bulk urbs do. So they must be initialized “by hand” in the driver before they can be submitted to the USB core. The following is an example of how to properly initialize this type of urb. It was taken from the `konicawc.c` kernel driver located in the `drivers/usb/media` directory in the main kernel source tree.
+不像`interrupt`, `control`, 和 `bulk`,等时`urb`没有初始化函数。所以，必须自己手动初始化。下面是一个初始化的例程。取自`drivers/usb/media`目录下`konicawc.c`文件的内容。
 
     urb->dev = dev;
     urb->context = uvd;
@@ -394,136 +432,134 @@ Isochronous urbs unfortunately do not have an initializer function like the inte
 
 <h3 id="13.3.3">13.3.3 提交urb</h3>
 
-Once the urb has been properly created and initialized by the USB driver, it is ready to be submitted to the USB core to be sent out to the USB device. This is done with a call to the function `usb_submit_urb`:
+一旦`urb`被USB驱动程序正确创建并初始化，就可以将其提交给USB核以发送到USB设备。 这是通过调用函数`usb_submit_urb`来完成的：
 
     int usb_submit_urb(struct urb *urb, int mem_flags);
 
-The `urb` parameter is a pointer to the urb that is to be sent to the device. The `mem_flags` parameter is equivalent to the same parameter that is passed to the `kmalloc` call and is used to tell the USB core how to allocate any memory buffers at this moment in time.
+参数的意义与`usb_alloc_urb`函数相同。`mem_flags`参数告知USB核如何分配内核缓冲区。
 
-After a urb has been submitted to the USB core successfully, it should never try to access any fields of the urb structure until the `complete` function is called.
+在`urb`成功提交到USB核之后，它应该永远不会尝试访问`urb`结构的任何字段，直到调用的`complete`函数完成。
 
-Because the function `usb_submit_urb` can be called at any time (including from within an interrupt context), the specification of the `mem_flags` variable must be correct. There are really only three valid values that should be used, depending on when `usb_submit_urb` is being called:
+因为函数`usb_submit_urb`可以随时调用（包括在中断上下文中），所以`mem_flags`变量的规范必须是正确的。 实际上只应使用三个有效值，具体取决于调用`usb_submit_urb`的时间：
 
 * GFP_ATOMIC
 
-    This value should be used whenever the following are true:
+    下列情况下使用该标志：
 
-    * The caller is within a urb completion handler, an interrupt, a bottom half, a tasklet, or a timer callback.
-    * The caller is holdinga spinlock or rwlock. Note that if a semaphore is being held, this value is not necessary.
-    * The `current->state` is not TASK_RUNNING. The state is always TASK_RUNNING unless the driver has changed the current state itself.
+    * 调用者在`urb`完成时调用函数，中断上下文，底半部，tasklet，或定时器回调函数里。
+    * 调用者持有`spinlock` 或 `rwlock`。 注意：如果持有一个`semaphore`，该值不需要。
+    * `current->state`不是`TASK_RUNNING`。该状态一直是`TASK_RUNNING` 除非驱动本身改变了当前的状态。
 
 * GFP_NOIO
 
-    This value should be used if the driver is in the block I/O patch. It should also be used in the error handling path of all storage-type devices.
+    如果驱动程序位于块I/O补丁中，使用该值。所有的存储类型的设备的错误处理路径上也应该使用该值。
 
 * GFP_KERNEL
 
-    This should be used for all other situations that do not fall into one of the previously mentioned categories.
+    除了上面两种情况之外使用。
 
-<h3 id="13.3.4">13.3.4 完成urb时调用的回调函数</h3>
+<h3 id="13.3.4">13.3.4 完成urb时调用的服务函数</h3>
 
-If the call to `usb_submit_urb` was successful, transferring control of the urb to the USB core, the function returns 0; otherwise, a negative error number is returned. If the function succeeds, the completion handler of the urb (as specified by the `complete` function pointer) is called exactly once when the urb is completed. When this function is called, the USB core is finished with the URB, and control of it is now returned to the device driver.
+如果调用`usb_submit_urb`成功，就将`urb`的控制权交给了USB核，并返回0；否则，返回一个负值作为错误码。如果调用函数成功，一旦`urb`完成，就会调用先前指定的服务函数（通过`complete`函数指针）。一旦该函数被调用，`urb`的控制权就返回给设备驱动程序。
 
-urb只有三种方式可以完成，然后调用`complete`函数：
+`urb`只有三种方式可以完成，然后调用`complete`函数：
 
-* The urb is successfully sent to the device, and the device returns the proper acknowledgment. For an OUT urb, the data was successfully sent, and for an IN urb, the requested data was successfully received. If this has happened, the status variable in the urb is set to 0.
+* `urb`被成功地发送给设备，且设备给出了正确的应答。对于`OUT urb`是指数据成功发送，对于`IN urb`是指请求的数据被成功接收。如果都正确，`urb`中的`status`变量被设置为0。
 
-* Some kind of error happened when sendingor receivingdata from the device. This is noted by the error value in the status variable in the urb structure.
+* 从设备中收发数据发生错误时。具体的错误情况在结构体`urb`中的`status`变量的说明中已经指出。
 
-* The urb was “unlinked” from the USB core. This happens either when the driver tells the USB core to cancel a submitted urb with a call to `usb_unlink_urb` or `usb_kill_urb`, or when a device is removed from the system and a urb had been submitted to it.
+* USB核取消`urb`链接。 这发生在驱动告知USB核取消`urb`的提交或者设备已经从系统中移除，再提交`urb`时。
 
-An example of how to test for the different return values within a urb completion call is shown later in this chapter.
+本章稍后将介绍如何在`urb`完成时调用的服务函数中测试不同返回值。
 
 <h3 id="13.3.5">13.3.5 取消urb</h3>
 
-To stop a urb that has been submitted to the USB core, the functions `usb_kill_urb` or `usb_unlink_urb` should be called:
+驱动告知USB核取消`urb`提交的函数为：
 
     int usb_kill_urb(struct urb *urb);
     int usb_unlink_urb(struct urb *urb);
 
 参数urb指向要取消的urb。
 
-When the function is `usb_kill_urb`, the urb lifecycle is stopped. This function is usually used when the device is disconnected from the system, in the disconnect callback.
+调用函数 `usb_kill_urb`后，`urb`的声明周期就会停止。 这个函数通常在设备从系统中断开时使用，比如`disconnect`回调函数里。
 
-For some drivers, the usb_unlink_urb function should be used to tell the USB core to stop an urb. This function does not wait for the urb to be fully stopped before returning to the caller. This is useful for stopping the urb while in an interrupt handler or when a spinlock is held, as waitingfor a urb to fully stop requires the ability for the USB core to put the calling process to sleep. This function requires that the URB_ASYNC_UNLINK flagvalue be set in the urb that is being asked to be stopped in order to work properly.
+对于某些驱动，应该使用`usb_unlink_urb`函数告知USB核停止`urb`。这个函数不会等到`urb`完全停止就会返回调用者。因为等待`urb`完全停止就要求USB核能够把调用者进程休眠，所以，这在中断上下文或持有自旋锁的情况时非常有用。必须设置`urb`结构中的`transfer_flags`为`URB_ASYNC_UNLINK`标志，才能正确工作。
 
 <h2 id="13.4">13.4 编写USB驱动</h2>
 
-The approach to writinga USB device driver is similar to a pci_driver: the driver registers its driver object with the USB subsystem and later uses vendor and device identifiers to tell if its hardware has been installed.
+编写USB设备驱动程序的方法类似于pci驱动：驱动程序使用USB子系统注册其驱动程序对象，稍后使用供应商和设备ID来判断其硬件是否已安装。
 
-<h3 id="13.4.1">13.4.1 驱动支持设备</h3>
+<h3 id="13.4.1">13.4.1 驱动支持什么设备</h3>
 
-结构体`usb_device_id`提供了该驱动支持的不同USB设备类型的列表。这个列表决定了当一个具体的设备插入了系统中时，USB核把设备给予哪种驱动，通过`hotplug`自动载入哪种驱动。
+结构体`usb_device_id`提供了该驱动支持的不同USB设备类型的列表。 这个列表决定了当一个具体的设备插入了系统中时， USB核该给予设备哪种驱动， 然后通过`hotplug`自动载入那种驱动。
 
 结构体`usb_device_id`的成员变量定义如下：
 
 * __u16 match_flags
 
-    Determines which of the followingfields in the structure the device should be matched against. This is a bit field defined by the different USB_DEVICE_ID_MATCH_* values specified in the include/linux/mod_devicetable.h file. This field is usually never set directly but is initialized by the USB_DEVICE type macros described later.
+    确定设备应与之匹配的结构中的以下哪个字段。 这是由`include/linux/mod_devicetable.h`文件中指定的不同`USB_DEVICE_ID_MATCH_*`值定义的位字段。 该字段通常不会直接设置，而是由稍后描述的USB_DEVICE类型宏初始化。
 
 * __u16 idVendor
 
-    The USB vendor ID for the device. This number is assigned by the USB forum to its members and cannot be made up by anyone else.
+    设备的USB供应商ID。 此号由USB协会分配给其成员，不能由其它任何人编写。
 
 * __u16 idProduct
 
-    The USB product ID for the device. All vendors that have a vendor ID assigned to them can manage their product IDs however they choose to.
+    设备的USB产品ID。 所有分配了供应商ID的供应商都可以管理他们选择的产品ID。
 
 * __u16 bcdDevice_lo
 * __u16 bcdDevice_hi
 
-    Define the low and high ends of the range of the vendor-assigned product version number. The bcdDevice_hi value is inclusive; its value is the number of the highest-numbered device. Both of these values are expressed in binary-coded decimal (BCD) form. These variables, combined with the idVendor and idProduct, are used to define a specific version of a device.
+    定义供应商指定的产品版本号范围的起始范围。 范围包含`bcdDevice_hi`的值，它的值是供应商提供产品的最高版本号。 这两个值都是十进制表示。 这两个变量结合`idVendor`和`idProduct`被用来定义特定的版本号。
 
 * __u8 bDeviceClass
 * __u8 bDeviceSubClass
 * __u8 bDeviceProtocol
 
-    Define the class, subclass, and protocol of the device, respectively. These numbers are assigned by the USB forum and are defined in the USB specification. These values specify the behavior for the whole device, includingall interfaces on this device.
+    分别定义设备的类，子类和协议。 这些数字由USB协会分配，并在USB规范中定义。 这些值指定整个设备的行为， 包括此设备上的所有接口。
 
 * __u8 bInterfaceClass
 * __u8 bInterfaceSubClass
 * __u8 bInterfaceProtocol
 
-    Much like the device-specific values above, these define the class, subclass, and protocol of the individual interface, respectively. These numbers are assigned by the USB forum and are defined in the USB specification.
+    与上面特定于设备的值非常相似，它们分别定义了各个接口的类，子类和协议。 这些数字由USB协会分配，并在USB规范中定义。
 
 * kernel_ulong_t driver_info
 
-    This value is not used to match against, but it holds information that the driver can use to differentiate the different devices from each other in the probe callback function to the USB driver.
+    此值不用于匹配，但它包含驱动程序可用于在探针回调函数中将不同设备彼此区分开的信息。
 
-As with PCI devices, there are a number of macros that are used to initialize this structure:
+与PCI设备一样，有许多宏用于初始化此结构：
 
 * USB_DEVICE(vendor, product)
 
-    Creates a struct usb_device_id that can be used to match only the specified vendor and product ID values. This is very commonly used for USB devices that need a specific driver.
+    创建一个`struct usb_device_id`，仅用于匹配指定的供应商和产品ID。 这通常用于需要特定驱动程序的USB设备。
 
 * USB_DEVICE_VER(vendor, product, lo, hi)
 
-    Creates a struct usb_device_id that can be used to match only the specified vendor and product ID values within a version range.
+    创建一个`struct usb_device_id`，用于在一个版本范围内，匹配指定的供应商和产品ID。
 
 * USB_DEVICE_INFO(class, subclass, protocol)
 
-    Creates a struct usb_device_id that can be used to match a specific class of USB devices.
+    创建一个结构usb_device_id，可用于匹配特定类的USB设备。
 
 * USB_INTERFACE_INFO(class, subclass, protocol)
 
-    Creates a struct usb_device_id that can be used to match a specific class of USB interfaces.
+    创建一个结构usb_device_id，可用于匹配特定接口类的USB设备。
 
 对于仅控制一个来自单个厂商的USB设备的驱动程序来说，`struct usb_device_id`表 应该定义如下：
 
     /* 驱动支持的设备表 */
-    static struct usb_device_id skel_table [ ] = {
+    static struct usb_device_id skel_table[ ] = {
         { USB_DEVICE(USB_SKEL_VENDOR_ID, USB_SKEL_PRODUCT_ID) },
         { } /* 结束项 */
     };
     MODULE_DEVICE_TABLE (usb, skel_table);
 
-同PCI驱动一样，`MODULE_DEVICE_TABLE`宏是必须的，因为要允许用户空间的程序能够确定该驱动可以控制的设备。对于USB驱动，第一个参数必须是`usb`字符串。
+同PCI驱动一样，`MODULE_DEVICE_TABLE`宏是必须的， 因为要允许用户空间的程序能够确定该驱动可以控制什么设备。 对于USB驱动， 第一个参数必须是`usb`字符串。
 
 <h3 id="13.4.2">13.4.2 注册一个USB设备</h3>
 
-The main structure that all USB drivers must create is a struct usb_driver. This structure must be filled out by the USB driver and consists of a number of function callbacks and variables that describe the USB driver to the USB core code:
-
-所有的USB驱动都必须注册的主要结构体是 `struct usb_driver`。 包含许多回调函数和变量，由USB驱动程序完成实现。
+所有的USB驱动都必须注册的主要结构体是 `struct usb_driver`。 包含许多回调函数和变量， 由USB驱动程序完成实现。
 
 * struct module *owner
 
@@ -535,7 +571,7 @@ The main structure that all USB drivers must create is a struct usb_driver. This
 
 * const struct usb_device_id *id_table
 
-    设备支持列表。如果没设，USB驱动程序中的`probe`回调函数不会被调用。如果你想你的驱动总是被系统中的每一个USB设备调用，创建一个只设置`driver_info`字段的项:
+    设备支持列表。如果没设，USB驱动程序中的`probe`回调函数不会被调用。 如果你想你的驱动总是被系统中的每一个USB设备调用，创建一个只设置`driver_info`字段的项:
 
         static struct usb_device_id usb_ids[ ] = {
             {.driver_info = 42},
@@ -544,11 +580,11 @@ The main structure that all USB drivers must create is a struct usb_driver. This
 
 * int (*probe) (struct usb_interface *intf, const struct usb_device_id *id)
 
-    'probe'函数。详细描述可以参考[probe and disconnect in Detail](#13.4.2.1)。当USB核认为它有该驱动程序处理的结构体`struct usb_interface`时，就会调用该函数。USB核作出决定而使用的结构体`struct usb_device_id`也会被传递给该函数，在这里，就是`id`。`intf`是传递给驱动程序的接口，类型是`struct usb_interface`，如果USB驱动也声明了这个接口，该函数就会正确初始化设备，并且返回0.如果驱动程序不想声明设备，或发生错误，则返回负值作为错误码。
+    'probe'函数。详细描述可以参考[probe和disconnect的细节](#13.4.2.1)。当USB核认为它有该驱动程序处理的结构体`struct usb_interface`时，就会调用该函数。USB核作出决定而使用的结构体`struct usb_device_id`也会被传递给该函数。`intf`是传递给驱动程序的接口，类型是`struct usb_interface`，如果USB驱动也声明了这个接口，该函数就会正确初始化设备，并且返回0.如果驱动程序不想声明设备，或发生错误，则返回负值作为错误码。
 
 * void (*disconnect) (struct usb_interface *intf)
 
-    设备驱动中的`disconnect`函数。当结构体`struct usb_interface`被从系统中移除或当驱动被从USB核中卸载的时候，USB核调用该函数。详细描述可以参考[probe and disconnect in Detail](#13.4.2.1)。
+    设备驱动中的`disconnect`函数。当结构体`struct usb_interface`被从系统中移除或当驱动被从USB核中卸载的时候， USB核调用该函数。 详细描述可以参考[probe和disconnect的细节](#13.4.2.1)。
 
 所以，只需初始化5个成员就可以创建一个最简单的类型为`struct usb_driver`的值：
 
@@ -574,7 +610,7 @@ The main structure that all USB drivers must create is a struct usb_driver. This
 
     恢复函数。当USB核恢复设备时调用它。
 
-使用USB核注册结构体`struct usb_driver`，调用函数`usb_register_driver`,参数就是类型为`struct usb_driver`的结构体指针。 下面是USB设备典型的初始化代码：
+为了使用USB核注册结构体`struct usb_driver`，调用函数`usb_register_driver`,参数就是类型为`struct usb_driver`的结构体指针。 下面是USB设备典型的初始化代码：
 
     static int __init usb_skel_init(void)
     {
@@ -588,7 +624,7 @@ The main structure that all USB drivers must create is a struct usb_driver. This
         return result;
     }
 
-卸载USB驱动时，解除结构体`struct usb_driver`的注册。方法就是调用`usb_deregister_driver`函数，任何绑定到该驱动的USB接口都会被失连，并且`disconnect`函数会被调用。
+卸载USB驱动时，解除结构体`struct usb_driver`的注册。方法就是调用`usb_deregister_driver`函数，任何绑定到该驱动的USB接口都会被断开，并且`disconnect`函数会被调用。
 
     static void __exit usb_skel_exit(void)
     {
@@ -598,16 +634,15 @@ The main structure that all USB drivers must create is a struct usb_driver. This
 
 <h4 id="13.4.2.1">13.4.2.1 probe和disconnect的细节</h4>
 
-当设备被安装，USB核认为驱动和设备对应时，就会调用`probe`函数；`probe`函数检查传递给它的设备信息，判断驱动程序是否和设备真正匹配。在驱动卸载的时候，调用`disconnect`函数，负责清除工作。
+当设备被安装，USB核认为驱动和设备对应时，就会调用`probe`函数；`probe`函数检查传递给它的设备信息， 判断驱动程序是否和设备真正匹配。 在驱动卸载的时候，调用`disconnect`函数，负责清除工作。
 
 
-`probe`和`disconnect`函数在USB hub内核线程的上下文中调用，所以，休眠是合法的。但是，
- function callbacks are called in the context of the USB hub kernel thread, so it is legal to sleep within them. However, it is recommended that the majority of work be done when the device is opened by a user if possible, in order to keep the USB probing time to a minimum. This is because the USB core handles the addition and removal of USB devices within a single thread, so any slow device driver can cause the USB device detection time to slow down and become noticeable by the user.
+`probe`和`disconnect`函数在USB集线器（hub）内核线程的上下文中调用，所以是允许休眠的。但是，推荐尽可能地在设备打开时由用户完成大部分工作，这是为了保证USB匹配时间尽可能的短。这是因为USB核在一个单线程中处理设备的添加和移除，任何用时较长的驱动程序都能造成USB设备的检测时间变长，在用户看来就非常显著了。
 
-In the probe function callback, the USB driver should initialize any local structures that it might use to manage the USB device. It should also save any information that it needs about the device to the local structure, as it is usually easier to do so at this time. As an example, USB drivers usually want to detect what the endpoint address and buffer sizes are for the device, as they are needed in order to communicate with the device. Here is some example code that detects both IN and OUT endpoints of BULK type and saves some information about them in a local device structure:
+在`probe`回调函数里，USB驱动应该初始化用于管理USB设备的局部结构体变量。还应该保存需要的设备信息到局部变量中。比如，为了和设备进行通信需要直到端点地址和缓冲区大小。下面就是一段示例代码，它检测BULK类型的IN和OUT端点，并将这些信息保存到本地。
 
     /* 设置端点信息 */
-    /* use only the first bulk-in and bulk-out endpoints */
+    /* 只使用第一个bulk-in 和 bulk-out 端点 */
     iface_desc = interface->cur_altsetting;
     for (i = 0; i < iface_desc->desc.bNumEndpoints; ++i)
     {
@@ -617,7 +652,7 @@ In the probe function callback, the USB driver should initialize any local struc
             (endpoint->bEndpointAddress & USB_DIR_IN) &&
             ((endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_BULK))
         {
-            /* we found a bulk in endpoint */
+            /* 发现一个bulk-in端点*/
             buffer_size = endpoint->wMaxPacketSize;
             dev->bulk_in_size = buffer_size;
             dev->bulk_in_endpointAddr = endpoint->bEndpointAddress;
@@ -633,7 +668,7 @@ In the probe function callback, the USB driver should initialize any local struc
             !(endpoint->bEndpointAddress & USB_DIR_IN) &&
             ((endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_BULK))
         {
-            /* we found a bulk out endpoint */
+            /* 发现一个bulk-out端点 */
             dev->bulk_out_endpointAddr = endpoint->bEndpointAddress;
         }
     }
@@ -644,20 +679,20 @@ In the probe function callback, the USB driver should initialize any local struc
         goto error;
     }
 
-This block of code first loops over every endpoint that is present in this interface and assigns a local pointer to the endpoint structure to make it easier to access later:
+首先，这段代码遍历此接口中的每个端点，并赋予一个局部指针，便于后面更好的访问：
 
     for (i = 0; i < iface_desc->desc.bNumEndpoints; ++i) {
         endpoint = &iface_desc->endpoint[i].desc;
 
-Then, after we have an endpoint, and we have not found a bulk IN type endpoint already, we look to see if this endpoint’s direction is IN. That can be tested by seeing whether the bitmask USB_DIR_IN is contained in the bEndpointAddress endpoint variable. If this is true, we determine whether the endpoint type is bulk or not, by first masking off the `bmAttributes` variable with the `USB_ENDPOINT_XFERTYPE_MASK` bitmask, and then checking if it matches the value `USB_ENDPOINT_XFER_BULK`:
+然后，查看方向是不是IN；端点类型是不是BULK类型：
 
     if (!dev->bulk_in_endpointAddr &&
         (endpoint->bEndpointAddress & USB_DIR_IN) &&
         ((endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_BULK))
 
-If all of these tests are true, the driver knows it found the proper type of endpoint and can save the information about the endpoint that it will later need to communicate over it in a local structure:
+如果上面的条件成立，就认为找到了一个合适的端点，然后保存这些信息：
 
-    /* we found a bulk in endpoint */
+    /* 发现一个bulk-in端点 */
     buffer_size = endpoint->wMaxPacketSize;
     dev->bulk_in_size = buffer_size;
     dev->bulk_in_endpointAddr = endpoint->bEndpointAddress;
@@ -668,12 +703,12 @@ If all of these tests are true, the driver knows it found the proper type of end
         goto error;
     }
 
-Because the USB driver needs to retrieve the local data structure that is associated with this struct `usb_interface` later in the lifecycle of the device, the function `usb_set_intfdata` can be called:
+因为，USB驱动程序需要在设备的生命周期中还要取回与这个结构`usb_interface`相关联的局部数据结构。 所以， 可以调用函数`usb_set_intfdata`先将其保存起来：
 
-    /* save our data pointer in this interface device *
+    /* 保存这个接口设备中的数据指针 *
     usb_set_intfdata(interface, dev);
 
-This function accepts a pointer to any data type and saves it in the struct `usb_interface` structure for later access. To retrieve the data, the function `usb_get_intfdata` should be called:
+此函数接受一个指向任何数据类型的指针，并将其保存在`struct usb_interface` 结构中以供以后的访问。 要取回数据，应调用函数 `usb_get_intfdata` ：
 
     struct usb_skel *dev;
     struct usb_interface *interface;
@@ -697,69 +732,69 @@ This function accepts a pointer to any data type and saves it in the struct `usb
         goto exit;
     }
 
-usb_get_intfdata is usually called in the open function of the USB driver and again in the disconnect function. Thanks to these two functions, USB drivers do not need to keep a static array of pointers that store the individual device structures for all current devices in the system. The indirect reference to device information allows an unlimited number of devices to be supported by any USB driver.
+`usb_get_intfdata`通常会在USB驱动中的`open`函数和`disconnect`函数中调用。有了`usb_get_intfdata`和`usb_set_intfdata`这2个函数， USB驱动无需使用静态数组，保存所有当前设备各自的设备信息。 对设备信息的间接引用允许任何USB驱动程序支持无限数量的设备。
 
-If the USB driver is not associated with another type of subsystem that handles the user interaction with the device (such as input, tty, video, etc.), the driver can use the USB major number in order to use the traditional char driver interface with user space. To do this, the USB driver must call the usb_register_dev function in the probe function when it wants to register a device with the USB core. Make sure that the device and driver are in a proper state to handle a user wantingto access the device as soon as this function is called.
+如果USB驱动程序与处理用户与设备交互的其它类型的子系统（例如输入，tty，视频等）没有关联，则驱动程序可以使用USB主设备号以便使用传统的字符驱动程序与用户空间交互。 为此，当USB驱动程序想要使用USB核注册设备时，必须在`probe`函数中调用`usb_register_dev`函数注册设备。 请确保设备和驱动程序处于正确状态，以便在调用此函数后，立即处理想要访问设备的用户。
 
-    /* we can register the device now, as it is ready */
+    /* 现在我们就可以注册这个设备了 */
     retval = usb_register_dev(interface, &skel_class);
     if (retval) {
-        /* something prevented us from registering this driver */
+        /* 注册设备失败 */
         err("Not able to get a minor for this device.");
         usb_set_intfdata(interface, NULL);
         goto error;
     }
 
-The usb_register_dev function requires a pointer to a struct usb_interface and a pointer to a struct usb_class_driver. This struct usb_class_driver is used to define a number of different parameters that the USB driver wants the USB core to know when registering for a minor number. This structure consists of the following variables:
+`usb_register_dev`函数需要一个指向`struct usb_interface`的指针和一个指向`struct usb_class_driver`的指针。 这个`struct usb_class_driver`用于定义USB驱动程序在注册次要设备号时希望USB核知道的许多不同参数。 该结构由以下变量组成：
 
-* char *name
+* char **name*
 
-    The name that sysfs uses to describe the device. A leadingpathname, if present, is used only in devfs and is not covered in this book. If the number of the device needs to be in the name, the characters %d should be in the name string. For example, to create the devfs name usb/foo1 and the sysfs class name foo1, the name string should be set to usb/foo%d.
+    `sysfs`用来描述设备的名称。 如果`name`字符串里存在路径名称，其路径名称只在`devfs`中使用，（`devfs`暂时不介绍）。如果设备号想要出现在`name`字符串中，使用`%d`即可。例如，想要在`devfs`下创建名称`usb/foo1`，在`sysfs`下创建`foo1`，那么，`name`字符串应该被设置为`usb/foo%d`。
 
-* struct file_operations *fops;
+* struct file_operations **fops*;
 
-    Pointer to the struct file_operations that this driver has defined to use to register as the character device. See Chapter 3 for more information about this structure.
+    指向`struct file_operations`的指针,驱动程序定义好用于注册为字符设备所使用的结构体。 有关此结构的更多信息， 请参见第3章。
 
-* mode_t mode;
+* mode_t *mode*;
 
-    The mode for the devfs file to be created for this driver; unused otherwise. A typical settingfor this variable would be the value S_IRUSR combined with the value S_IWUSR, which would provide only read and write access by the owner of the device file.
+    为此驱动程序创建`devfs`文件的模式; 不创建该文件的话不用。 此变量的典型设置是`S_IRUSR`与`S_IWUSR`结合使用，该值仅提供设备文件所有者的读写访问权限。
 
-* int minor_base;
+* int *minor_base*;
 
-    This is the start of the assigned minor range for this driver. All devices associated with this driver are created with unique, increasingminor numbers beginningwith this value. Only 16 devices are allowed to be associated with this driver at any one time unless the CONFIG_USB_DYNAMIC_MINORS configuration option has been enabled for the kernel. If so, this variable is ignored, and all minor numbers for the device are allocated on a first-come, first-served manner. It is recommended that systems that have enabled this option use a program such as udev to manage the device nodes in the system, as a static /dev tree will not work properly.
+    为该驱动指定的次要设备号范围的开始。所有与该驱动相关的设备，都会使用该值的递增，创建一个唯一的设备号。除非`CONFIG_USB_DYNAMIC_MINORS`配置选项被使能，否则一次只允许`16`个设备。如果`CONFIG_USB_DYNAMIC_MINORS`配置选项被使能，这个变量被忽略，所有设备的次要设备号以“先到先得”的方式进行分配。 建议启用此选项的系统， 使用`udev`等程序来管理系统中的设备节点， 因为静态`/dev`树将无法正常工作。
 
-When the USB device is disconnected, all resources associated with the device should be cleaned up, if possible. At this time, if `usb_register_dev` has been called to allocate a minor number for this USB device duringthe probe function, the function `usb_deregister_dev` must be called to give the minor number back to the USB core.
+当USB设备断开时，所有与其相关的资源都应该被释放。与`usb_register_dev`函数配套使用的`usb_deregister_dev`函数会被调用，回收次要设备号给USB核。
 
-In the `disconnect` function, it is also important to retrieve from the interface any data that was previously set with a call to `usb_set_intfdata`. Then set the data pointer in the `struct usb_interface` structure to NULL to prevent any further mistakes in accessing the data improperly:
+在`disconnect`函数中，从接口检索先前通过调用`usb_set_intfdata`设置的数据也很重要。 然后将`struct usb_interface`结构中的数据指针设置为`NULL`，以防止在不正确地访问数据时出现任何进一步的错误：
 
     static void skel_disconnect(struct usb_interface *interface)
     {
         struct usb_skel *dev;
         int minor = interface->minor;
 
-        /* prevent skel_open( ) from racing skel_disconnect( ) */
-        lock_kernel( );
+        /* 防止 skel_open() 和 skel_disconnect() 发生竞争 */
+        lock_kernel();
 
         dev = usb_get_intfdata(interface);
         usb_set_intfdata(interface, NULL);
 
-        /* give back our minor */
+        /* 归还次要设备号-minor */
         usb_deregister_dev(interface, &skel_class);
 
-        unlock_kernel( );
+        unlock_kernel();
 
-        /* decrement our usage count */
+        /* 减少引用计数 */
         kref_put(&dev->kref, skel_delete);
         info("USB Skeleton #%d now disconnected", minor);
     }
 
-Note the call to lock_kernel in the previous code snippet. This takes the big kernel lock, so that the disconnect callback does not encounter a race condition with the open call when tryingto get a pointer to the correct interface data structure. Because the open is called with the bigkernel lock taken, if the disconnect also takes that same lock, only one portion of the driver can access and then set the interface data pointer.
+请注意该代码段中对`lock_kernel`的调用。 这将获得大内核锁，因此当尝试获取指向正确接口数据结构的指针时，`disconnect`回调函数不会与`open`调用发生竞争，此时，`open`调用可能也正在尝试获得正确的接口数据指针。 因为使用大内核锁调用`open`时，如果`disconnect`也采用相同的锁，只有驱动程序的一部分可以访问，设置接口数据指针。
 
-Just before the disconnect function is called for a USB device, all urbs that are currently in transmission for the device are canceled by the USB core, so the driver does not have to explicitly call usb_kill_urb for these urbs. If a driver tries to submit a urb to a USB device after it has been disconnected with a call to usb_submit_urb, the submission will fail with an error value of -EPIPE.
+就在为USB设备调用`disconnect`函数之前， USB核会取消当前正在为设备传输的所有`urb`， 因此驱动程序不必为这些`urb`显式调用`usb_kill_urb`。 如果驱动程序在断开连接后, 尝试调用`usb_submit_urb`向USB设备提交`urb`，则提交将失败，错误值为`-EPIPE`。
 
 <h3 id="13.4.3">13.4.3 提交和控制一个urb</h3>
 
-When the driver has data to send to the USB device (as typically happens in a driver’s write function), a urb must be allocated for transmitting the data to the device:
+当驱动程序有数据要发送到USB设备时（通常发生在驱动程序的`write`函数中），必须分配一个`urb`来将数据传输到设备：
 
     urb = usb_alloc_urb(0, GFP_KERNEL);
     if (!urb) {
@@ -767,7 +802,7 @@ When the driver has data to send to the USB device (as typically happens in a dr
         goto error;
     }
 
-After the urb is allocated successfully, a DMA buffer should also be created to send the data to the device in the most efficient manner, and the data that is passed to the driver should be copied into that buffer:
+成功分配`urb`后，还应创建DMA缓冲区以最有效的方式将数据发送到设备，并将传递给驱动程序的数据复制到该缓冲区中：
 
     buf = usb_buffer_alloc(dev->udev, count, GFP_KERNEL, &urb->transfer_dma);
     if (!buf) {
@@ -779,24 +814,24 @@ After the urb is allocated successfully, a DMA buffer should also be created to 
         goto error;
     }
 
-Once the data is properly copied from the user space into the local buffer, the urb must be initialized correctly before it can be submitted to the USB core:
+将数据从用户空间正确拷贝到局部变量`buf`中后，`urb`必须在提交给USB核之前被正确地初始化：
 
-    /* initialize the urb properly */
+    /* 初始化 urb */
     usb_fill_bulk_urb(urb, dev->udev,
-    usb_sndbulkpipe(dev->udev, dev->bulk_out_endpointAddr),
+                    usb_sndbulkpipe(dev->udev, dev->bulk_out_endpointAddr),
                     buf, count, skel_write_bulk_callback, dev);
     urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 
-Now that the urb is properly allocated, the data is properly copied, and the urb is properly initialized, it can be submitted to the USB core to be transmitted to the device:
+现在，已经完成了准备工作，就可以提交给USB核，由其转发给USB设备了。
 
-    /* send the data out the bulk port */
+    /* 发送数据到 bulk 端口 */
     retval = usb_submit_urb(urb, GFP_KERNEL);
     if (retval) {
         err("%s - failed submitting write urb, error %d", __FUNCTION__, retval);
         goto error;
     }
 
-After the urb is successfully transmitted to the USB device (or something happens in transmission), the urb callback is called by the USB core. In our example, we initialized the urb to point to the function skel_write_bulk_callback, and that is the function that is called:
+在`urb`成功传输到USB设备（或传输中发生的事情）之后，USB核调用`urb`回调函数。 在我们的示例中， 我们使用函数`skel_write_bulk_callback`初始化该回调函数指针：
 
     static void skel_write_bulk_callback(struct urb *urb, struct pt_regs *regs)
     {
@@ -809,12 +844,187 @@ After the urb is successfully transmitted to the USB device (or something happen
             dbg("%s - nonzero write bulk status received: %d", __FUNCTION__, urb->status);
         }
 
-        /* free up our allocated buffer */
+        /* 释放分配的缓存 */
         usb_buffer_free(urb->dev, urb->transfer_buffer_length,
-        urb->transfer_buffer, urb->transfer_dma);
+                        urb->transfer_buffer, urb->transfer_dma);
     }
 
-The first thingthe callback function does is check the status of the urb to determine if this urb completed successfully or not. The error values, -ENOENT, -ECONNRESET, and -ESHUTDOWN are not real transmission errors, just reports about conditions accompanyinga successful transmission. (See the list of possible errors for urbs detailed in the section “struct urb.”) Then the callback frees up the allocated buffer that was assigned to this urb to transmit.
+这个函数做的第一件事情就是检查`urb`的状态，判断传输是否成功。错误值，`-ENOENT`，`-ECONNRESET`，和`-ESHUTDOWN`不是真正意义的传输错误，只是报告了传输成功过程中伴随着的一些条件。具体详细的意义可以参考[结构体struct urb](#13.3.1)。
 
-It’s common for another urb to be submitted to the device while the urb callback function is running. This is useful when streaming data to a device. Remember that the urb callback is runningin interrupt context, so it should do any memory allocation, hold any semaphores, or do anythingelse that could cause the process to sleep. When submittinga urb from within a callback, use the GFP_ATOMIC flag to tell the USB core to not sleep if it needs to allocate new memory chunks duringthe submission process.
+然后就释放了分配给`urb`的缓冲区。
 
+当回调函数运行时，提交另一个`urb`给设备是很常见的事情。尤其是对流设备很有用。切记，`urb`回调函数运行在中断上下文里时， 不应该申请内存分配、使用互斥量、或做任何导致进程休眠的事情。当在一个回调函数里提交`urb`时，如果需要申请分配新的内存块， 要使用标志`GFP_ATOMIC`告诉USB核不要休眠。
+
+<h2 id="13.5">13.5 无urb的USB传送</h2>
+
+有时USB驱动程序不想经历创建结构`urb`，初始化它，然后等待`urb`完成时调用服务函数的执行等所有麻烦， 只是为了发送或接收一些简单的USB数据。 有2个函数可以提供这样简单的接口。
+
+<h3 id="13.5.1">13.5.1 usb_bulk_msg接口</h3>
+
+`usb_bulk_msg`接口创建一个USB bulk型`urb`且发送给指定设备，等待，直到完成。定义如下：
+
+    int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
+                    void *data, int len, int *actual_length,
+                    int timeout);
+
+参数说明：
+
+* struct usb_device **usb_dev*
+
+    指向要发送批量消息的目标USB设备的指针。
+
+* unsigned int *pipe*
+
+    目标USB设备的具体端点。使用函数`usb_sndbulkpipe` 或 `usb_rcvbulkpipe`创建。
+
+* void **data*
+
+    收发数据存储的缓冲区指针。
+
+* int *len*
+
+    `data`指向缓冲区的大小。
+
+* int **actual_length*
+
+    指向收发数据的真实字节数的指针。
+
+* int *timeout*
+
+    等待时间，单位是jiffies。如果设为0，则永远等待，直到消息发送完成。
+
+如果函数调用成功，则返回0；否则，返回负数。这里的错误码与[结构体struct urb](#13.3.1)中描述的错误码一致。如果成功，`actual_length`包含实际收发的消息的自己数。
+
+下面是这个函数调用的示例：
+
+    /* 执行阻塞批量读取以从设备获取数据 */
+    retval = usb_bulk_msg(dev->udev,
+                        usb_rcvbulkpipe(dev->udev, dev->bulk_in_endpointAddr),
+                        dev->bulk_in_buffer,
+                        min(dev->bulk_in_size, count),
+                        &count, HZ*10);
+
+    /* 如果读取成功，复制到用户空间 */
+    if (!retval) {
+        if (copy_to_user(buffer, dev->bulk_in_buffer, count))
+            retval = -EFAULT;
+        else
+            retval = count;
+    }
+
+这个示例展示了从IN端点批量读取数据的处理。如果读取成功，数据就会被拷贝到用户空间。这通常是一个USB驱动在`read`函数的实现。
+
+不能在中断上下文或自旋锁中调用这个函数`usb_bulk_msg`。另外， 这个函数也不能被其它函数要取消， 所以使用时要小心； 确保在允许驱动被卸载前， `disconnect`函数能够等待足够长时间直到`usb_bulk_msg`的调用完成。
+
+<h3 id="13.5.2">13.5.2 usb_control_msg接口</h3>
+
+函数 `usb_control_msg`工作方式与`usb_bulk_msg`一样，除了消息类型是CONTROL类型以外。
+
+    int usb_control_msg(struct usb_device *dev, unsigned int pipe,
+                        __u8 request, __u8 requesttype,
+                        __u16 value, __u16 index,
+                        void *data, __u16 size, int timeout);
+
+参数说明：
+
+* struct usb_device **dev*
+
+    指向目标USB设备。
+
+* unsigned int *pipe*
+
+    目标USB设备的具体端点。使用函数`usb_sndbulkpipe` 或 `usb_rcvbulkpipe`创建。
+
+* __u8 *request*
+
+    控制消息的请求值。
+
+* __u8 *requesttype*
+
+    请求类型。
+
+* __u16 *value*
+
+    USB消息值。
+
+* __u16 *index*
+
+    USB消息索引值。
+
+* void **data*
+
+    指向收发的数据。
+
+* __u16 *size*
+
+    `data`指针指向的缓冲区的大小。
+
+* int *timeout*
+
+    等待时间，单位是jiffies。如果设为0，则永远等待，直到消息发送完成。
+
+如果函数成功，则返回收发的字节数。如果失败，返回负值作为错误码。
+
+参数`request`，`requesttype`，`value`，和`index`直接映射到USB规范中控制消息的定义上。
+
+函数 `usb_control_msg`与`usb_bulk_msg`一样，也不能从中断上下文和自旋锁中调用。也不能被其它函数取消， 所以在使用时要格外小心。确保在允许驱动被卸载前， `disconnect`函数能够等待足够长时间直到`usb_control_msg`的调用完成。
+
+
+<h3 id="13.5.3">13.5.3 其它的USB数据函数</h3>
+
+USB核中的许多辅助功能可用于从USB设备检索标准信息。 无法从中断上下文或自旋锁中调用这些函数。
+
+函数`usb_get_descriptor`从指定的设备上检索指定的USB描述符。函数定义如下：
+
+    int usb_get_descriptor(struct usb_device *dev, unsigned char type,
+                            unsigned char index, void *buf, int size);
+
+USB驱动程序可以使用此函数从`struct usb_device`结构中检索现有`struct usb_device`和`struct usb_interface`结构中尚未存在的任何设备描述符，例如音频描述符或其他类特定信息。 该函数的参数是：
+
+* struct usb_device **usb_dev*
+
+    指向目标USB设备。
+
+* unsigned char *type*
+
+    描述符类型。在USB规约中定义。
+
+    * USB_DT_DEVICE
+    * USB_DT_CONFIG
+    * USB_DT_STRING
+    * USB_DT_INTERFACE
+    * USB_DT_ENDPOINT
+    * USB_DT_DEVICE_QUALIFIER
+    * USB_DT_OTHER_SPEED_CONFIG
+    * USB_DT_INTERFACE_POWER
+    * USB_DT_OTG
+    * USB_DT_DEBUG
+    * USB_DT_INTERFACE_ASSOCIATION
+    * USB_DT_CS_DEVICE
+    * USB_DT_CS_CONFIG
+    * USB_DT_CS_STRING
+    * USB_DT_CS_INTERFACE
+    * USB_DT_CS_ENDPOINT
+
+* unsigned char *index*
+
+    从设备中检索的描述符的编号。
+
+* void **buf*
+
+    指向要将描述符存储的地方。
+
+* int *size*
+
+    `buf`变量执行的缓冲区的大小。
+
+如果这个函数成功，返回从设备上读取的字节数。否则，返回负数。内部调用`usb_control_msg`函数。
+
+`usb_get_descriptor`函数的一个常见用途是从USB设备检索字符串。 因为这很常见，所以特地封装了`usb_get_string`的辅助函数：
+
+    int usb_get_string(struct usb_device *dev, unsigned short langid,
+                        unsigned char index, void *buf, int size);
+
+作用跟`usb_get_descriptor`一样。
+
+如果这个函数成功，则返回`UTF-16LE`格式编码的字符串，存储在`buf`指向的缓冲区内。但是，这种编码格式并不常用，所以，推荐使用函数`usb_string`，它返回的字符串，编码格式是`ISO 8859-1`,8位编码，这更符合英语或者其他西语系的编码格式。
