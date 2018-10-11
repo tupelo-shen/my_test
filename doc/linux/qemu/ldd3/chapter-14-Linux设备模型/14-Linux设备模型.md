@@ -1,13 +1,13 @@
-* [14.1 Kobjects，Ksets和Subsystems](#14.1)
+* [14.1 kobject，kset和子系统](#14.1)
     - [14.1.1 Kobject基本知识](#14.1.1)
         + [14.1.1.1 嵌入的内核对象](#14.1.1.1)
         + [14.1.1.2 内核对象的初始化](#14.1.1.2)
         + [14.1.1.3 引用计数操作](#14.1.1.3)
-        + [14.1.1.4 Release functions and kobject types](#14.1.1.4)
-    - [14.1.2 Kobject Hierarchies, Ksets, and Subsystems](#14.1.2)
-        + [14.1.2.1 Ksets](#14.1.2.1)
-        + [14.1.2.2 Operations on ksets](#14.1.2.2)
-        + [14.1.2.3 Subsystems](#14.1.2.3)
+        + [14.1.1.4 释放函数和kobject类型](#14.1.1.4)
+    - [14.1.2 kobject层次结构，kset和子系统](#14.1.2)
+        + [14.1.2.1 kset](#14.1.2.1)
+        + [14.1.2.2 操作kset](#14.1.2.2)
+        + [14.1.2.3 子系统](#14.1.2.3)
 * [14.2 底层sysfs操作](#14.2)
     - [14.2.1 缺省属性](#14.2.1)
     - [14.2.2 非缺省属性](#14.2.2)
@@ -90,7 +90,7 @@ Linux设备模型是一个复杂的数据结构。例如，考虑下面这个USB
 
 对于很多读者，可以把本章作为高级内容，无需在第一次的时候阅读。鼓励那些对Linux设备模型工作方式感兴趣的人随我们一起探讨底层的细节。
 
-<h2 id="14.1">14.1 Kobjects，Ksets和Subsystems</h2>
+<h2 id="14.1">14.1 kobject，kset和子系统</h2>
 
 结构体`kobject`是设备模型保持在一起的基本结构。最初构想只是作为一个引用计数器，但是，随着时间的推移， 它的职责和字段都在不断增加。它能处理的任务主要是：
 
@@ -116,6 +116,23 @@ Linux设备模型是一个复杂的数据结构。例如，考虑下面这个USB
 <h3 id="14.1.1">14.1.1 Kobject的基本知识</h3>
 
 内核对象用结构体`kobject`来表示，定义在`<linux/kobject.h>`文件中。这个文件里还包含一些其它关于内核对象的结构体， 以及操作这些对象结构体的函数。
+
+下面是Linux 3.3.7内核中`kobject`结构体的定义：
+
+    struct kobject {
+        const char          *name;      /* 该对象在sysfs中的名称指针 */
+        struct list_head    entry;      /* kobject 之间的双向链表，与所属的kset形成环形链表*/
+        struct kobject      *parent;    /* 在sysfs分层结构中定位对象，指向上一级kset中的struct kobject kobj */
+        struct kset         *kset;      /* 指向所属的kset */
+        struct kobj_type    *ktype;     /* 负责对该kobject类型进行跟踪的struct kobj_type的指针 */
+        struct sysfs_dirent *sd;        /* sysfs文件系统中与该对象对应的文件节点路径指针*/
+        struct kref         kref;       /* kobject 的引用计数*/
+        unsigned int state_initialized:1;
+        unsigned int state_in_sysfs:1;
+        unsigned int state_add_uevent_sent:1;
+        unsigned int state_remove_uevent_sent:1;
+        unsigned int uevent_suppress:1;
+    };
 
 <h4 id="14.1.1.1">14.1.1.1 嵌入的kobject</h4>
 
@@ -169,9 +186,7 @@ Linux设备模型是一个复杂的数据结构。例如，考虑下面这个USB
 
 当引用被释放，调用`kobject_put`会使引用计数器减`1`，如果到`0`，就会释放掉这个对象。请记住，调用`kobject_init()`将引用计数器初始化为`1`，所以这个计数器不使用的时候，应该调用`kobject_put`，把计数器初始化为`0`。
 
-Note that,in many cases,the reference count in the kobject itself may not be sufficient to prevent race conditions. The existence of a kobject (and its containing structure) may well,for example,require the continued existence of the module that created that kobject. It would not do to unload that module while the kobject is still being passed around. That is why the cdev structure we saw above contains a struct module pointer. Reference counting for struct cdev is implemented as follows:
-
-请注意，在许多情况下，`kobject`本身的引用计数可能不足以防止竞争条件。 例如，`kobject`（及其包含它的结构）的存在可能需要继续存在创建该kobject的模块。 当kobject仍然被传递时，它不会卸载该模块。 这就是我们上面看到的cdev结构包含结构模块指针的原因。 struct cdev的引用计数实现如下：
+请注意，在许多情况下，`kobject`本身的引用计数可能不足以防止竞争条件。 例如，`kobject`（及其包含它的结构）的存在， 就要求创建该`kobject`的驱动程序持续存在。 但是，当`kobject`还在被传递时，就不应该卸载该驱动模块。 这就是为什么我们会在上面的`cdev`结构中看到包含一个`struct module`类型指针的原因。 `struct cdev`的引用计数实现如下：
 
     struct kobject *cdev_get(struct cdev *p)
     {
@@ -186,38 +201,22 @@ Note that,in many cases,the reference count in the kobject itself may not be suf
         return kobj;
     }
 
-Creating a reference to a cdev structure requires creating a reference also to the module that owns it. So cdev_get uses try_module_get to attempt to increment that module’s usage count. If that operation succeeds, kobject_get is used to increment the kobject’s reference count as well. That operation could fail,of course,so the code checks the return value from kobject_get and releases its reference to the module if things don’t work out.
+创建一个对`cdev`的引用时，还需要创建一个对包含它的驱动模块的引用。所以，`cdev_get`使用`try_module_get`尝试让驱动模块使用计数加`1`。如果操作成功，才会调用`kobject_get`，使`kobject`引用计数加`1`。当然了，`kobject_get` 可能失败, 因此, 检查其返回值，如果调用失败，则释放它的对驱动模块的引用计数。
 
-<h4 id="14.1.1.4">14.1.1.4 Release functions and kobject types</h4>
+<h4 id="14.1.1.4">14.1.1.4 释放函数和kobject类型</h4>
 
-One important thing still missing from the discussion is what happens to a kobject
-when its reference count reaches 0. The code that created the kobject generally does
-not know when that will happen; if it did,there would be little point in using a reference count in the first place. Even predictable object life cycles become more complicated when sysfs is brought in; user-space programs can keep a reference to a kobject
-(by keeping one of its associated sysfs files open) for an arbitrary period of time.
-
-The end result is that a structure protected by a kobject cannot be freed at any single,predictable point in the driver’s lifecycle,but in code that must be prepared to
-run at whatever moment the kobject’s reference count goes to 0. The reference count
-is not under the direct control of the code that created the kobject. So that code must
-be notified asynchronously whenever the last reference to one of its kobjects goes
-away.
-
-This notification is done through a kobject’s release method. Usually,this method has a form such as:
+还有一个重要的事情就是，引用计数减少到`0`时，会发生什么？通常，创建`kobject`对象的代码不知道这件事什么时候发生； 因为其无法得知对象的生命周期，`sysfs`的引入使得对象的生命周期变得极其复杂， 而且，用户空间的程序可以以任意时间引用这个`kobject`对象（比如，打开与其相关的`sysfs`文件）。所以，当引用计数到`0`时，必须异步通知。通过`kobject`对象的`release`函数实现。通常示例如下：
 
     void my_object_release(struct kobject *kobj)
     {
         struct my_object *mine = container_of(kobj, struct my_object, kobj);
-        /* Perform any additional cleanup on this object, then... */
+        /* 对这个对象进行额外的清理工作，然后再释放掉... */
         kfree(mine);
     }
 
-One important point cannot be overstated: every kobject must have a release
-method,and the kobject must persist (in a consistent state) until that method is
-called. If these constraints are not met,the code is flawed. It risks freeing the object
-when it is still in use,or it fails to release the object after the last reference is
-returned.
+一个重要的观点不容小觑：每个`kobject`对象必须有一个`release`方法，在该方法调用之前，该对象必须保持不变（稳定状态）。 如果不能满足这个条件，代码就会存在风险。比如，该对象还在被引用就有可能被释放，或者，当引用计数为`0`时，没有释放掉该对象。
 
-Interestingly,the release method is not stored in the kobject itself; instead,it is associated with the type of the structure that contains the kobject. This type is tracked
-with a structure of type struct kobj_type,often simply called a “ktype.” This structure looks like the following:
+有趣的是，`release`方法并不存在于`kobject`结构本身内； 而是与包含`kobject`的结构类型相关，这种类型结构就是`kobj_type`。
 
     struct kobj_type {
         void (*release)(struct kobject *);
@@ -225,116 +224,95 @@ with a structure of type struct kobj_type,often simply called a “ktype.” Thi
         struct attribute **default_attrs;
     };
 
-The release field in struct kobj_type is,of course,a pointer to the release method
-for this type of kobject. We will come back to the other two fields (sysfs_ops and
-default_attrs) later in this chapter.
+`struct kobj_type`的`release`函数指针成员指向`kobject`类型的`release`方法。后面介绍其它2个成员。
 
-Every kobject needs to have an associated kobj_type structure. Confusingly,the
-pointer to this structure can be found in two different places. The kobject structure
-itself contains a field (called ktype) that can contain this pointer. If,however,this
-kobject is a member of a kset,the kobj_type pointer is provided by that kset instead.
-(We will look at ksets in the next section.) Meanwhile, the macro:
+每个`kobject`都需要有一个与之相关联的`kobj_type`结构。令人困惑的是，可以在两个不同的地方找到该结构指针。`kobject`本身包含一个指针成员，称为`ktype`。但是，如果该`kobject`是`kset`的成员，则由`kset`提供的指针起作用。同时， 使用下面的方法可以得到一个给定`kobject`对象的`kobj_type`结构指针。
 
     struct kobj_type *get_ktype(struct kobject *kobj);
 
-finds the kobj_type pointer for a given kobject.
+<h3 id="14.1.2">14.1.2 kobject层次结构，kset和子系统</h3>
 
-<h3 id="14.1.2">14.1.2 Kobject Hierarchies, Ksets, and Subsystems</h3>
+内核通常使用`kobject`结构将各个对象连接起来组成一个分层的结构体系，与模型化的子系统相匹配。这种连接有2个独立的机制：`parent`指针和`kset`。
 
-The kobject structure is often used to link together objects into a hierarchical structure that matches the structure of the subsystem being modeled. There are two separate mechanisms for this linking: the parent pointer and ksets.
+`parent`是指向另一个`kobject`结构（分层结构中上一层的节点）的指针。例如，一个表示USB设备的`kobject`，它的`parent`指针指向USB插入的那个`hub`集线器的`kobject`对象。
 
-The parent field in struct kobject is a pointer to another kobject—the one representing the next level up in the hierarchy. If,for example,a kobject represents a USB
-device,its parent pointer may indicate the object representing the hub into which the
-device is plugged.
+`parent`的主要作用就是在`sysfs`结构体系中定位对象。
 
-The main use for the parent pointer is to position the object in the sysfs hierarchy.
-We’ll see how this works in the section “Low-Level Sysfs Operations.”
+<h4 id="14.1.2.1">14.1.2.1 kset</h4>
 
-<h4 id="14.1.2.1">14.1.2.1 Ksets</h4>
+在许多方面，`kset`都像是`kobj_type`结构的扩展；`kset`是内嵌有相同的类型结构体成员的对象的集合。但是，`struct kobj_type`关注的是对象的类型，而`struct kset`关心的是对象的集合和聚合。把这两个概念分开，就是为了相同类型的对象能够出现在不同的集合中。
 
-In many ways,a kset looks like an extension of the kobj_type structure; a kset is a
-collection of kobjects embedded within structures of the same type. However,while
-struct kobj_type concerns itself with the type of an object, struct kset is concerned
-with aggregation and collection. The two concepts have been separated so that
-objects of identical type can appear in distinct sets.
+`kset`数据结构为（Linux 3.3.7内核）：
 
-Therefore,the main function of a kset is containment; it can be thought of as the
-top-level container class for kobjects. In fact,each kset contains its own kobject
-internally,and it can,in many ways,be treated the same way as a kobject. It is worth
-noting that ksets are always represented in sysfs; once a kset has been set up and
-added to the system,there will be a sysfs directory for it. Kobjects do not necessarily
-show up in sysfs, but every kobject that is a member of a kset is represented there.
+    struct kset {
+        struct list_head        list;           /*用于连接该kset中所有kobject以形成环形链表的链表头*/
+        spinlock_t              list_lock;      /*用于避免竞态的自旋锁*/
+        struct kobject          kobj;           /*嵌入的kobject*/
+        struct kset_uevent_ops  *uevent_ops;
+    };
 
-Adding a kobject to a kset is usually done when the object is created; it is a two-step
-process. The kobject’s kset field must be pointed at the kset of interest; then the
-kobject should be passed to:
+因此，`kset`的主要功能就是`包含`；可以被认为是顶层容器类。事实上，每一个`kset`内部都包含自己的`kobject`，在许多情况下， 都可以像处理`kobject`那样处理它。值得注意的是，`kset`一旦被建立，就一定会出现在`sysfs`中，目录的形式表示。而`kobject`不是必须出现在`sysfs`中，但是`kset`中的每一个`kobject`成员都会在`sysfs`中表示。
+
+将`kobject`对象添加到`kset`中，通常在对象被建立时完成；这分为2步。首先，`kobject`对象的`kset`指针指向与其有关的`kset`。然后，将`kobject`对象传递给下面的函数即可：
 
     int kobject_add(struct kobject *kobj);
 
-As always,programmers should be aware that this function can fail (in which case it
-returns a negative error code) and respond accordingly. There is a convenience function provided by the kernel:
+注意，函数可能会失败-返回负值，必须检查并作相关处理。内核提供了一个方便的组合函数，是`kobject_init`和`kobject_add`的组合。
 
     extern int kobject_register(struct kobject *kobj);
 
-This function is simply a combination of kobject_init and kobject_add.
-
-When a kobject is passed to kobject_add,its reference count is incremented. Containment within the kset is,after all,a reference to the object. At some point,the
-kobject will probably have to be removed from the kset to clear that reference; that is
-done with:
+`kobject`对象传递给`kobject_add`时，其引用计数器会增加。毕竟，`kset`中的包含就是一种对对象的引用。 当把一个`kobject`从`kset`中删除以清除引用时使用：
 
     void kobject_del(struct kobject *kobj);
 
-There is also a kobject_unregister function,which is a combination of kobject_del and
-kobject_put.
+也有一个`kobject_del`和`kobject_put`的组合函数`kobject_unregister`。
 
-A kset keeps its children in a standard kernel linked list. In almost all cases,the contained kobjects also have pointers to the kset (or,strictly,its embedded kobject) in
-their parent’s fields. So,typically,a kset and its kobjects look something like what
-you see in Figure 14-2. Bear in mind that:
+`kset`使用标准内核链表结构管理它包含的子对象。几乎在所有的情况下，被包含的`kobject`对象使用它们的`parent`指针指向`kset`（严格意义上说， 是'kset'内嵌的`kobject'）。如图14-2所示。请记住：
 
-* All of the contained kobjects in the diagram are actually embedded within some other type, possibly even other ksets.
-* It is not required that a kobject’s parent be the containing kset (although any other organization would be strange and rare).
+* 下面框图中包含的所有`kobject`，在实际情况中，都会被嵌入到其它类型，甚至是其它`kset`中。
+* 一个`kobject`的父节点不一定是包含它的`kset`(尽管这很少见)。
 
 ![Figure 14-2](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_device_drivers_3_images/14-2.PNG)
 
-<h4 id="14.1.2.2">14.1.2.2 Operations on ksets</h4>
+<h4 id="14.1.2.2">14.1.2.2 操作kset</h4>
 
-For initialization and setup,ksets have an interface very similar to that of kobjects. The following functions exist:
+`kset`相关的操作函数如下，与操作`kobject`的函数类似：
 
     void kset_init(struct kset *kset);
     int kset_add(struct kset *kset);
     int kset_register(struct kset *kset);
     void kset_unregister(struct kset *kset);
 
-For the most part,these functions just call the analogous kobject_ function on the kset’s embedded kobject.
-
-To manage the reference counts of ksets, the situation is about the same:
+管理`kset`的引用计数器的方法也相似：
 
     struct kset *kset_get(struct kset *kset);
     void kset_put(struct kset *kset);
 
-A kset also has a name,which is stored in the embedded kobject. So,if you have a kset called my_set, you would set its name with:
+一个`kset`也有名称，存储在其内嵌的`kobject`里。所以，如果有一个叫`my_set`的`kset`，应该通过下面的函数设置其名称：
 
     kobject_set_name(&my_set->kobj, "The name");
 
-Ksets also have a pointer (in the ktype field) to the kobj_type structure describing the
-kobjects it contains. This type is used in preference to the ktype field in a kobject
-itself. As a result,in typical usage,the ktype field in struct kobject is left NULL,
-because the same field within the kset is the one actually used.
+ksets 还有一个指针指向 kobj_type 结构来描述它包含的 kobject，这个类型优先于 kobject 自身中的 ktype 。因此在典型的应用中, 在 struct kobject 中的 ktype 成员被设为 NULL, 而 kset 中的ktype是实际被使用的。
+在新的内核里， kset 不再包含一个子系统指针struct subsystem * subsys， 而且subsystem已经被kset取代。
 
-Finally,a kset contains a subsystem pointer (called subsys). So it’s time to talk about subsystems.
+`kset`还有一个指向`kobj_type`结构的指针成员，用来描述它本身内嵌的`kobject`结构。结果就是，在通常的使用中，`struct kobject`中的`ktype`成员被设置为`NULL`，因为在`kset`中，已经有一个相同的表示了。（**注意，在较新的内核中，`kset`中的`kobj_type`结构的指针成员已经被取消，因为没有什么实际意义**）
 
-<h4 id="14.1.2.3">14.1.2.3 Subsystems</h4>
+最后，`kset`还包含一个子系统指针（`subsys`）。所以下面讨论一下子系统。（**注意，在较新的内核版本里，这个成员也已经被取消`kset`取代**)
+
+<h4 id="14.1.2.3">14.1.2.3 子系统</h4>
 
 A subsystem is a representation for a high-level portion of the kernel as a whole. Subsystems usually (but not always) show up at the top of the sysfs hierarchy. Some example subsystems in the kernel include block_subsys (/sys/block,for block devices), devices_subsys (/sys/devices,the core device hierarchy),and a specific subsystem for every bus type known to the kernel. A driver author almost never needs to create a new subsystem; if you feel tempted to do so,think again. What you probably want, in the end, is to add a new class, as discussed in the section “Classes.”
 
-A subsystem is represented by a simple structure:
+子系统是整个内核的高级部分的表示。 子系统通常（但不总是）显示在`sysfs`层次结构的顶部。内核中的一些示例子系统包括`block_subsys`（`/sys/block`，用于块设备），`devices_subsys`（`/sys/devices`，核心设备层次结构）， 以及针对内核已知的每种总线类型的特定子系统。 驱动程序作者几乎从不需要创建新的子系统。 最后， 您可能想要添加一个新类， 如“类”一节中所述。
+
+子系统的结构定义如下：
 
     struct subsystem {
         struct kset kset;
         struct rw_semaphore rwsem;
     };
 
-A subsystem, thus, is really just a wrapper around a kset, with a semaphore thrown in.
+一个子系统就是`kset`和一个互斥量的封装。
 
 Every kset must belong to a subsystem. The subsystem membership helps establish the kset’s position in the hierarchy,but,more importantly,the subsystem’s rwsem semaphore is used to serialize access to a kset’s internal-linked list. This membership is represented by the subsys pointer in struct kset. Thus,one can find each kset’s containing subsystem from the kset’s structure,but one cannot find the multiple ksets contained in a subsystem directly from the subsystem structure.
 
@@ -342,10 +320,7 @@ Subsystems are often declared with a special macro:
 
     decl_subsys(name, struct kobj_type *type, struct kset_hotplug_ops *hotplug_ops);
 
-This macro creates a struct subsystem with a name formed by taking the name given
-to the macro and appending _subsys to it. The macro also initializes the internal kset
-with the given type and hotplug_ops. (We discuss hotplug operations later in this
-chapter.)
+This macro creates a struct subsystem with a name formed by taking the name given to the macro and appending _subsys to it. The macro also initializes the internal kset with the given type and hotplug_ops. (We discuss hotplug operations later in this chapter.)
 
 Subsystems have the usual list of setup and teardown functions:
 
