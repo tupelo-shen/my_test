@@ -91,81 +91,27 @@ bool isOverMaxDigit(char* str, int max_size)
 
     return false;
 }
+// class BaseClass
+// {
 
+// }
+// class DerivedClass : pulbic BaseClass
+// {
+
+// }
 
 int main(int argc, char const *argv[])
 {
-    char str1[256] = {'-', '1', '0', '0', '0'};
 
-    if (isOverMaxDigit(str1, 3))
-    {
-        printf("str1 true\n");
-    }
-    else
-        printf("str1 false\n");
+double a = 15.5;
+short b = 7;
+short c = a/b;
+short d = (int)a%b;
 
-    char str2[256] = {'-', '1', '0', '0'};
-
-    if (isOverMaxDigit(str2, 3))
-    {
-        printf("str2 true\n");
-    }
-    else
-        printf("str2 false\n");
-
-    char str3[256] = {'-', '1', '0', '.', '0'};
-
-    if (isOverMaxDigit(str3, 3))
-    {
-        printf("str3 true\n");
-    }
-    else
-        printf("str3 false\n");
-
-    char str4[256] = {'-', '1', '0', '.', '0', '0', '1'};
-
-    if (isOverMaxDigit(str4, 3))
-    {
-        printf("str4 true\n");
-    }
-    else
-        printf("str4 false\n");
-
-    char str5[256] = {'-', '1', '0', '.', '0', '0', '1', '0', '0'};
-
-    if (isOverMaxDigit(str5, 3))
-    {
-        printf("str5 true\n");
-    }
-    else
-        printf("str5 false\n"); 
-
-    char str6[256] = {'0', '1', '0', '0', '0'};
-
-    if (isOverMaxDigit(str6, 3))
-    {
-        printf("str6 true\n");
-    }
-    else
-        printf("str6 false\n");
-
-    char str7[256] = {'1', '0', '0', '0'};
-
-    if (isOverMaxDigit(str7, 3))
-    {
-        printf("str7 true\n");
-    }
-    else
-        printf("str7 false\n");
-
-    char str8[256] = {'1', '0', '0'};
-
-    if (isOverMaxDigit(str8, 3))
-    {
-        printf("str8 true\n");
-    }
-    else
-        printf("str8 false\n");
+char str[][10] = {"China","Beijing"};
+char *p = (char *)str;
+printf("%s\n", p+10);
+printf("c = %d; d = %d\n", c, d);
 
     return 0;
 }
