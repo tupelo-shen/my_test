@@ -4,7 +4,20 @@ struct Empty {};
 struct Base { int a; };
 struct Derived : Base { int b; };
 struct Bit { unsigned bit: 1; };
- 
+
+struct A
+{
+    char a;
+    short b;
+    char c;
+}; 
+
+struct B
+{
+    struct A  a;
+    int b;
+};
+
 int main()
 {
     Empty e;
@@ -22,6 +35,8 @@ int main()
               << "length of array of 10 int: "        << ((sizeof a) / (sizeof *a)) << '\n' // out->10
               << "length of array of 10 int (2): "    << ((sizeof a) / (sizeof a[0])) << '\n' // out->10
               << "size of the Derived: "              << sizeof d          << '\n'  // out->8
-              << "size of the Derived through Base: " << sizeof b          << '\n'; // out->4
+              << "size of the Derived through Base: " << sizeof b          << '\n'  // out->4
+              << "size of struct A: "                 << sizeof(struct A)          << '\n'  // out->8
+              << "size of struct B: "                 << sizeof (struct B)          << '\n'; // out->12
  
 }

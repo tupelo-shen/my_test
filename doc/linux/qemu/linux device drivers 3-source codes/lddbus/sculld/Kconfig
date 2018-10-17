@@ -1,0 +1,10 @@
+#
+# sculld configuration
+#
+
+menuconfig MYSCULLD
+    tristate "Sculld Devices"
+    depends on LDD_BUS
+    default ""
+    ---help---
+        test for sculld devices
