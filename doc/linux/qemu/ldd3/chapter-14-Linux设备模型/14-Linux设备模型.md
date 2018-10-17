@@ -736,30 +736,36 @@ This call creates an attribute file (`/sys/bus/ldd/version`) containing the revi
     struct device_attribute {
         struct attribute attr;
         ssize_t (*show)(struct device *dev, char *buf);
-        ssize_t (*store)(struct device *dev, const char *buf,
-                        size_t count);
+        ssize_t (*store)(struct device *dev, const char *buf, size_t count);
     };
 
-在内核3.3.7中，已经变更为
-
-    struct device_attribute {
-        struct attribute attr;
-        ssize_t (*show)(struct device *dev, struct device_attribute *attr,
-            char *buf);
-        ssize_t (*store)(struct device *dev, struct device_attribute *attr,
-            const char *buf, size_t count);
-    };
+> <font color=red>在内核3.3.7中，已经变更为</font>
+>
+>       struct device_attribute {
+>           struct attribute attr;
+>           ssize_t (*show)(struct device *dev, struct device_attribute *attr, char *buf);
+>           ssize_t (*store)(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
+>       };
 
 可以使用此宏在编译时设置这些属性结构：
 
     DEVICE_ATTR(name, mode, show, store);
 
+> <font color=red>在内核3.3.7中，已经变更为</font>
+>
+>       DEVICE_ATTR(_name, _mode, _show, _store);
+>
+
 在给定名称的前面添加`dev_attr_`字符串，作为生成的属性结构名称。属性文件的管理使用下面这2个函数：
 
-    int device_create_file(struct device *device,
-                            struct device_attribute *entry);
-    void device_remove_file(struct device *dev,
-                            struct device_attribute *attr);
+    int device_create_file(struct device *device, struct device_attribute *entry);
+    void device_remove_file(struct device *dev, struct device_attribute *attr);
+
+> <font color=red>在内核3.3.7中，已经变更为</font>
+>
+>       int device_create_file(struct device *device, const struct device_attribute *entry);
+>       void device_remove_file(struct device *dev, const struct device_attribute *attr);
+>
 
 `struct bus_type`的`dev_attrs`成员指向为每个添加到总线上的设备创建的默认属性列表。
 

@@ -1,7 +1,7 @@
 /* 
  * sculld.c -- the bare sculld char module
  */
-#include <linux/config.h>
+//#include <linux/config.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -311,6 +311,36 @@ struct file_operations sculld_fops = {
     .release =   sculld_release,
 };
 
+int sculld_trim(struct sculld_dev *dev)
+{
+    struct sculld_dev *next, *dptr;
+    int qset = dev->qset;   /* "dev" is not-null */
+    int i;
+
+    if (dev->vmas) /* don't trim: there are active mappings */
+        return -EBUSY;
+
+    for (dptr = dev; dptr; dptr = next) { /* all the list items */
+        if (dptr->data) {
+            /* This code frees a whole quantum-set */
+            for (i = 0; i < qset; i++)
+                if (dptr->data[i])
+                    free_pages((unsigned long)(dptr->data[i]),
+                            dptr->order);
+
+            kfree(dptr->data);
+            dptr->data=NULL;
+        }
+        next=dptr->next;
+        if (dptr != dev) kfree(dptr); /* all of them but the first */
+    }
+    dev->size = 0;
+    dev->qset = sculld_qset;
+    dev->order = sculld_order;
+    dev->next = NULL;
+    return 0;
+}
+
 /*
  * 添加sculld为字符设备
  */
@@ -330,9 +360,13 @@ static void sculld_setup_cdev(struct sculld_dev *dev, int index)
 /*
  * 设置sculld设备的属性的show方法
  */
-static ssize_t sculld_show_dev(struct device *ddev, char *buf)
+// static ssize_t sculld_show_dev(struct device *ddev, 
+//         struct device_attribute *attr, char *buf)
+static ssize_t sculld_show_dev(struct device *ddev, 
+        struct device_attribute *attr, char *buf)
 {
-    struct sculld_dev *dev = ddev->driver_data;
+    //struct sculld_dev *dev = ddev->driver_data; shen-2018/10/16
+    struct sculld_dev *dev = dev_get_drvdata(ddev);
 
     return print_dev_t(buf, dev->cdev.dev);
 }
@@ -348,7 +382,8 @@ static void sculld_register_dev(struct sculld_dev *dev, int index)
     sprintf(dev->devname, "sculld%d", index);
     dev->ldev.name = dev->devname;
     dev->ldev.driver = &sculld_driver;
-    dev->ldev.dev.driver_data = dev;
+    /* dev->ldev.dev.driver_data = dev;  shen-2018/10/16*/
+    // dev_set_drvdata(&(dev->ldev.dev),dev);
     register_ldd_device(&dev->ldev);
     device_create_file(&dev->ldev.dev, &dev_attr_dev);
 }
