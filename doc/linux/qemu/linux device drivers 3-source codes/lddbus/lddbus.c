@@ -99,7 +99,7 @@ int register_ldd_device(struct ldd_device *ldddev)
     ldddev->dev.bus = &ldd_bus_type;
     ldddev->dev.parent = &ldd_bus;
     ldddev->dev.release = ldd_dev_release;
-    strncpy(ldddev->dev.init_name, ldddev->name, strlen(ldddev->name));
+    //strncpy(ldddev->dev.init_name, ldddev->name, strlen(ldddev->name));
     dev_set_name(&(ldddev->dev), "%s", ldddev->name);
     return device_register(&ldddev->dev);
 }

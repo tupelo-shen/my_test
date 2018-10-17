@@ -359,9 +359,10 @@ Using the mechanisms we have described so far,we can use a kobject to create an 
         void (*release)(struct kobject *);
         struct sysfs_ops *sysfs_ops;
         struct attribute **default_attrs;
+        /* 省略 */
     };
 
-The `default_attrs` field lists the attributes to be created for every kobject of this type, and `sysfs_ops` provides the methods to implement those attributes. We start with `default_attrs`, which points to an array of pointers to attribute structures:
+`default_attrs`成员列出了为该类型的每一个`kobject`对象所创建的属性，`sysfs_ops`提供实施这些属性的方法。`default_attrs`指向一个指针数组，该数组成员是指向`attribute`结构的指针。
 
     struct attribute {
         char *name;
@@ -369,62 +370,75 @@ The `default_attrs` field lists the attributes to be created for every kobject o
         mode_t mode;
     };
 
-In this structure, `name` is the name of the attribute (as it appears within the kobject’s sysfs directory), `owner` is a pointer to the module (if any) that is responsible for the implementation of this attribute,and `mode` is the protection bits that are to be applied to this attribute. The mode is usually S_IRUGO for read-only attributes; if the attribute is writable,you can toss in S_IWUSR to give write access to root only (the macros for modes are defined in `<linux/stat.h>`). The last entry in the default_attrs list must be zero-filled.
+> <font color=red>在内核3.3.7中，已经变更为</font>
+>
+>       struct attribute {
+>           const char *name;
+>           umode_t mode;
+>       #ifdef CONFIG_DEBUG_LOCK_ALLOC
+>           struct lock_class_key *key;
+>           struct lock_class_key skey;
+>       #endif
+>       };
 
-The `default_attrs` array says what the attributes are but does not tell sysfs how to actually implement those attributes. That task falls to the `kobj_type->sysfs_ops` field, which points to a structure defined as:
+`name`是属性的名称（因为它会出现在该对象的`sysfs`目录下）；`owner`指向实现该属性的模块（如果有的话）的指针；（<font color=red>根据上面的代码，较新的内核代码已经没有`owner`这个成员了</font>）；`mode`是保护位。通常，只读属性是`S_IRUGO`;只写属性是`S_IWUSR`；具体的宏定义位于文件`<linux/stat.h>`中。上面的`default_attrs`列表的最后一项必须用0填充，表示数组结束。
+
+`default_attrs`数组告诉了`sysfs`属性是什么，但是没有告知怎样实现这些属性。这些任务就落到了`kobj_type->sysfs_ops`成员身上，它指向下面的结构体：
 
     struct sysfs_ops {
         ssize_t (*show)(struct kobject *kobj, struct attribute *attr, char *buffer);
         ssize_t (*store)(struct kobject *kobj, struct attribute *attr, const char *buffer, size_t size);
     };
 
-从用户空间读取属性时，`show`方法就会被调用，参数是指向`kobject`类型的对象和合适的`attribute`结构。该方法把给定属性的值存到`buffer`中，保证不要越界（最大值`PAGE_SIZE`字节）， 返回值是返回数据的真实长度。`sysfs`规定，每个属性都是一个简单， 符合人们读写习惯的值； 如果要返回很多信息，你可能会考虑把它拆分成多个属性。
+> <font color=red>在内核3.3.7中，又添加了下面这个成员</font>
+>
+>       const void *(*namespace)(struct kobject *, const struct attribute *);
+>
+
+从用户空间读取属性时，`show`方法就会被调用，参数是指向`kobject`类型的对象和正确的`attribute`结构。该方法把给定属性的值存到`buffer`中，保证不要越界（最大值`PAGE_SIZE`字节）， 返回值是返回数据的真实长度。`sysfs`规定，每个属性都应该是一个简单， 符合人们读写习惯的值； 如果要返回很多信息，你可能会考虑把它拆分成多个属性。
 
 `attr`指针决定请求哪个属性。有一些`show`方法，会对属性的名称作测试。 还有一些实现， 把包含其它信息的结构体内嵌到`attribute`结构体中， 而这些信息还需要返回给属性值；在这种情况下，可以在`show`方法中使用`container_of`，获取那个内嵌结构体的指针。
 
-The `store` method is similar; it should decode the data stored in buffer (size contains the length of that data, which does not exceed `PAGE_SIZE`), store and respond to the new value in whatever way makes sense, and return the number of bytes actually decoded. The `store` method can be called only if the attribute’s permissions allow writes. When writing a `store` method, never forget that you are receiving arbitrary information from user space; you should validate it very carefully before taking any action in response. If the incoming data does not match expectations, return a negative error value rather than possibly doing something unwanted and unrecoverable. If your device exports a `self_destruct` attribute, you should require that a specific string be written there to invoke that functionality; an accidental, random write should yield only an error.
+`store`与其类似；它负责解码存储在`buffer`中的数据（`size`是所包含数据的长度，不要超过`PAGE_SIZE`）。`store`方法只有在属性拥有写权限的时候才会被调用。当调用`write`方法的时候，要注意，接收到的数据可以是任意数据，所以要验证， 然后做出正确的响应。如果接受的数据，不能与预期匹配，则返回负值，不要随便处理。如果你的设备导出一个`self_destruct`属性，应该要求写一个特定的字符串来调用该功能；随机的写入将会产生错误。
 
 <h3 id="14.2.2">14.2.2 非缺省属性</h3>
 
-In many cases,the kobject type’s default_attrs field describes all the attributes that kobject will ever have. But that’s not a restriction in the design; attributes can be added and removed to kobjects at will. If you wish to add a new attribute to a kobject’s sysfs directory, simply fill in an attribute structure and pass it to:
+在许多情况下，`kobject`对象类型的`default_attrs`成员描述了该对象将永远拥有的属性。但是，在设计上，这不是一个严格限制； 我们可以根据医院，随意对`kobject`的属性进行添加和删除。如果你想添加一个新的`attribute`到`kobject`的`sysfs`目录上，只需简单的填充一个`attribute`，把它传递给下面的函数即可：
 
     int sysfs_create_file(struct kobject *kobj, struct attribute *attr);
 
-If all goes well, the file is created with the name given in the attribute structure, and the return value is 0; otherwise, the usual negative error code is returned.
+如果调用成功，使用`attribute`结构中给定的名称创建一个文件，函数返回0；否则，返回负值。
 
-Note that the same `show()` and `store()` functions are called to implement operations on the new attribute. Before you add a new, nondefault attribute to a kobject, you should take whatever steps are necessary to ensure that those functions know how to implement that attribute.
+对新属性的操作还是调用`show()`和`store()`函数。在向`kobject`添加新属性之前， 应该采取必要的步骤， 确保这些函数知道如何实现该属性。
 
-To remove an attribute, call:
+移除属性，调用：
 
     int sysfs_remove_file(struct kobject *kobj, struct attribute *attr);
 
-After the call, the attribute no longer appears in the kobject’s sysfs entry. Do be aware, however, that a user-space process could have an open file descriptor for that attribute and that show and store calls are still possible after the attribute has been removed.
+移除之后，`attribute`不再出现在`kobject`的`sysfs`目录里。但是，必须意识到， 属性移除之后， 用户空间的进程可能还使用着该属性的文件描述符， `show`和`store`方法仍然被调用着。
 
 
 <h3 id="14.2.3">14.2.3 二进制属性</h3>
 
-The sysfs conventions call for all attributes to contain a single value in a human-readable text format. That said, there is an occasional, rare need for the creation of attributes that can handle larger chunks of binary data. That need really only comes about when data must be passed, untouched, between user space and the device. For example,uploading firmware to devices requires this feature. When such a device is encountered in the system, a user-space program can be started (via the hotplug mechanism); that program then passes the firmware code to the kernel via a binary sysfs attribute, as is shown in the section “The Kernel Firmware Interface.” Binary attributes are described with a `bin_attribute` structure:
+`sysfs`规范提倡所有的属性包含一个可读的文本格式存储的值。那也就是说，还是有极少的需求，创建能够处理大数据量的二进制数据的属性。
+这种属性只有在用户空间和设备之间传递数据时才会发生。例如，将固件下载到设备上就需要这种功能。当在系统中遇到这种设备时，一个用户空间的程序就会被启动（通过`hotplug`机制；该程序通过`sysfs`的二进制属性传递固件代码到内核，如[内核固件接口](#14.8.1)所展示的。 二进制属性使用`bin_attribute`结构描述：
 
     struct bin_attribute {
         struct attribute attr;
         size_t size;
-        ssize_t (*read)(struct kobject *kobj, char *buffer,
-                        loff_t pos, size_t size);
-        ssize_t (*write)(struct kobject *kobj, char *buffer,
-                        loff_t pos, size_t size);
+        ssize_t (*read)(struct kobject *kobj, char *buffer, loff_t pos, size_t size);
+        ssize_t (*write)(struct kobject *kobj, char *buffer, loff_t pos, size_t size);
     };
 
-Here, `attr` is an `attribute` structure giving the name, owner, and permissions for the binary attribute, and `size` is the maximum size of the binary attribute (or 0 if there is no maximum). The `read` and `write` methods work similarly to the normal char driver equivalents; they can be called multiple times for a single load with a maximum of one page worth of data in each call. There is no way for sysfs to signal the last of a set of write operations, so code implementing a binary attribute must be able to determine the end of the data some other way.
+在这儿，`attr`是一个`attribute`结构对象成员，提供属性的名称，所有者（<font color=red>新内核中`owner`已被删除</font>）和二进制属性的权限等；`size`是二进制属性的最大值（如果等于0，没有最大值）。`read`和`write`方法与常规的字符驱动相似； 对于单次下载，最大可以传递一页的数据，多次调用即可，因此实现二进制属性的代码必须能够以其它方式确定数据的结尾。
 
-Binary attributes must be created explicitly; they cannot be set up as default attributes. To create a binary attribute, call:
+二进制属性必须显式创建，不能设为默认属性。为了创建二进制属性，调用：
 
-    int sysfs_create_bin_file(struct kobject *kobj,
-                                struct bin_attribute *attr);
+    int sysfs_create_bin_file(struct kobject *kobj, struct bin_attribute *attr);
 
-Binary attributes can be removed with:
+移除属性：
 
-    int sysfs_remove_bin_file(struct kobject *kobj,
-                                struct bin_attribute *attr);
+    int sysfs_remove_bin_file(struct kobject *kobj, struct bin_attribute *attr);
 
 <h3 id="14.2.4">14.2.4 符号链接</h3>
 
@@ -441,7 +455,6 @@ Binary attributes can be removed with:
 移除符号链接：
 
     void sysfs_remove_link(struct kobject *kobj, char *name);
-
 
 <h2 id="14.3">14.3 热插拔事件产生</h2>
 
@@ -489,9 +502,9 @@ Binary attributes can be removed with:
 
 <h2 id="14.4">14.4 总线，设备和驱动</h2>
 
-So far, we have seen a great deal of low-level infrastructures and a relative shortage of examples. We try to make up for that in the rest of this chapter as we get into the higher levels of the Linux device model. To that end, we introduce a new virtual bus, which we call lddbus, * and modify the `scullp` driver to “connect” to that bus.
+到目前为止，我们已经看了许多底层的结构实现和相对简短的示例。接下来，我们把它们组合起来，讨论更为高深的Linux设备模型。为此，我们引入一个新的虚拟总线，称之为`lddbus`，修改`scullp`驱动，让其挂载到该总线上。
 
-Once again, much of the material covered here will never be needed by many driver authors. Details at this level are generally handled at the bus level, and few authors need to add a new bus type. This information is useful, however, for anybody wondering what is happening inside the PCI, USB, etc. layers or who needs to make changes at that level.
+再一次，这儿所覆盖的一些概念和实现，驱动程序开发者不需要。在这个层面上的细节通常由总线处理，很少有开发者需要添加一条新的总线。但是，这些信息对于那些想要知道PCI，USB内部究竟是怎样实现的读者来说非常有用。
 
 <h3 id="14.4.1">14.4.1 总线</h3>
 
@@ -560,6 +573,8 @@ Once again, much of the material covered here will never be needed by many drive
         return !strncmp(dev->bus_id, driver->name, strlen(driver->name));
     }
 
+> <font color=red>*`bud_id`这个成员已经被删除，应使用`shdev_name(dev)`代替`dev->bus_id`*</font>
+
 当涉及真实的硬件时，`match`函数通常进行设备本身提供的硬件ID和驱动提供的ID之间作比较。
 
 `lddbus`的热插拔方法，其原型为：
@@ -575,7 +590,7 @@ Once again, much of the material covered here will never be needed by many drive
         return 0;
     }
 
-使用下面的方法代替(内核3.3.7)
+<font color=red>使用下面的方法代替(内核3.3.7)</font>
 
     static int ldd_uevent(struct device *dev, struct kobj_uevent_env *env)
     {
@@ -617,18 +632,17 @@ Once again, much of the material covered here will never be needed by many drive
 
 <h4 id="14.4.1.4">14.4.1.4 总线属性</h4>
 
-Almost every layer in the Linux device model provides an interface for the addition of attributes, and the bus layer is no exception. The `bus_attribute` type is defined in `<linux/device.h>` as follows:
+Linux设备模型中，几乎每一层都提供了一个添加属性的接口，总线层也不例外。`bus_attribute`总线属性定义在文件`<linux/device.h>`中：
 
     struct bus_attribute {
         struct attribute attr;
         ssize_t (*show)(struct bus_type *bus, char *buf);
-        ssize_t (*store)(struct bus_type *bus, const char *buf,
-                        size_t count);
+        ssize_t (*store)(struct bus_type *bus, const char *buf, size_t count);
     };
 
-We have already seen struct `attribute` in the section “Default Attributes.” The `bus_attribute` type also includes two methods for displaying and setting the value of the attribute. Most device model layers above the kobject level work this way.
+在[默认属性](#12.2.1)段中，我们已经讨论过`attribute`结构了。`bus_attribute`也包含两个方法，显示和设置属性的值。在`kobject`层之上的大部分设备模型都按这种方式工作。
 
-A convenience macro has been provided for the compile-time creation and initialization of `bus_attribute` structures:
+一个方便初始化`bus_attribute`结构的宏，如下所示（编译时创建）：
 
     BUS_ATTR(name, mode, show, store);
 
@@ -639,7 +653,7 @@ A convenience macro has been provided for the compile-time creation and initiali
     int bus_create_file(struct bus_type *bus, struct bus_attribute *attr);
     void bus_remove_file(struct bus_type *bus, struct bus_attribute *attr);
 
-The `lddbus` driver creates a simple attribute file containing, once again, the source version number. The show `method` and `bus_attribute` structure are set up as follows:
+`lddbus`驱动创建了一个简单的属性文件，包含源代码版本号。`show`方法和`bus_attribute`结构的建立如下：
 
     static ssize_t show_bus_version(struct bus_type *bus, char *buf)
     {
@@ -647,12 +661,12 @@ The `lddbus` driver creates a simple attribute file containing, once again, the 
     }
     static BUS_ATTR(version, S_IRUGO, show_bus_version, NULL);
 
-Creating the attribute file is done at module load time:
+在模块加载的时候创建属性文件：
 
     if (bus_create_file(&ldd_bus_type, &bus_attr_version))
         printk(KERN_NOTICE "Unable to create version attribute\n");
 
-This call creates an attribute file (`/sys/bus/ldd/version`) containing the revision number for the `lddbus` code.
+该调用创建一个属性文件(`/sys/bus/ldd/version`)，包含`lddbus`代码的版本号。
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
@@ -720,6 +734,8 @@ This call creates an attribute file (`/sys/bus/ldd/version`) containing the revi
         .bus_id = "ldd0",
         .release = ldd_bus_release
     };
+
+> <font color=red>*`bud_id`这个成员已经被删除，应使用`init_name`代替`dev->bus_id`*</font>
 
 这是一个顶层总线，所以，`parent`和`bus`成员被设置为`NULL`。我们有一个没有操作的简单`release`方法，且作为第一条总线，名称设为`ldd0`。总线设备使用下面的代码进行注册：
 
@@ -797,6 +813,14 @@ This call creates an attribute file (`/sys/bus/ldd/version`) containing the revi
     }
     EXPORT_SYMBOL(register_ldd_device);
 
+> <font color=red>*`bud_id`这个成员已经被删除，所以*</font>
+>
+>       strncpy(ldddev->dev.bus_id, ldddev->name, BUS_ID_SIZE);
+>
+>       替换为
+>
+>       dev_set_name(&(ldddev->dev), "%s", ldddev->name);
+
 在这里，我们填充内嵌的`device structure`的成员（各个驱动程序不需要了解），然后使用驱动核心注册设备。 如果我们想要将特定于总线的属性添加到设备，应该在此完成操作。
 
 为了展示这个接口是如何工作的，我们再引入一个简单的驱动-`sculld`。这是第8章里引入的`scullp`驱动的变体。 它是一个普通的内存读写设备，但是`sculld`也可以使用设备模型实现，使用`lddbus`接口。
@@ -854,17 +878,14 @@ This call creates an attribute file (`/sys/bus/ldd/version`) containing the revi
     struct driver_attribute {
         struct attribute attr;
         ssize_t (*show)(struct device_driver *drv, char *buf);
-        ssize_t (*store)(struct device_driver *drv, const char *buf,
-        size_t count);
+        ssize_t (*store)(struct device_driver *drv, const char *buf, size_t count);
     };
     DRIVER_ATTR(name, mode, show, store);
 
 创建属性文件的函数：
 
-    int driver_create_file(struct device_driver *drv,
-                            struct driver_attribute *attr);
-    void driver_remove_file(struct device_driver *drv,
-                            struct driver_attribute *attr);
+    int driver_create_file(struct device_driver *drv, struct driver_attribute *attr);
+    void driver_remove_file(struct device_driver *drv, struct driver_attribute *attr);
 
 `bus_type`包含一个指向一组默认属性的成员（`drv_attrs`），这是为该总线上所有设备创建的。
 
@@ -898,7 +919,7 @@ This call creates an attribute file (`/sys/bus/ldd/version`) containing the revi
         return driver_create_file(&driver->driver, &driver->version_attr);
     }
 
-函数的前半部分使用驱动核心代码注册一个底层的`device_driver`结构； 其余的代码建立了版本属性。因为这个属性是在运行时建立， 所以， 不能再使用`DRIVER_ATTR`宏；因此，`driver_attribute`结构体必须手动填充。值得注意的是，设置属性的`owner`为驱动模块所有，而不是为`lddbus`模块所有；原因在该属性的`show`函数的实现中解释：
+函数的前半部分使用驱动核心代码注册一个底层的`device_driver`结构； 其余的代码建立了驱动代码的版本属性。 因为这个属性是在运行时建立， 所以， 不能再使用`DRIVER_ATTR`宏；因此，`driver_attribute`结构体必须手动填充。值得注意的是，设置属性的`owner`为驱动模块所有，而不是为`lddbus`模块所有；原因在该属性的`show`函数的实现中解释：
 
     static ssize_t show_version(struct device_driver *driver, char *buf)
     {
@@ -907,7 +928,7 @@ This call creates an attribute file (`/sys/bus/ldd/version`) containing the revi
         return strlen(buf);
     }
 
-One might think that the attribute owner should be the lddbus module, since the function that implements the attribute is defined there. This function, however, is working with the `ldd_driver` structure created (and owned) by the driver itself. If that structure were to go away while a user-space process tried to read the version number, things could get messy. Designating the driver module as the owner of the attribute prevents the module from being unloaded, while user-space holds the attribute file open. Since each driver module creates a reference to the `lddbus` module, we can be sure that `lddbus` will not be unloaded at an inopportune time.
+有人可能认为属性`version_attr`的所有者是`lddbus`模块，因为`show_version`函数是在`lddbus`模块的实现文件里定义的。但是， 该函数和结构体`ldd_driver`一起工作，而结构体是由驱动本身所创建并拥有。如果当用户空间的进程试图访问版本号时，`ldd_driver`结构体消失了，则事情将会混乱。将驱动模块作为属性的拥有者，将会保证，在用户空间打开属性文件的同时，驱动模块不能被卸载。因为， 每一个驱动模块都是创建一个`lddbus`模块的引用，所以可以确定`lddbus`不会在不合适的时间被卸载。
 
 `sculld`创建的`ldd_driver`结构，如下所示：
 
@@ -930,9 +951,162 @@ static struct ldd_driver sculld_driver = {
      |-- sculld3 -> ../../../../devices/ldd0/sculld3
      `-- version
 
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h2 id="14.5">14.5 类</h2>
 
+The final device model concept we examine in this chapter is the `class`. A class is a higher-level view of a device that abstracts out low-level implementation details. Drivers may see a SCSI disk or an ATA disk, but, at the class level, they are all simply disks. Classes allow user space to work with devices based on what they do, rather than how they are connected or how they work.
+
+Almost all classes show up in `sysfs` under `/sys/class`. Thus, for example, all network interfaces can be found under `/sys/class/net`, regardless of the type of interface. Input devices can be found in `/sys/class/input`, and serial devices are in `/sys/class/tty`. The one exception is block devices, which can be found under `/sys/block` for historical reasons.
+
+Class membership is usually handled by high-level code without the need for explicit support from drivers. When the `sbull` driver (see Chapter 16) creates a virtual disk device, it automatically appears in `/sys/block`. The `snull` network driver (see Chapter 17) does not have to do anything special for its interfaces to be represented in `/sys/class/net`. There will be times, however, when drivers end up dealing with classes directly.
+
+In many cases, the `class` subsystem is the best way of exporting information to user space. When a subsystem creates a class, it owns the class entirely, so there is no need to worry about which module owns the attributes found there. It also takes very little time wandering around in the more hardware-oriented parts of `sysfs` to realize that it can be an unfriendly place for direct browsing. Users more happily find information in `/sys/class/some-widget` than under, say, `/sys/devices/pci0000:00/0000:00:10.0/usb2/2-0:1.0`.
+
+The driver core exports two distinct interfaces for managing classes. The `class_simple` routines are designed to make it as easy as possible to add new classes to the system; their main purpose, usually, is to expose attributes containing device numbers to enable the automatic creation of device nodes. The regular class interface is more complex but offers more features as well. We start with the simple version.
+
+<h3 id="14.5.1">14.5.1 class_simple接口</h3>
+
+The class_simple interface was intended to be so easy to use that nobody would have any excuse for not exporting, at a minimum, an attribute containing a device’s assigned number. Using this interface is simply a matter of a couple of function calls, with little of the usual boilerplate associated with the Linux device model.
+
+The first step is to create the class itself. That is accomplished with a call to class_simple_create:
+
+    struct class_simple *class_simple_create(struct module *owner, char *name);
+
+This function creates a class with the given `name`. The operation can fail, of course, so the return value should always be checked (using IS_ERR, described in the section “Pointers and Error Values” in Chapter 1) before continuing.
+
+A simple class can be destroyed with:
+
+    void class_simple_destroy(struct class_simple *cs);
+
+The real purpose of creating a simple class is to add devices to it; that task is achieved with:
+
+    struct class_device *class_simple_device_add(struct class_simple *cs,
+                                                    dev_t devnum,
+                                                    struct device *device,
+                                                    const char *fmt, ...);
+
+Here, `cs` is the previously created simple class, `devnum` is the assigned device number, `device` is the `struct device` representing this device, and the remaining parameters are a printk-style format string and arguments to create the device name. This call adds an entry to the class containing one attribute, dev, which holds the device number. If the `device` parameter is not `NULL`, a symbolic link (called `device`) points to the device’s entry under /sys/devices.
+
+It is possible to add other attributes to a `device` entry. It is just a matter of using `class_device_create_file`, which we discuss in the next section with the rest of the full class subsystem.
+
+Classes generate hotplug events when devices come and go. If your driver needs to add variables to the environment for the user-space event handler, it can set up a hotplug callback with:
+
+    int class_simple_set_hotplug(struct class_simple *cs,
+                                int (*hotplug)(struct class_device *dev,
+                                                char **envp, int num_envp,
+                                                char *buffer, int buffer_size));
+
+When your device goes away, the class entry should be removed with:
+
+    void class_simple_device_remove(dev_t dev);
+
+Note that the `class_device` structure returned by `class_simple_device_add` is not needed here; the device number (which should certainly be unique) is sufficient.
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
+<h3 id="14.5.2">14.5.2 完整类接口</h3>
+
+The `class_simple` interface suffices for many needs, but sometimes more flexibility is required. The following discussion describes how to use the full class mechanism, upon which `class_simple` is based. It is brief: the class functions and structures follow the same patterns as the rest of the device model, so there is little that is truly new here.
+
+<h4 id="14.5.2.1">14.5.2.1 管理类</h4>
+
+A class is defined by an instance of struct class:
+
+    struct class {
+        char *name;
+        struct class_attribute *class_attrs;
+        struct class_device_attribute *class_dev_attrs;
+        int (*hotplug)(struct class_device *dev, char **envp,
+        int num_envp, char *buffer, int buffer_size);
+        void (*release)(struct class_device *dev);
+        void (*class_release)(struct class *class);
+        /* Some fields omitted */
+    };
+
+Each class needs a unique name, which is how this class appears under `/sys/class`. When the class is registered, all of the attributes listed in the (NULL-terminated) array pointed to by `class_attrs` is created. There is also a set of default attributes for every device added to the class; `class_dev_attrs` points to those. There is the usual `hotplug` function for adding variables to the environment when events are generated. There are also two `release` methods: `release` is called whenever a device is removed from the class, while `class_release` is called when the class itself is released.
+
+The registration functions are:
+
+    int class_register(struct class *cls);
+    void class_unregister(struct class *cls);
+
+The interface for working with attributes should not surprise anybody at this point:
+
+    struct class_attribute {
+        struct attribute attr;
+        ssize_t (*show)(struct class *cls, char *buf);
+        ssize_t (*store)(struct class *cls, const char *buf, size_t count);
+    };
+    CLASS_ATTR(name, mode, show, store);
+
+    int class_create_file(struct class *cls, const struct class_attribute *attr);
+    void class_remove_file(struct class *cls, const struct class_attribute *attr);
+
+<h4 id="14.5.2.2">14.5.2.2 类设备</h4>
+
+The real purpose of a class is to serve as a container for the devices that are members of that class. A member is represented by struct `class_device`:
+
+    struct class_device {
+        struct kobject kobj;
+        struct class *class;
+        struct device *dev;
+        void *class_data;
+        char class_id[BUS_ID_SIZE];
+    };
+
+The class_id field holds the name of this device as it appears in sysfs. The class pointer should point to the class holding this device,and dev should point to the associated device structure. Setting dev is optional; if it is non-NULL,it is used to create a symbolic link from the class entry to the corresponding entry under `/sys/devices`, making it easy to find the device entry in user space. The class can use `class_data` to hold a private pointer.
+
+The usual registration functions have been provided:
+
+    int class_device_register(struct class_device *cd);
+    void class_device_unregister(struct class_device *cd);
+
+The class device interface also allows the renaming of an already registered entry:
+
+    int class_device_rename(struct class_device *cd, char *new_name);
+
+Class device entries have attributes:
+
+    struct class_device_attribute {
+        struct attribute attr;
+        ssize_t (*show)(struct class_device *cls, char *buf);
+        ssize_t (*store)(struct class_device *cls, const char *buf, size_t count);
+    };
+    CLASS_DEVICE_ATTR(name, mode, show, store);
+
+    int class_device_create_file(struct class_device *cls, const struct class_device_attribute *attr);
+    void class_device_remove_file(struct class_device *cls, const struct class_device_attribute *attr);
+
+A default set of attributes,in the class’s class_dev_attrs field,is created when the class device is registered; class_device_create_file may be used to create additional attributes. Attributes may also be added to class devices created with the class_simple interface.
+
+
+<h4 id="14.5.2.3">14.5.2.3 类接口</h4>
+
+The class subsystem has an additional concept not found in other parts of the Linux device model. This mechanism is called an interface,but it is,perhaps,best thought of as a sort of trigger mechanism that can be used to get notification when devices enter or leave the class.
+
+An interface is represented by:
+
+    struct class_interface {
+        struct class *class;
+        int (*add) (struct class_device *cd);
+        void (*remove) (struct class_device *cd);
+    };
+
+Interfaces can be registered and unregistered with:
+
+    int class_interface_register(struct class_interface *intf);
+    void class_interface_unregister(struct class_interface *intf);
+
+The functioning of an interface is straightforward. Whenever a class device is added to the class specified in the class_interface structure,the interface’s add function is called. That function can perform any additional setup required for that device; this setup often takes the form of adding more attributes,but other applications are possible. When the device is removed from the class,the remove method is called to perform any required cleanup.
+
+Multiple interfaces can be registered for a class.
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h2 id="14.6">14.6 集成起来</h2>
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h2 id="14.7">14.7 热插拔</h2>
 
