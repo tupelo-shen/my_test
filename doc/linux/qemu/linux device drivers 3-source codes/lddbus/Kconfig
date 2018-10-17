@@ -1,0 +1,9 @@
+#
+# LDD bus configuration
+#
+
+menuconfig LDD_BUS
+    tristate "LDD bus"
+    default ""
+    ---help---
+        test for the LDD bus.
