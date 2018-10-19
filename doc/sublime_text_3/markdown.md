@@ -28,6 +28,7 @@
 <li><a href="#backslash">反斜杠</a></li>
 <li><a href="#autolink">自动链接</a></li>
 <li><a href="#addfondcolor">为字体添加颜色</a></li>
+<li><a href="#biaoge">生成表格</a></li>
 </ul></li>
 <li><a href="#acknowledgement">感谢</a></li>
 </ul>
@@ -677,3 +678,10 @@ Markdown 支持以下这些符号前面加上反斜杠来帮助插入普通的�
     <tr><td><font color=#00ffff size=72>color=#00ffff</font></td></tr>
     <tr><td><font color=gray size=72>color=gray</font></td></tr>
 </table>
+
+<h3 id="biaoge"> 生成表格</h3>
+
+| 一个普通标题 | 一个普通标题 | 一个普通标题 |
+| ------ | ------ | ------ |
+| 短文本 | 中等文本 | 稍微长一点的文本 |
+| 稍微长一点的文本 | 短文本 | 中等文本 |
