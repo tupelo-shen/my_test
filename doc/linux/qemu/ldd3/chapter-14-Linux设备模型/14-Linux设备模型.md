@@ -1100,7 +1100,7 @@ Interfaces can be registered and unregistered with:
 
 The functioning of an interface is straightforward. Whenever a class device is added to the class specified in the class_interface structure,the interface’s add function is called. That function can perform any additional setup required for that device; this setup often takes the form of adding more attributes,but other applications are possible. When the device is removed from the class,the remove method is called to perform any required cleanup.
 
-Multiple interfaces can be registered for a class.
+可以为一个类注册多个接口。
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 

@@ -11,6 +11,7 @@ import logging.config
 import ConfigParser
 import json
 from socket import *
+import RawInputNoBlock
 
 continue_working = True
 
@@ -51,9 +52,10 @@ workQueue = Queue.Queue(10)
 queueLock = threading.Lock()
 
 #--------------Global Function------------
-def end_read():
+def end_read(signum, stack_frame):
     global continue_working
-    logger.info("Ctrl+C captured, terminate app.")
+    logger.debug("signum: %d;stack_frame: %s"%(signum,stack_frame))
+    logger.info("Ctrl+C was captured, app was terminated.")
     continue_working = False
     # GPIO.cleanup() # clean all GPIO
 
@@ -166,9 +168,11 @@ class ReadDimensionCodeThread (threading.Thread):
     
     def read_DimensionCode_data(self, threadName):
         while (True == continue_working):
-            barcodestr = raw_input("")
-            logger.debug("barcodestr = %s"%barcodestr)
-            JsonPack(barcodestr)
+            # barcodestr = raw_input("")
+            barcodestr = RawInputNoBlock.raw_input_nb()
+            if barcodestr:
+                logger.debug("barcodestr = %s"%barcodestr)
+                JsonPack(barcodestr)
             time.sleep(float(self.CycleTime)/1000.0)
         logger.debug("receive a signal to exit ReadDimensionCodeThread")
 
@@ -320,6 +324,7 @@ if __name__ == "__main__":
         alive = False
         for i in range(thread_count):
             alive = alive or threads[i].isAlive()
+            logger.debug("alive = %d; threads[%d].isAlive() = %d"%(alive,i,threads[i].isAlive()))
         if not alive:
             break
         time.sleep(1)
