@@ -1,0 +1,4 @@
+2018-10-18 07:42:10,934 - test_logtofile.py[line:26] - INFO: this is a logger info message
+2018-10-18 07:42:10,954 - test_logtofile.py[line:27] - WARNING: this is a logger warning message
+2018-10-18 07:42:10,972 - test_logtofile.py[line:28] - ERROR: this is a logger error message
+2018-10-18 07:42:10,987 - test_logtofile.py[line:29] - CRITICAL: this is a logger critical message
