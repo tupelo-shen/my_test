@@ -35,7 +35,7 @@
         + [14.5.2.1 管理类](#14.5.2.1)
         + [14.5.2.2 类设备](#14.5.2.2)
         + [14.5.2.3 类接口](#14.5.2.3)
-* [14.6 集成起来](#14.6)
+* [14.6 各个环节整合起来](#14.6)
     - [14.6.1 添加一个设备](#14.6.1)
     - [14.6.2 移除一个设备](#14.6.2)
     - [14.6.3 添加一个驱动](#14.6.3)
@@ -339,17 +339,19 @@ This macro creates a struct subsystem with a name formed by taking the name give
 
 <h2 id="14.2">14.2 底层sysfs操作</h2>
 
-Kobjects are the mechanism behind the sysfs virtual filesystem. For every directory found in `sysfs`,there is a kobject lurking somewhere within the kernel. Every kobject of interest also exports one or more attributes, which appear in that kobject’s `sysfs` directory as files containing kernel-generated information. This section examines how kobjects and sysfs interact at a low level.
+`kobject`是`sysfs`虚拟文件系统背后的机制。 对于在`sysfs`中找到的每个目录， 内核中都有一个`kobject`与之对应。 每个感兴趣的`kobject`还会导出一个或多个属性， 这些属性以文件的形式出现在`kobject`的`sysfs`目录中， 包含着内核生成的信息。 本节将探讨`kobject`和`sysfs`在底层是如何交互的。
 
-Code that works with sysfs should include `<linux/sysfs.h>`.
+与`sysfs`部分相关的代码，位于文件`<linux/sysfs.h>`中。
 
-Getting a kobject to show up in `sysfs` is simply a matter of calling `kobject_add`. We have already seen that function as the way to add a kobject to a `kset`; creating entries in sysfs is also part of its job. There are a couple of things worth knowing about how the `sysfs` entry is created:
+让一个`kobject`对象出现在`sysfs`中，只需简单地调用`kobject_add`这个函数即可。在介绍如何添加`kobject`对象到`kset`中时， 已经看见过；在`sysfs`创建条目也是其工作的一部分。关于如何创建`sysfs`条目，需要了解下面的事情：
 
-* Sysfs entries for kobjects are always directories, so a call to `kobject_add` results in the creation of a directory in sysfs. Usually that directory contains one or more attributes; we see how attributes are specified shortly.
-* The name assigned to the kobject (with kobject_set_name) is the name used for the sysfs directory. Thus, kobjects that appear in the same part of the sysfs hierarchy must have unique names. Names assigned to kobjects should also be reasonable file names: they cannot contain the slash character,and the use of white space is strongly discouraged.
-* The sysfs entry is located in the directory corresponding to the kobject’s parent pointer. If `parent` is NULL when `kobject_add` is called, it is set to the kobject embedded in the new kobject’s kset; thus, the sysfs hierarchy usually matches the internal hierarchy created with ksets. If both parent and kset are NULL,the sysfs directory is created at the top level,which is almost certainly not what you want.
+* 为`kobject`对象所创建的`sysfs`条目总是目录，所以调用`kobject_add`在会`sysfs`中创建一个目录。通常， 这个目录包含一个或多个属性，稍后，我们会介绍属性是如何指定的。
 
-Using the mechanisms we have described so far,we can use a kobject to create an empty directory in sysfs. Usually,you want to do something a little more interesting than that, so it is time to look at the implementation of attributes.
+* `kobject`设置的名称就是`sysfs`目录中的名称。因而，出现在`sysfs`体系结构中的相同部分的`kobject`应该具有唯一的名称。 分配给`kobject`的名称也必须遵循文件命名方式：不能包含"/"，也不推荐使用"空格"。
+
+* `sysfs`条目位于该`kobject`对象的`parent`指针指向的父目录中。如果`parent`为`NULL`， 调用`kobject_add`时，被设置为新的对象集`kset`中内嵌的`kobject`; 因而，`sysfs`体系结构通常还是匹配使用`kset`创建的其内部体系。如果`parent`和`kset`都为`NULL`，则在顶层目录创建一个`sysfs`目录， 这往往不是你想要的结果。
+
+到目前为止，使用我们介绍的机制，已经可以在`sysfs`创建空的目录了。但是，我们感兴趣的不会就这些，所以，是时候介绍属性了。
 
 <h3 id="14.2.1">14.2.1 缺省属性</h3>
 
@@ -1104,7 +1106,119 @@ The functioning of an interface is straightforward. Whenever a class device is a
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h2 id="14.6">14.6 集成起来</h2>
+<h2 id="14.6">14.6 各个环节整合起来</h2>
+
+为了更好地理解设备驱动模型的作用，让我们逐步介绍内核中设备的生命周期。 我们描述了PCI子系统如何与驱动模型交互， 如何添加和删除驱动，以及如何在系统中添加和删除设备的基本概念。 这些描述PCI内核代码的细节， 同样适用于那些使用驱动核心程序管理它们自己的驱动和设备的其它子系统。
+
+PCI核心层，驱动核心层，各个PCI驱动之间的交互非常复杂，如图14-3所示：
+
+![Figure 14-3](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_device_drivers_3_images/14-3.PNG)
+
+<h3 id="14.6.1">14.6.1 添加一个设备</h3>
+
+PCI子系统声明了一个`struct bus_type`类型的结构，称为`pci_bus_type`，使用下面的值进行初始化：
+
+    struct bus_type pci_bus_type = {
+        .name = "pci",
+        .match = pci_bus_match,
+        .hotplug = pci_hotplug,
+        .suspend = pci_device_suspend,
+        .resume = pci_device_resume,
+        .dev_attrs = pci_dev_attrs,
+    };
+
+当PCI子系统被加载到内核时，调用`bus_register`函数，把`pci_bus_type`变量向驱动核心层注册。这之后，驱动核心层就会在目录`/sys/bus/pci`下创建2个`sysfs`目录： `devices`和`drivers`。
+
+所有的PCI驱动必须定义一个`struct pci_driver`类型变量， 它定义了该驱动所能实现的不同功能（关于PCI子系统和如何编写PCI驱动的更多信息， 可以参考第12章）。`struct pci_driver`结构包含了一个`struct device_driver`结构成员，当PCI驱动被注册时，由PCI核心层完成其初始化。
+
+    /* 初始化常用的driver结构体成员 */
+    drv->driver.name = drv->name;
+    drv->driver.bus = &pci_bus_type;
+    drv->driver.probe = pci_device_probe;
+    drv->driver.remove = pci_device_remove;
+    drv->driver.kobj.ktype = &pci_driver_kobj_type;
+
+这段代码为驱动程序设置指向`pci_bus_type`结构的总线，`probe` 和 `remove`成员函数指向PCI核心代码层里的函数。为了PCI驱动的属性文件能够正常工作， 驱动的`kobject`的`ktype`被设置为`pci_driver_kobj_type`。然后PCI核心层代码把PCI驱动注册到驱动核心层：
+
+    /* 使用驱动核心代码注册 */
+    error = driver_register(&drv->driver);
+
+现在，驱动程序已经准备好驱动任何它所支持的PCI设备了。
+
+在能和PCI总线通信的特定于体系架构的代码的帮助下，PCI核心层开始探测PCI地址空间，查找PCI设备。当PCI设备被发现，PCI核心层在内存中创建一个新的变量，类型为`struct pci_dev`。`struct pci_dev`结构的部分代码如下所示：
+
+    struct pci_dev {
+        /* ... */
+        unsigned int devfn;/* 设备功能号，或PCI逻辑设备号(0-255)。其中，bit[7:3]是物理设备号，bit[2:0]是功能号 */
+        unsigned short vendor; /* PCI设备的厂商ID */
+        unsigned short device; /* PCI设备的设备ID */
+        unsigned short subsystem_vendor; /* PCI设备的子系统厂商ID */
+        unsigned short subsystem_device; /* PCI设备的子系统设备ID */
+        unsigned int class;
+        /* ... */
+        struct pci_driver *driver;
+        /* ... */
+        struct device dev;
+        /* ... */
+    };
+
+这个PCI设备与总线相关的成员由PCI核心层完成初始化（`devfn`，`vendor`，`device`，其它成员)，类型为`struct device`的成员`dev`的`parent`指针指向该PCI设备所依存的PCI总线设备。`bus`变量指向`pci_bus_type`结构，然后设置`name`和`bus_id`变量， 基于从PCI设备读到的名称和ID。
+
+在PCI 设备结构被初始化后，调用下面的函数向驱动核心层注册该设备。
+
+    device_register(&dev->dev);
+
+Within the `device_register` function, the driver core initializes a number of the device’s fields, registers the device’s kobject with the kobject core (which causes a hotplug event to be generated, but we discuss that later in this chapter), and then adds the device to the list of devices that are held by the device’s parent. This is done so that all devices can be walked in the proper order, always knowing where in the hierarchy of devices each one lives.
+
+The device is then added to the bus-specific list of all devices, in this example, the `pci_bus_type` list. Then the list of all drivers that are registered with the bus is walked, and the `match` function of the bus is called for every driver, specifying this device. For the `pci_bus_type` bus,the `match` function was set to point to the `pci_bus_match` function by the PCI core before the device was submitted to the driver core.
+
+The `pci_bus_match` function casts the `struct device` that was passed to it by the driver core,back into a `struct pci_dev`. It also casts the `struct device_driver` back into a `struct pci_driver` and then looks at the PCI device-specific information of the device and driver to see if the driver states that it can support this kind of device. If the `match` is not successful, the function returns 0 back to the driver core,and the driver core moves on to the next driver in its list.
+
+If the match is successful, the function returns 1 back to the driver core. This causes the driver core to set the driver pointer in the `struct device` to point to this driver, and then it calls the `probe` function that is specified in the `struct device_driver`. Earlier, before the PCI driver was registered with the driver core, the `probe` variable was set to point at the `pci_device_probe` function. This function casts (yet again) the `struct device` back into a struct `pci_dev` and the `struct driver` that is set in the device back into a struct pci_driver. It again verifies that this driver states that it can support this device (which seems to be a redundant extra check for some unknown reason),increments the reference count of the device, and then calls the PCI driver’s probe function with a pointer to the struct pci_dev structure it should bind to.
+
+If the PCI driver’s probe function determines that it can not handle this device for some reason,it returns a negative error value,which is propagated back to the driver core and causes it to continue looking through the list of drivers to match one up with this device. If the probe function can claim the device,it does all the initialization that it needs to do to handle the device properly,and then it returns 0 back up to the driver core. This causes the driver core to add the device to the list of all devices currently bound by this specific driver and creates a symlink within the driver’s directory in sysfs to the device that it is now controlling. This symlink allows users to see exactly which devices are bound to which devices. This can be seen as:
+
+    $ tree /sys/bus/pci
+    /sys/bus/pci/
+    |-- devices
+    | |-- 0000:00:00.0 -> ../../../devices/pci0000:00/0000:00:00.0
+    | |-- 0000:00:00.1 -> ../../../devices/pci0000:00/0000:00:00.1
+    | |-- 0000:00:00.2 -> ../../../devices/pci0000:00/0000:00:00.2
+    | |-- 0000:00:02.0 -> ../../../devices/pci0000:00/0000:00:02.0
+    | |-- 0000:00:04.0 -> ../../../devices/pci0000:00/0000:00:04.0
+    | |-- 0000:00:06.0 -> ../../../devices/pci0000:00/0000:00:06.0
+    | |-- 0000:00:07.0 -> ../../../devices/pci0000:00/0000:00:07.0
+    | |-- 0000:00:09.0 -> ../../../devices/pci0000:00/0000:00:09.0
+    | |-- 0000:00:09.1 -> ../../../devices/pci0000:00/0000:00:09.1
+    | |-- 0000:00:09.2 -> ../../../devices/pci0000:00/0000:00:09.2
+    | |-- 0000:00:0c.0 -> ../../../devices/pci0000:00/0000:00:0c.0
+    | |-- 0000:00:0f.0 -> ../../../devices/pci0000:00/0000:00:0f.0
+    | |-- 0000:00:10.0 -> ../../../devices/pci0000:00/0000:00:10.0
+    | |-- 0000:00:12.0 -> ../../../devices/pci0000:00/0000:00:12.0
+    | |-- 0000:00:13.0 -> ../../../devices/pci0000:00/0000:00:13.0
+    | `-- 0000:00:14.0 -> ../../../devices/pci0000:00/0000:00:14.0
+    `-- drivers
+     |-- ALI15x3_IDE
+     | `-- 0000:00:0f.0 -> ../../../../devices/pci0000:00/0000:00:0f.0
+     |-- ehci_hcd
+     | `-- 0000:00:09.2 -> ../../../../devices/pci0000:00/0000:00:09.2
+     |-- ohci_hcd
+     | |-- 0000:00:02.0 -> ../../../../devices/pci0000:00/0000:00:02.0
+     | |-- 0000:00:09.0 -> ../../../../devices/pci0000:00/0000:00:09.0
+     | `-- 0000:00:09.1 -> ../../../../devices/pci0000:00/0000:00:09.1
+     |-- orinoco_pci
+     | `-- 0000:00:12.0 -> ../../../../devices/pci0000:00/0000:00:12.0
+     |-- radeonfb
+     | `-- 0000:00:14.0 -> ../../../../devices/pci0000:00/0000:00:14.0
+     |-- serial
+     `-- trident
+     `-- 0000:00:04.0 -> ../../../../devices/pci0000:00/0000:00:04.0
+
+<h3 id="14.6.2">14.6.2 添加一个设备</h3>
+
+A PCI device can be removed from a system in a number of different ways. All CardBus devices are really PCI devices in a different physical form factor,and the kernel PCI core does not differenciate between them. Systems that allow the removal or addition of PCI devices while the machine is still running are becoming more popular,and Linux supports them. There is also a fake PCI Hotplug driver that allows developers to test to see if their PCI driver properly handles the removal of a device while the system is running. This module is called fakephp and causes the kernel to think the PCI device is gone,but it does not allow users to physically remove a PCI device from a system that does not have the proper hardware to do so. See the documentation with this driver for more information on how to use it to test your PCI drivers.
+
+The PCI core exerts a lot less effort to remove a device than it does to add it. When a PCI device is to be removed,the pci_remove_bus_device function is called. This function does some PCI-specific cleanups and housekeeping,and then calls the device_unregister function with a pointer to the struct pci_dev’s struct device member.
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
