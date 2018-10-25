@@ -477,27 +477,23 @@ a. 当完成push后，可在gerrit管理界面看到当前提交code review的ch
 
 ![Gerrit_check_commit_result](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/Gerrit_check_commit_result.png)
 
-b. 打击上面提交的Commit，查看提交的详细信息（提交者可通过`Abandon`，放弃本次提交）：
-
-![gerrit_push_result_details](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/gerrit_push_result_details.png)
-
-c. 添加`reviewers`
+b. 添加`reviewers`
 
 ![gerrit_push_result_add_reviewer](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/gerrit_push_result_add_reviewer.png)
 
-d. 结果
+c. 结果
 
 ![gerrit_push_result_after_add_reviewer](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/gerrit_push_result_after_add_reviewer.png)
 
-e. 以下是`Reviewer`的账户，可以看到收到的`Review`请求：
+d. 以下是`Reviewer`的账户，可以看到收到的`Review`请求：
 
 ![gerrit_reviewer_check](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/gerrit_reviewer_check.png)
 
-f. 点击请求，进入其中，
+e. 点击请求，进入其中，
 
 ![gerrit_reviewer_do_review](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/gerrit_reviewer_do_review.png)
 
-g. 完成`Review`并提交代码：
+f. 完成`Review`并提交代码：
 
 ![gerrit_reviewer_complete_review](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/a-%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/git-gerrit-jenkins/images/gerrit_reviewer_complete_review.png)
 
