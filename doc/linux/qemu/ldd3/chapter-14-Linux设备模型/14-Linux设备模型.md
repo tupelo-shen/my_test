@@ -1138,7 +1138,7 @@ PCI子系统声明了一个`struct bus_type`类型的结构，称为`pci_bus_typ
     drv->driver.remove = pci_device_remove;
     drv->driver.kobj.ktype = &pci_driver_kobj_type;
 
-这段代码为驱动程序设置指向`pci_bus_type`结构的总线，`probe` 和 `remove`成员函数指向PCI核心代码层里的函数。为了PCI驱动的属性文件能够正常工作， 驱动的`kobject`的`ktype`被设置为`pci_driver_kobj_type`。然后PCI核心层代码把PCI驱动注册到驱动核心层：
+这段代码将驱动程序指向`pci_bus_type`结构的总线，`probe` 和 `remove`成员函数指向`PCI`核心代码层里的函数。 为了`PCI`驱动的属性文件能够正常工作， 驱动的`kobject`的`ktype`被设置为`pci_driver_kobj_type`。然后PCI核心层代码把`PCI`驱动注册到驱动核心层：
 
     /* 使用驱动核心代码注册 */
     error = driver_register(&drv->driver);
@@ -1164,14 +1164,15 @@ PCI子系统声明了一个`struct bus_type`类型的结构，称为`pci_bus_typ
 
 这个PCI设备与总线相关的成员由PCI核心层完成初始化（`devfn`，`vendor`，`device`，其它成员)，类型为`struct device`的成员`dev`的`parent`指针指向该PCI设备所依存的PCI总线设备。`bus`变量指向`pci_bus_type`结构，然后设置`name`和`bus_id`变量， 基于从PCI设备读到的名称和ID。
 
-在PCI 设备结构被初始化后，调用下面的函数向驱动核心层注册该设备。
+在上面这个PCI设备结构被初始化后，调用下面的函数向驱动核心层注册该设备。
 
     device_register(&dev->dev);
 
-Within the `device_register` function, the driver core initializes a number of the device’s fields, registers the device’s kobject with the kobject core (which causes a hotplug event to be generated, but we discuss that later in this chapter), and then adds the device to the list of devices that are held by the device’s parent. This is done so that all devices can be walked in the proper order, always knowing where in the hierarchy of devices each one lives.
+在函数`device_register`里，驱动核心代码初始化大部分`device`的成员，向`kobject`核心代码注册该设备的`kobject`对象（这会产生一个`hotplug`事件，我们稍后讨论），然后，通过`device`结构中的`parent`成员把该设备添加到设备列表中。这样做是为了所有设备按照正确顺序排列， 总是能够知道每个设备的层次结构。
 
 The device is then added to the bus-specific list of all devices, in this example, the `pci_bus_type` list. Then the list of all drivers that are registered with the bus is walked, and the `match` function of the bus is called for every driver, specifying this device. For the `pci_bus_type` bus,the `match` function was set to point to the `pci_bus_match` function by the PCI core before the device was submitted to the driver core.
 
+然后设备被添加到与总线相关的所有设备的列表中，在本例中，就是`pci_bus_type`列表。然后遍历这个列表中注册的所有驱动，对其每一个调用`match`函数，
 The `pci_bus_match` function casts the `struct device` that was passed to it by the driver core,back into a `struct pci_dev`. It also casts the `struct device_driver` back into a `struct pci_driver` and then looks at the PCI device-specific information of the device and driver to see if the driver states that it can support this kind of device. If the `match` is not successful, the function returns 0 back to the driver core,and the driver core moves on to the next driver in its list.
 
 If the match is successful, the function returns 1 back to the driver core. This causes the driver core to set the driver pointer in the `struct device` to point to this driver, and then it calls the `probe` function that is specified in the `struct device_driver`. Earlier, before the PCI driver was registered with the driver core, the `probe` variable was set to point at the `pci_device_probe` function. This function casts (yet again) the `struct device` back into a struct `pci_dev` and the `struct driver` that is set in the device back into a struct pci_driver. It again verifies that this driver states that it can support this device (which seems to be a redundant extra check for some unknown reason),increments the reference count of the device, and then calls the PCI driver’s probe function with a pointer to the struct pci_dev structure it should bind to.
