@@ -1162,7 +1162,7 @@ PCI子系统声明了一个`struct bus_type`类型的结构，称为`pci_bus_typ
         /* ... */
     };
 
-这个PCI设备与总线相关的成员由PCI核心层完成初始化（`devfn`，`vendor`，`device`，其它成员)，类型为`struct device`的成员`dev`的`parent`指针指向该PCI设备所依存的PCI总线设备。`bus`变量指向`pci_bus_type`结构，然后设置`name`和`bus_id`变量， 基于从PCI设备读到的名称和ID。
+这个PCI设备与总线相关的成员由PCI核心层完成初始化（`devfn`，`vendor`，`device`，及其它成员)，类型为`struct device`的成员`dev`的`parent`指针指向该PCI设备所依存的PCI总线设备。`bus`变量指向`pci_bus_type`结构，然后设置`name`和`bus_id`变量， 基于从PCI设备读到的名称和ID。
 
 在上面这个PCI设备结构被初始化后，调用下面的函数向驱动核心层注册该设备。
 
@@ -1170,13 +1170,13 @@ PCI子系统声明了一个`struct bus_type`类型的结构，称为`pci_bus_typ
 
 在函数`device_register`里，驱动核心代码初始化大部分`device`的成员，向`kobject`核心代码注册该设备的`kobject`对象（这会产生一个`hotplug`事件，我们稍后讨论），然后，通过`device`结构中的`parent`成员把该设备添加到设备列表中。这样做是为了所有设备按照正确顺序排列， 总是能够知道每个设备的层次结构。
 
-The device is then added to the bus-specific list of all devices, in this example, the `pci_bus_type` list. Then the list of all drivers that are registered with the bus is walked, and the `match` function of the bus is called for every driver, specifying this device. For the `pci_bus_type` bus,the `match` function was set to point to the `pci_bus_match` function by the PCI core before the device was submitted to the driver core.
+然后设备被添加到与总线相关的所有设备的列表中，在本例中，就是`pci_bus_type`列表。 然后遍历这个列表中注册的所有驱动， 对其每一个调用`match`函数，指定该设备。对于`pci_bus_type`类型的总线，`match`函数被设置为`pci_bus_match`函数， 其由PCI核心代码提供，在设备被提交给驱动核心代码之前完成设置。
 
-然后设备被添加到与总线相关的所有设备的列表中，在本例中，就是`pci_bus_type`列表。然后遍历这个列表中注册的所有驱动，对其每一个调用`match`函数，
-The `pci_bus_match` function casts the `struct device` that was passed to it by the driver core,back into a `struct pci_dev`. It also casts the `struct device_driver` back into a `struct pci_driver` and then looks at the PCI device-specific information of the device and driver to see if the driver states that it can support this kind of device. If the `match` is not successful, the function returns 0 back to the driver core,and the driver core moves on to the next driver in its list.
+`pci_bus_match`函数将由驱动核心代码传递给它的`struct device`转换回`struct pci_dev`。 还将`struct device_driver`转换回`struct pci_driver`，然后查看设备和驱动的PCI设备特定信息，以查看驱动程序是否可以支持这种设备。 如果`match`不成功，则返回`0`给驱动核心代码，并且驱动核心代码移动到驱动列表中的下一个，继续进行匹配。
 
 If the match is successful, the function returns 1 back to the driver core. This causes the driver core to set the driver pointer in the `struct device` to point to this driver, and then it calls the `probe` function that is specified in the `struct device_driver`. Earlier, before the PCI driver was registered with the driver core, the `probe` variable was set to point at the `pci_device_probe` function. This function casts (yet again) the `struct device` back into a struct `pci_dev` and the `struct driver` that is set in the device back into a struct pci_driver. It again verifies that this driver states that it can support this device (which seems to be a redundant extra check for some unknown reason),increments the reference count of the device, and then calls the PCI driver’s probe function with a pointer to the struct pci_dev structure it should bind to.
 
+如果匹配成功，函数返回1给驱动核心代码。于是，驱动核心代码就把`struct device`结构中的驱动指针指向该驱动，然后调用`struct device_driver`中指定的`probe`函数。
 If the PCI driver’s probe function determines that it can not handle this device for some reason,it returns a negative error value,which is propagated back to the driver core and causes it to continue looking through the list of drivers to match one up with this device. If the probe function can claim the device,it does all the initialization that it needs to do to handle the device properly,and then it returns 0 back up to the driver core. This causes the driver core to add the device to the list of all devices currently bound by this specific driver and creates a symlink within the driver’s directory in sysfs to the device that it is now controlling. This symlink allows users to see exactly which devices are bound to which devices. This can be seen as:
 
     $ tree /sys/bus/pci
@@ -1215,7 +1215,7 @@ If the PCI driver’s probe function determines that it can not handle this devi
      `-- trident
      `-- 0000:00:04.0 -> ../../../../devices/pci0000:00/0000:00:04.0
 
-<h3 id="14.6.2">14.6.2 添加一个设备</h3>
+<h3 id="14.6.2">14.6.2 移除一个设备</h3>
 
 A PCI device can be removed from a system in a number of different ways. All CardBus devices are really PCI devices in a different physical form factor,and the kernel PCI core does not differenciate between them. Systems that allow the removal or addition of PCI devices while the machine is still running are becoming more popular,and Linux supports them. There is also a fake PCI Hotplug driver that allows developers to test to see if their PCI driver properly handles the removal of a device while the system is running. This module is called fakephp and causes the kernel to think the PCI device is gone,but it does not allow users to physically remove a PCI device from a system that does not have the proper hardware to do so. See the documentation with this driver for more information on how to use it to test your PCI drivers.
 

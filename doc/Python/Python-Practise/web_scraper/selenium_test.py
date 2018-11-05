@@ -7,16 +7,9 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH   # 用来居中显示标题
 import sys
 import time
-import reload
+from imp import reload
 
 print(sys.getdefaultencoding())
-reload(sys)
-sys.setdefaultencoding('utf-8')
-print("你好")
-print(sys.getdefaultencoding())
-print("你好")
-
-time.sleep(10)
 
 BROWSER_PATH = \
     'C:\Program Files (x86)\Google\Chrome\Application\chromedriver.exe'
@@ -64,7 +57,7 @@ def save(doc_title, doc_content_list):
     # document.save(u'百度文库-%s.docx' % doc_title)
     document.save(u'1.docx')
     driver.quit()
-    t_title = doc_title.encode('utf-8')
+    t_title = doc_title.decode('utf-8')
     print(u"\n\n已全部写入文件    %s.docx,   请查收。" % t_title)
 
 

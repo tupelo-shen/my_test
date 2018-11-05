@@ -1,77 +1,63 @@
 
-Bus Types 
+###总线类型
 
-Definition
-~~~~~~~~~~
-See the kerneldoc for the struct bus_type.
+#### 1. 定义
+---
 
-int bus_register(struct bus_type * bus);
+对于`struct bus_type`可以查看内核说明文档
 
-
-Declaration
-~~~~~~~~~~~
-
-Each bus type in the kernel (PCI, USB, etc) should declare one static
-object of this type. They must initialize the name field, and may
-optionally initialize the match callback.
-
-struct bus_type pci_bus_type = {
-       .name	= "pci",
-       .match	= pci_bus_match,
-};
-
-The structure should be exported to drivers in a header file:
-
-extern struct bus_type pci_bus_type;
+	int bus_register(struct bus_type * bus);
 
 
-Registration
-~~~~~~~~~~~~
+#### 2. 声明
+---
 
-When a bus driver is initialized, it calls bus_register. This
-initializes the rest of the fields in the bus object and inserts it
-into a global list of bus types. Once the bus object is registered, 
-the fields in it are usable by the bus driver. 
+内核中的每种总线类型（PCI、USB、等）都应该声明一个该总线类型的静态对象。`name`成员必须被初始化，`match`回调函数是否初始化是可选的。
+
+	struct bus_type pci_bus_type = {
+	       .name	= "pci",
+	       .match	= pci_bus_match,
+	};
+
+该结构应该导出到驱动程序的头文件中，但一般情况下，驱动程序都会包含`pci.h`头文件，所以，在`pci.h`头文件中声明为全局变量即可。
+
+	extern struct bus_type pci_bus_type;
+
+#### 3. 注册
+---
+
+当`bus`驱动被初始化后，就会调用`bus_register`。在该函数内，初始化总线对象中的其它成员， 然后将其插入到总线的一个全局列表中。一旦，该总线对象被注册，它的成员对于总线驱动来说就是可用的。
 
 
-Callbacks
-~~~~~~~~~
+#### 4. 回调函数
+---
 
-match(): Attaching Drivers to Devices
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+`match()`: 绑定驱动和设备
 
-The format of device ID structures and the semantics for comparing
-them are inherently bus-specific. Drivers typically declare an array
-of device IDs of devices they support that reside in a bus-specific
-driver structure. 
+The format of device ID structures and the semantics for comparing them are inherently bus-specific. Drivers typically declare an array of device IDs of devices they support that reside in a bus-specific driver structure.
+设备ID结构的格式和比较它们的方法本质上是特定于总线的。驱动通常在特定于总线的`driver`结构中
 
-The purpose of the match callback is provide the bus an opportunity to
-determine if a particular driver supports a particular device by
-comparing the device IDs the driver supports with the device ID of a
-particular device, without sacrificing bus-specific functionality or
-type-safety. 
+The purpose of the match callback is provide the bus an opportunity to determine if a particular driver supports a particular device by comparing the device IDs the driver supports with the device ID of a particular device, without sacrificing bus-specific functionality or type-safety.
 
-When a driver is registered with the bus, the bus's list of devices is
-iterated over, and the match callback is called for each device that
-does not have a driver associated with it. 
+When a driver is registered with the bus, the bus's list of devices is iterated over, and the match callback is called for each device that does not have a driver associated with it.
 
 
 
-Device and Driver Lists
-~~~~~~~~~~~~~~~~~~~~~~~
+#### 5. 设备和驱动列表
+---
 
 The lists of devices and drivers are intended to replace the local
 lists that many buses keep. They are lists of struct devices and
 struct device_drivers, respectively. Bus drivers are free to use the
 lists as they please, but conversion to the bus-specific type may be
-necessary. 
+necessary.
 
 The LDM core provides helper functions for iterating over each list.
 
 int bus_for_each_dev(struct bus_type * bus, struct device * start, void * data,
 		     int (*fn)(struct device *, void *));
 
-int bus_for_each_drv(struct bus_type * bus, struct device_driver * start, 
+int bus_for_each_drv(struct bus_type * bus, struct device_driver * start,
 		     void * data, int (*fn)(struct device_driver *, void *));
 
 These helpers iterate over the respective list, and call the callback
@@ -79,11 +65,11 @@ for each device or driver in the list. All list accesses are
 synchronized by taking the bus's lock (read currently). The reference
 count on each object in the list is incremented before the callback is
 called; it is decremented after the next object has been obtained. The
-lock is not held when calling the callback. 
+lock is not held when calling the callback.
 
 
-sysfs
-~~~~~~~~
+#### 6. sysfs
+
 There is a top-level directory named 'bus'.
 
 Each bus gets a directory in the bus directory, along with two default
@@ -117,7 +103,8 @@ hierarchy:
 
 
 Exporting Attributes
-~~~~~~~~~~~~~~~~~~~~
+---
+
 struct bus_attribute {
 	struct attribute	attr;
 	ssize_t (*show)(struct bus_type *, char * buf);
@@ -125,7 +112,7 @@ struct bus_attribute {
 };
 
 Bus drivers can export attributes using the BUS_ATTR macro that works
-similarly to the DEVICE_ATTR macro for devices. For example, a definition 
+similarly to the DEVICE_ATTR macro for devices. For example, a definition
 like this:
 
 static BUS_ATTR(debug,0644,show_debug,store_debug);
