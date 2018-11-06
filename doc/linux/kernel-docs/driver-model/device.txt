@@ -1,106 +1,87 @@
 
-The Basic Device Structure
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+基本设备结构
+---
 
-See the kerneldoc for the struct device.
+对于`struct device`数据结构可以参考内核参考文档。
 
+编程接口
+---
 
-Programming Interface
-~~~~~~~~~~~~~~~~~~~~~
-The bus driver that discovers the device uses this to register the
-device with the core:
+发现设备的总线驱动使用下面的方法向驱动核心层代码注册设备：
 
-int device_register(struct device * dev);
+    int device_register(struct device * dev);
 
-The bus should initialize the following fields:
+总线应该初始化下面的成员变量：
 
     - parent
     - name
     - bus_id
     - bus
 
-A device is removed from the core when its reference count goes to
-0. The reference count can be adjusted using:
+当引用计数变为0时，设备将从内核中移除。引用计数可以使用以下方法进行调整：
 
-struct device * get_device(struct device * dev);
-void put_device(struct device * dev);
+    struct device * get_device(struct device * dev);
+    void put_device(struct device * dev);
 
-get_device() will return a pointer to the struct device passed to it
-if the reference is not already 0 (if it's in the process of being
-removed already).
+如果引用不是0，则get_device()函数返回一个指向`struct device`的指针（如果它已经被删除）。
 
-A driver can access the lock in the device structure using: 
+驱动程序可以使用以下方法访问设备结构中的锁：
 
-void lock_device(struct device * dev);
-void unlock_device(struct device * dev);
+    void lock_device(struct device * dev);
+    void unlock_device(struct device * dev);
 
 
-Attributes
-~~~~~~~~~~
-struct device_attribute {
-	struct attribute	attr;
-	ssize_t (*show)(struct device *dev, struct device_attribute *attr,
-			char *buf);
-	ssize_t (*store)(struct device *dev, struct device_attribute *attr,
-			 const char *buf, size_t count);
-};
+属性
+---
 
-Attributes of devices can be exported by a device driver through sysfs.
+    struct device_attribute {
+    	struct attribute	attr;
+    	ssize_t (*show)(struct device *dev, struct device_attribute *attr,
+    			char *buf);
+    	ssize_t (*store)(struct device *dev, struct device_attribute *attr,
+    			 const char *buf, size_t count);
+    };
 
-Please see Documentation/filesystems/sysfs.txt for more information
-on how sysfs works.
+设备的属性可以由设备驱动程序通过sysfs导出。
 
-As explained in Documentation/kobject.txt, device attributes must be be
-created before the KOBJ_ADD uevent is generated. The only way to realize
-that is by defining an attribute group.
+有关sysfs如何工作的更多信息，请参阅Documentation/filesystems/sysfs.txt。
 
-Attributes are declared using a macro called DEVICE_ATTR:
+如Documentation/kobject.txt中所述，必须在生成`KOBJ_ADD uevent`之前创建设备属性。 实现这一目标的唯一方法是定义属性组。
 
-#define DEVICE_ATTR(name,mode,show,store)
+使用名为DEVICE_ATTR的宏声明属性：
 
-Example:
+    #define DEVICE_ATTR(name,mode,show,store)
 
-static DEVICE_ATTR(type, 0444, show_type, NULL);
-static DEVICE_ATTR(power, 0644, show_power, store_power);
+例：
 
-This declares two structures of type struct device_attribute with respective
-names 'dev_attr_type' and 'dev_attr_power'. These two attributes can be
-organized as follows into a group:
+    static DEVICE_ATTR(type, 0444, show_type, NULL);
+    static DEVICE_ATTR(power, 0644, show_power, store_power);
 
-static struct attribute *dev_attrs[] = {
-	&dev_attr_type.attr,
-	&dev_attr_power.attr,
-	NULL,
-};
+这声明了2个类型为`struct device_attribute`的结构体，分别命名为`dev_attr_type`和`dev_attr_power`。 这两个属性可以按如下方式组织成一个组：
 
-static struct attribute_group dev_attr_group = {
-	.attrs = dev_attrs,
-};
+    static struct attribute *dev_attrs[] = {
+    	&dev_attr_type.attr,
+    	&dev_attr_power.attr,
+    	NULL,
+    };
 
-static const struct attribute_group *dev_attr_groups[] = {
-	&dev_attr_group,
-	NULL,
-};
+    static struct attribute_group dev_attr_group = {
+    	.attrs = dev_attrs,
+    };
 
-This array of groups can then be associated with a device by setting the
-group pointer in struct device before device_register() is invoked:
+    static const struct attribute_group *dev_attr_groups[] = {
+    	&dev_attr_group,
+    	NULL,
+    };
+
+然后，调用`device_register（）`之前，在`struct device`中设置组指针，可以将此数组与设备关联：
 
       dev->groups = dev_attr_groups;
       device_register(dev);
 
-The device_register() function will use the 'groups' pointer to create the
-device attributes and the device_unregister() function will use this pointer
-to remove the device attributes.
+`device_register()`函数将会使用`groups`指针创建设备属性，而`device_unregister()`函数使用该指针移除设备属性。
 
-Word of warning:  While the kernel allows device_create_file() and
-device_remove_file() to be called on a device at any time, userspace has
-strict expectations on when attributes get created.  When a new device is
-registered in the kernel, a uevent is generated to notify userspace (like
-udev) that a new device is available.  If attributes are added after the
-device is registered, then userspace won't get notified and userspace will
-not know about the new attributes.
+**警告**：
+虽然内核允许随时对设备调用`device_create_file`和`device_remove_file`这两个函数，但是用户空间对于什么时候创建属性有着自己的要求。 当一个新设备被注册到内核里时，就会产生一个uevent事件 ，并通知给用户空间（像`udev`）有一个新设备可用。如果在设备被注册之后添加设备属性， 用户空间得不到通知，用户空间就不会知道新属性。
 
-This is important for device driver that need to publish additional
-attributes for a device at driver probe time.  If the device driver simply
-calls device_create_file() on the device structure passed to it, then
-userspace will never be notified of the new attributes.
+This is important for device driver that need to publish additional attributes for a device at driver probe time.  If the device driver simply calls device_create_file() on the device structure passed to it, then userspace will never be notified of the new attributes.
