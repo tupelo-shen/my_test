@@ -1,168 +1,96 @@
 
-Device Drivers
+## 设备驱动
 
-See the kerneldoc for the struct device_driver.
+对于结构`struct device_driver`查看内核说明文档。
 
+## 结构体device_driver的分配
 
-Allocation
-~~~~~~~~~~
+设备驱动通常都是静态分配`device_driver`对象。虽然在系统中一个驱动往往支持多个设备，但是`struct device_driver`表示整个驱动程序（而不是特定的设备实例）。
 
-Device drivers are statically allocated structures. Though there may
-be multiple devices in a system that a driver supports, struct
-device_driver represents the driver as a whole (not a particular
-device instance).
+## 初始化
 
-Initialization
-~~~~~~~~~~~~~~
+设备驱动必须至少初始化`device_driver`的`name`和`bus`两个成员。还应该初始化`devclass`成员（当它到达时），以在内部获得正确的链接。 还应该尽可能地初始化回调函数，尽管，每个回调函数都是可选的。
 
-The driver must initialize at least the name and bus fields. It should
-also initialize the devclass field (when it arrives), so it may obtain
-the proper linkage internally. It should also initialize as many of
-the callbacks as possible, though each is optional.
+## 声明
 
-Declaration
-~~~~~~~~~~~
+如上所述，`struct device_driver`对象是静态分配的，下面就是一个`eepro100`驱动程序的示例。这个声明仅仅是假设，用来说明使用；
 
-As stated above, struct device_driver objects are statically
-allocated. Below is an example declaration of the eepro100
-driver. This declaration is hypothetical only; it relies on the driver
-being converted completely to the new model. 
+    static struct device_driver eepro100_driver = {
+        .name		= "eepro100",
+        .bus		= &pci_bus_type,
 
-static struct device_driver eepro100_driver = {
-       .name		= "eepro100",
-       .bus		= &pci_bus_type,
-       
-       .probe		= eepro100_probe,
-       .remove		= eepro100_remove,
-       .suspend		= eepro100_suspend,
-       .resume		= eepro100_resume,
-};
+        .probe		= eepro100_probe,
+        .remove		= eepro100_remove,
+        .suspend	= eepro100_suspend,
+        .resume		= eepro100_resume,
+    };
 
-Most drivers will not be able to be converted completely to the new
-model because the bus they belong to has a bus-specific structure with
-bus-specific fields that cannot be generalized. 
+大部分驱动不能直接完整地转化成新驱动模型，因为它们所属的总线结构有自己特殊的成员，没法通用。
 
-The most common example of this are device ID structures. A driver
-typically defines an array of device IDs that it supports. The format
-of these structures and the semantics for comparing device IDs are
-completely bus-specific. Defining them as bus-specific entities would
-sacrifice type-safety, so we keep bus-specific structures around. 
+这最常见的例子就是设备ID结构。驱动通常定义一个数组，保存它所支持的设备ID。这些设备ID结构的格式和比较设备ID的方法完全与总线相关。为了尽量保证
 
-Bus-specific drivers should include a generic struct device_driver in
-the definition of the bus-specific driver. Like this:
+所以，某个总线的驱动结构应该包含通用的`struct device_driver`，就像下面这样：
 
-struct pci_driver {
-       const struct pci_device_id *id_table;
-       struct device_driver	  driver;
-};
+    struct pci_driver {
+        const struct pci_device_id *id_table;
+        struct device_driver	  driver;
+    };
 
-A definition that included bus-specific fields would look like
-(using the eepro100 driver again):
+包含了与总线相关的成员之后的总线驱动实例应该如下所示：
 
-static struct pci_driver eepro100_driver = {
-       .id_table       = eepro100_pci_tbl,
-       .driver	       = {
-		.name		= "eepro100",
-		.bus		= &pci_bus_type,
-		.probe		= eepro100_probe,
-		.remove		= eepro100_remove,
-		.suspend	= eepro100_suspend,
-		.resume		= eepro100_resume,
-       },
-};
+    static struct pci_driver eepro100_driver = {
+        .id_table       = eepro100_pci_tbl,
+        .driver	       = {
+            .name		= "eepro100",
+            .bus		= &pci_bus_type,
+            .probe		= eepro100_probe,
+            .remove		= eepro100_remove,
+            .suspend	= eepro100_suspend,
+            .resume		= eepro100_resume,
+        },
+    };
 
-Some may find the syntax of embedded struct initialization awkward or
-even a bit ugly. So far, it's the best way we've found to do what we want...
+有些人可能认为嵌入式结构体的初始化有些丑陋，但是，这是我们想到的最好方法...
 
-Registration
-~~~~~~~~~~~~
+## 注册
 
-int driver_register(struct device_driver * drv);
+    int driver_register(struct device_driver * drv);
 
-The driver registers the structure on startup. For drivers that have
-no bus-specific fields (i.e. don't have a bus-specific driver
-structure), they would use driver_register and pass a pointer to their
-struct device_driver object. 
+驱动程序在启动时，注册设备驱动结构。对于没有特定于总线的成员的驱动程序，使用`driver_register`注册即可，传递指向结构`struct device_driver`的指针。
 
-Most drivers, however, will have a bus-specific structure and will
-need to register with the bus using something like pci_driver_register.
+但是，对于大部分使用与总线相关的数据结构的驱动程序来说，就需要使用类似于`pci_driver_register`的函数进行注册。
 
-It is important that drivers register their driver structure as early as
-possible. Registration with the core initializes several fields in the
-struct device_driver object, including the reference count and the
-lock. These fields are assumed to be valid at all times and may be
-used by the device model core or the bus driver.
+主要的是，驱动程序应尽可能早地注册它们的驱动数据结构。向驱动核心层注册，会初始化结构`device_driver`中的几个成员，包括引用计数器和`lock`。 假设这些成员一直有效且可以由设备模型核心层或总线驱动程序使用。
+
+## 总线驱动的变换
+
+通过定义封装函数，可以轻松地过渡到新的驱动模型。驱动程序完全忽略掉通用的驱动数据结构，让总线的这些特定的封装函数去填充对应的成员。对于回调函数，总线可以定义特定于总线的回调函数，用其代替通用驱动数据结构中的回调函数。
+
+该解决方案仅仅是暂时的。为了在驱动中获取类信息，无论如何都必须修改驱动。因为转化驱动为新驱动模型应该会减少基础结构的复杂性和代码大小，所以还是推荐，在添加类信息时，将其转换。
+
+## 驱动数据结构的访问
+
+一旦数据对象被注册，就可以访问对象的一些常用成员了，像`lock`和设备列表。
+
+    int driver_for_each_dev(struct device_driver * drv, void * data,
+                            int (*callback)(struct device * dev, void * data));
+
+`devices`成员是绑定到该驱动的所有设备的列表。内核驱动模型（LDM）核心层提供一个辅助函数，操作驱动控制的所有设备。如上所示，这个辅助函数， 在每个设备节点访问时锁定驱动，并在访问每个设备时对其进行适当的引用计数。
 
 
-Transition Bus Drivers
-~~~~~~~~~~~~~~~~~~~~~~
+## sysfs
 
-By defining wrapper functions, the transition to the new model can be
-made easier. Drivers can ignore the generic structure altogether and
-let the bus wrapper fill in the fields. For the callbacks, the bus can
-define generic callbacks that forward the call to the bus-specific
-callbacks of the drivers. 
+当驱动被注册时，在`sysfs`目录下的与其相关的总线目录下就会创建一个目录。在这个目录里，驱动会产生一个与用户空间交互的接口，用其控制驱动程序的操作。比如，切换驱动程序里的调试输出。
 
-This solution is intended to be only temporary. In order to get class
-information in the driver, the drivers must be modified anyway. Since
-converting drivers to the new model should reduce some infrastructural
-complexity and code size, it is recommended that they are converted as
-class information is added.
+## 回调函数
 
-Access
-~~~~~~
+	int	(*probe)(struct device * dev);
 
-Once the object has been registered, it may access the common fields of
-the object, like the lock and the list of devices. 
+调用`probe()`函数时，锁定总线的读写信号量`rwsem`，将驱动程序的部分绑定到设备上。驱动通常使用`container_of()`方法，根据`dev`得到总线的类型，这是在`probe()`和其它程序中完成的。 获得的总线类型数据结构里，会提供设备资源数据，比如`pci_dev.resource[]`或者`platform_device.resources`,其除了用在`dev->platform_data`之外，还被用来初始化驱动。
 
-int driver_for_each_dev(struct device_driver * drv, void * data, 
-		        int (*callback)(struct device * dev, void * data));
+This callback holds the driver-specific logic to bind the driver to a given device.  That includes verifying that the device is present, that it's a version the driver can handle, that driver data structures can be allocated and initialized, and that any hardware can be initialized. Drivers often store a pointer to their state with dev_set_drvdata(). When the driver has successfully bound itself to that device, then probe() returns zero and the driver model code will finish its part of binding the driver to that device.
 
-The devices field is a list of all the devices that have been bound to
-the driver. The LDM core provides a helper function to operate on all
-the devices a driver controls. This helper locks the driver on each
-node access, and does proper reference counting on each device as it
-accesses it. 
-
-
-sysfs
-~~~~~
-
-When a driver is registered, a sysfs directory is created in its
-bus's directory. In this directory, the driver can export an interface
-to userspace to control operation of the driver on a global basis;
-e.g. toggling debugging output in the driver.
-
-A future feature of this directory will be a 'devices' directory. This
-directory will contain symlinks to the directories of devices it
-supports.
-
-
-
-Callbacks
-~~~~~~~~~
-
-	int	(*probe)	(struct device * dev);
-
-The probe() entry is called in task context, with the bus's rwsem locked
-and the driver partially bound to the device.  Drivers commonly use
-container_of() to convert "dev" to a bus-specific type, both in probe()
-and other routines.  That type often provides device resource data, such
-as pci_dev.resource[] or platform_device.resources, which is used in
-addition to dev->platform_data to initialize the driver.
-
-This callback holds the driver-specific logic to bind the driver to a
-given device.  That includes verifying that the device is present, that
-it's a version the driver can handle, that driver data structures can
-be allocated and initialized, and that any hardware can be initialized.
-Drivers often store a pointer to their state with dev_set_drvdata().
-When the driver has successfully bound itself to that device, then probe()
-returns zero and the driver model code will finish its part of binding
-the driver to that device.
-
-A driver's probe() may return a negative errno value to indicate that
-the driver did not bind to this device, in which case it should have
-released all resources it allocated.
+A driver's probe() may return a negative errno value to indicate that the driver did not bind to this device, in which case it should have released all resources it allocated.
 
 	int 	(*remove)	(struct device * dev);
 
@@ -173,7 +101,7 @@ in other cases.
 
 It is up to the driver to determine if the device is present or
 not. It should free any resources allocated specifically for the
-device; i.e. anything in the device's driver_data field. 
+device; i.e. anything in the device's driver_data field.
 
 If the device is still present, it should quiesce the device and place
 it into a supported low-power state.
@@ -187,28 +115,25 @@ suspend is called to put the device in a low power state.
 Resume is used to bring a device back from a low power state.
 
 
-Attributes
-~~~~~~~~~~
-struct driver_attribute {
-        struct attribute        attr;
-        ssize_t (*show)(struct device_driver *driver, char *buf);
-        ssize_t (*store)(struct device_driver *, const char * buf, size_t count);
-};
+## 驱动属性
 
-Device drivers can export attributes via their sysfs directories. 
-Drivers can declare attributes using a DRIVER_ATTR macro that works
-identically to the DEVICE_ATTR macro. 
+    struct driver_attribute {
+            struct attribute        attr;
+            ssize_t (*show)(struct device_driver *driver, char *buf);
+            ssize_t (*store)(struct device_driver *, const char * buf, size_t count);
+    };
+
+Device drivers can export attributes via their sysfs directories. Drivers can declare attributes using a DRIVER_ATTR macro that works identically to the DEVICE_ATTR macro.
 
 Example:
 
-DRIVER_ATTR(debug,0644,show_debug,store_debug);
+    DRIVER_ATTR(debug,0644,show_debug,store_debug);
 
-This is equivalent to declaring:
+这相当于：
 
-struct driver_attribute driver_attr_debug;
+    struct driver_attribute driver_attr_debug;
 
-This can then be used to add and remove the attribute from the
-driver's directory using:
+This can then be used to add and remove the attribute from the driver's directory using:
 
-int driver_create_file(struct device_driver *, const struct driver_attribute *);
-void driver_remove_file(struct device_driver *, const struct driver_attribute *);
+    int driver_create_file(struct device_driver *, const struct driver_attribute *);
+    void driver_remove_file(struct device_driver *, const struct driver_attribute *);

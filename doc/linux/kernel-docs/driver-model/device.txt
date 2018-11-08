@@ -31,8 +31,7 @@
     void unlock_device(struct device * dev);
 
 
-属性
----
+## 设备属性
 
     struct device_attribute {
     	struct attribute	attr;
@@ -84,4 +83,4 @@
 **警告**：
 虽然内核允许随时对设备调用`device_create_file`和`device_remove_file`这两个函数，但是用户空间对于什么时候创建属性有着自己的要求。 当一个新设备被注册到内核里时，就会产生一个uevent事件 ，并通知给用户空间（像`udev`）有一个新设备可用。如果在设备被注册之后添加设备属性， 用户空间得不到通知，用户空间就不会知道新属性。
 
-This is important for device driver that need to publish additional attributes for a device at driver probe time.  If the device driver simply calls device_create_file() on the device structure passed to it, then userspace will never be notified of the new attributes.
+这对于在驱动程序探测（`probe`）阶段，需要为设备添加属性时是非常重要的。如果设备驱动仅仅为传递给它的`device structure`调用`device_create_file()`函数，则用户空间永远不会被通知新的属性。
