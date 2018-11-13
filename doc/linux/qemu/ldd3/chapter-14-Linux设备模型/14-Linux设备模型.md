@@ -42,7 +42,7 @@
     - [14.6.4 移除一个驱动](#14.6.4)
 * [14.7 热插拔](#14.7)
     - [14.7.1 动态设备](#14.7.1)
-    - [14.7.2 /sbin/hotplug](#14.7.2)
+    - [14.7.2 /sbin/hotplug工具](#14.7.2)
         + [14.7.2.1 IEEE1394（火线）](#14.7.2.1)
         + [14.7.2.2 网络](#14.7.2.2)
         + [14.7.2.3 PCI总线](#14.7.2.3)
@@ -353,7 +353,7 @@ This macro creates a struct subsystem with a name formed by taking the name give
 
 到目前为止，使用我们介绍的机制，已经可以在`sysfs`创建空的目录了。但是，我们感兴趣的不会就这些，所以，是时候介绍属性了。
 
-<h3 id="14.2.1">14.2.1 缺省属性</h3>
+<h3 id="14.2.1">14.2.1 默认属性</h3>
 
 当创建时，每一个`kobject`都会被设定一组默认属性。这些属性使用结构体`kobj_type`保存。这个结构体看起来如下所示：
 
@@ -405,7 +405,7 @@ This macro creates a struct subsystem with a name formed by taking the name give
 
 <h3 id="14.2.2">14.2.2 非缺省属性</h3>
 
-在许多情况下，`kobject`对象类型的`default_attrs`成员描述了该对象将永远拥有的属性。但是，在设计上，这不是一个严格限制； 我们可以根据医院，随意对`kobject`的属性进行添加和删除。如果你想添加一个新的`attribute`到`kobject`的`sysfs`目录上，只需简单的填充一个`attribute`，把它传递给下面的函数即可：
+在许多情况下，`kobject`对象类型的`default_attrs`成员描述了该对象将永远拥有的属性。但是，在设计上，这不是一个严格限制； 我们可以根据意愿，随意对`kobject`的属性进行添加和删除。如果你想添加一个新的`attribute`到`kobject`的`sysfs`目录上，只需简单的填充一个`attribute`，把它传递给下面的函数即可：
 
     int sysfs_create_file(struct kobject *kobj, struct attribute *attr);
 
@@ -522,7 +522,7 @@ This macro creates a struct subsystem with a name formed by taking the name give
         int (*match)(struct device *dev, struct device_driver *drv);
         struct device *(*add)(struct device * parent, char * bus_id);
         int (*hotplug) (struct device *dev, char **envp,
-        int num_envp, char *buffer, int buffer_size);
+            int num_envp, char *buffer, int buffer_size);
         /* 省略 */
     };
 
@@ -1225,11 +1225,80 @@ The PCI core exerts a lot less effort to remove a device than it does to add it.
 
 <h2 id="14.7">14.7 热插拔</h2>
 
+有2种不同的视角查看“热插拔”。从内核的角度来说，就是硬件、内核、内核驱动之间的一种交互；而从用户的角度来说，就是内核和用户空间之间的交互。内核调用小工具`/sbin/hotplug`，通知用户空间内核中发生的“热插拔事件”的类型。
+
+<h3 id="14.7.1">14.7.1 动态设备</h3>
+
+`hotplug`这个术语主要用于，描述系统上电后设备从系统上添加、删除的事件的。这与早期的计算机系统有很大不同，在那时候，程序员只需在系统启动阶段扫描所有设备即可，因为一般只在断电后才会移除设备。随着USB、CardBus、 PCMCIA、 IEEE1394、 和PCI热插拔控制器的出现，无论何时添加删除设备，Linux系统必须保证能够正常运行。这增加了设备驱动开发者的负担，因为他们要负责处理设备添加移除时的程序处理。
+
+每种不同的总线类型以不同的方式处理设备的丢失。例如，PCI、CardBus或PCMCIA被从系统上移除时，在通过`remove`函数通知驱动程序之前， 通常需要一段时间。 所以，PCI驱动应该总是检查从PCI总线读取的数据值，并且正确的处理值为`0xff`的时候。
+
+我们查看`drivers/usb/host/ehci-hcd.c`文件中的一段驱动代码，它是USB2.0（高速）控制器卡的PCI驱动程序。在握手处理过程中， 下面的代码检测控制器卡是否移除：
+
+    result = readl(ptr);
+    if (result = = ~(u32)0) /* card removed */
+        return -ENODEV;
+
+对于USB驱动程序，当从系统中删除绑定了USB驱动程序的设备时，提交给设备的任何挂起的urb都会因错误`-ENODEV`而失败。 驱动程序需要识别此错误, 并正确清理任何挂起的I/O（如果发生）。
+
+可热插拔的设备不局限于传统的设备，比如，鼠标，键盘，和网卡。现在有许多系统支持CPU和内存卡的添加和移除。幸运的是，这些核心设备的添加一般Linux内核完成，驱动开发者不需要特别关注。
+
+<h3 id="14.7.2">14.7.2 /sbin/hotplug工具</h3>
+
+如本章先前提到的，无论何时，设备从系统上被添加或移除，`hotplug`事件就会产生。这意味着内核调用用户空间程序`/sbin/hotplug`。这个程序通常就是一个非常小的bash脚本，它只是将执行传递给放在`/etc/hotplug.d/`目录下的其它程序。对于大多数Linux发行版，此脚本如下所示：
+
+    DIR="/etc/hotplug.d"
+    for I in "${DIR}/$1/"*.hotplug "${DIR}/"default/*.hotplug ; do
+        if [ -f $I ]; then
+            test -x $I && $I $1 ;
+        fi
+    done
+    exit 1
+
+换句话说，脚本搜索所有带有`.hotplug`后缀的程序，查找可能对此事件感兴趣的程序并调用它们，并传递给它们内核设置的许多不同的环境变量。 更多细节可以参考程序中关于`/sbin/hotplug`如何工作的注释和`hotplug(8)`man手册。
+
+如前所述，只要创建或销毁内核对象，就会调用`sbin/hotplug`。使用事件的名称即可以在命令行调用`hotplug`程序。 所涉及的内核和具体的子系统也会设置一系列环境变量（如下所述），其中，包含刚刚发生的事件的信息。`hotplug`程序使用这些变量来确定内核中发生的事情，以及是否应该发生任何特定操作。
+
+传递给`/sbin/hotplug`的命令行参数和`hotplug`热插拔事件相关，由分配给`kobject`的`kset`决定。可以通过调用`name`函数来设置此名称， 该函数是本章前面介绍的`kset`的`hotplug_ops`结构的一部分；如果该函数不存在或从未被调用，则该名称是`kset`本身的名称。
+
+一直为`sbin/hotplug`程序设置的默认环境变量是：
+
+1. ACTION
+
+    The string add or remove,depending on whether the object in question was just created or destroyed.
+
+2. DEVPATH
+
+    A directory path,within the sysfs filesystem,that points to the kobject that is being either created or destroyed. Note that the mount point of the sysfs filesystem is not added to this path,so it is up to the user-space program to determine that.
+
+3. SEQNUM
+
+    The sequence number for this hotplug event. The sequence number is a 64-bit number that is incremented for every hotplug event that is generated. This allows user space to sort the hotplug events in the order in which the kernel generates them, as it is possible for a user-space program to be run out of order.
+
+4. SUBSYSTEM
+
+    A number of the different bus subsystems all add their own environment variables to the /sbin/hotplug call,when devices associated with the bus are added or removed from the system. They do this in their hotplug callback that is specified in the struct kset_hotplug_ops assigned to their bus (as described in the section “Hotplug Operations”). This allows user space to be able to automatically load any necessary module that might be needed to control the device that has been found by the bus. Here is a list of the different bus types and what environment variables they add to the /sbin/hotplug call.
+
+<h4 id="14.7.2.7">14.7.2.1 IEEE1394 (FireWire)</h4>
+
+<h4 id="14.7.2.2">14.7.2.2 网络</h4>
+
+<h4 id="14.7.2.3">14.7.2.3 PCI</h4>
+
+<h4 id="14.7.2.4">14.7.2.4 Input</h4>
+
+<h4 id="14.7.2.5">14.7.2.5 USB</h4>
+
+<h4 id="14.7.2.5">14.7.2.6 SCSI</h4>
 
 
 <h4 id="14.7.2.7">14.7.2.7 笔记本坞站</h4>
 
 如果一个“即插即用”的笔记本坞站从运行中的Linux系统上被添加或移除，就会产生“热插拔”时间。`/sbin/hotplug`将参数名称和`SUBSYSTEM`环境变量设置为`dock`。其它环境变量不用设置。
+
+<h3 id="14.7.3">14.7.3 使用/sbin/hotplug工具</h3>
+
+Now that the Linux kernel is calling /sbin/hotplug for every device added and removed from the kernel, a number of very useful tools have been created in user space that take advantage of this. Two of the most popular tools are the Linux Hotplug scripts and udev.
 
 
 <h2 id="14.8">14.8 处理固件</h2>
