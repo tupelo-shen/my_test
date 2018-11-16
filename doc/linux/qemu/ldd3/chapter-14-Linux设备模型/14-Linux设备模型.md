@@ -53,10 +53,10 @@
         + [14.7.2.8 S/390和zSeries](#14.7.2.8)
     - [14.7.3 使用hotplug](#14.7.3)
         + [14.7.3.1 Linux热插拔脚本](#14.7.3.1)
-        + [14.7.3.2 udev](#14.7.3.1)
+        + [14.7.3.2 udev](#14.7.3.2)
 * [14.8 处理固件](#14.8)
     - [14.8.1 内核固件接口](#14.8.1)
-    - [14.8.2 如何工作？](#14.8.1)
+    - [14.8.2 如何工作？](#14.8.2)
 
 ***
 
@@ -1229,7 +1229,7 @@ The PCI core exerts a lot less effort to remove a device than it does to add it.
 
 <h3 id="14.7.1">14.7.1 动态设备</h3>
 
-`hotplug`这个术语主要用于，描述系统上电后设备从系统上添加、删除的事件的。这与早期的计算机系统有很大不同，在那时候，程序员只需在系统启动阶段扫描所有设备即可，因为一般只在断电后才会移除设备。随着USB、CardBus、 PCMCIA、 IEEE1394、 和PCI热插拔控制器的出现，无论何时添加删除设备，Linux系统必须保证能够正常运行。这增加了设备驱动开发者的负担，因为他们要负责处理设备添加移除时的程序处理。
+`hotplug`这个术语主要用于，描述系统上电后设备从系统上添加、删除事件的。这与早期的计算机系统有很大不同，在那时候，程序员只需在系统启动阶段扫描所有设备即可，因为一般只在断电后才会移除设备。随着USB、CardBus、 PCMCIA、 IEEE1394、 和PCI热插拔控制器的出现，无论何时添加删除设备，Linux系统必须保证能够正常运行。这增加了设备驱动开发者的负担，因为他们要负责处理设备添加移除时的程序处理。
 
 每种不同的总线类型以不同的方式处理设备的丢失。例如，PCI、CardBus或PCMCIA被从系统上移除时，在通过`remove`函数通知驱动程序之前， 通常需要一段时间。 所以，PCI驱动应该总是检查从PCI总线读取的数据值，并且正确的处理值为`0xff`的时候。
 
@@ -1255,7 +1255,7 @@ The PCI core exerts a lot less effort to remove a device than it does to add it.
     done
     exit 1
 
-换句话说，脚本搜索所有带有`.hotplug`后缀的程序，查找可能对此事件感兴趣的程序并调用它们，并传递给它们内核设置的许多不同的环境变量。 更多细节可以参考程序中关于`/sbin/hotplug`如何工作的注释和`hotplug(8)`man手册。
+换句话说，脚本搜索所有带有`.hotplug`后缀的程序，查找可能对此事件感兴趣的程序并调用它们，并传递给它们内核设置的许多不同的环境变量。 更多细节可以参考程序中关于`/sbin/hotplug`工作原理的说明和`hotplug(8)`man手册。
 
 如前所述，只要创建或销毁内核对象，就会调用`sbin/hotplug`。使用事件的名称即可以在命令行调用`hotplug`程序。 所涉及的内核和具体的子系统也会设置一系列环境变量（如下所述），其中，包含刚刚发生的事件的信息。`hotplug`程序使用这些变量来确定内核中发生的事情，以及是否应该发生任何特定操作。
 
@@ -1269,19 +1269,50 @@ The PCI core exerts a lot less effort to remove a device than it does to add it.
 
 2. DEVPATH
 
-    A directory path,within the sysfs filesystem,that points to the kobject that is being either created or destroyed. Note that the mount point of the sysfs filesystem is not added to this path,so it is up to the user-space program to determine that.
+    `sysfs`文件系统中的目录路径，指向要创建或销毁的`kobject`。 请注意，`sysfs`文件系统的挂载点未添加到此路径，因此由用户空间程序确定。
 
 3. SEQNUM
 
-    The sequence number for this hotplug event. The sequence number is a 64-bit number that is incremented for every hotplug event that is generated. This allows user space to sort the hotplug events in the order in which the kernel generates them, as it is possible for a user-space program to be run out of order.
+    热插拔事件的序列号。 序列号是一个64位数字，对于生成的每个热插拔事件，该数字都会递增。 这允许用户空间按照内核生成它们的顺序对`hotplug`事件进行排序，因为用户空间程序可能无序运行。
 
 4. SUBSYSTEM
 
-    A number of the different bus subsystems all add their own environment variables to the /sbin/hotplug call,when devices associated with the bus are added or removed from the system. They do this in their hotplug callback that is specified in the struct kset_hotplug_ops assigned to their bus (as described in the section “Hotplug Operations”). This allows user space to be able to automatically load any necessary module that might be needed to control the device that has been found by the bus. Here is a list of the different bus types and what environment variables they add to the /sbin/hotplug call.
+    当从系统添加或删除与总线关联的设备时，不同的总线子系统将自己的环境变量添加到`/sbin/hotplug`调用中。 它们在分配给其总线的`struct kset_hotplug_ops`中设置的`hotplug`回调中执行此操作（如[“热插拔操作”](#14.3.1)部分所述）。 这允许用户空间能够自动加载可能需要的任何模块，来控制总线发现的设备。 以下列出了不同的总线类型以及它们添加到`/sbin/hotplug`调用的环境变量。
 
 <h4 id="14.7.2.7">14.7.2.1 IEEE1394 (FireWire)</h4>
 
+`IEEE1394`接口是苹果公司开发的串行标准，俗称`火线`接口（`firewire`）。同USB一样，`IEEE1394`也支持外设热插拔， 可为外设提供电源， 省去了外设自带的电源，能连接多个不同设备，支持同步数据传输。
+
+`IEEE1394`总线上的设备都将`/sbin/hotplug`参数`name`和`SUBSYSTEM`环境变量设置为值`ieee1394`。 `ieee1394`子系统还设置下面4个环境变量：
+
+1. VENDOR_ID
+
+    IEEE1394设备的24位供应商ID
+
+2. MODEL_ID
+
+    IEEE1394设备的24位模块ID
+
+3. GUID
+
+    64位GUID
+
+4. SPECIFIER_ID
+
+    24位值，指定此设备的协议规范的所有者
+
+5. VERSION
+
+    指定此设备的协议规范的版本
+
+
 <h4 id="14.7.2.2">14.7.2.2 网络</h4>
+
+当设备在内核中注册或取消注册时，所有网络设备都会创建一个`hotplug`事件。 `/sbin/hotplug`将参数名称和`SUBSYSTEM`环境变量设置为`net`，且只添加以下环境变量，即可：
+
+* INTERFACE
+
+    从内核注册或取消注册的接口名称。比如，lo或eth0。
 
 <h4 id="14.7.2.3">14.7.2.3 PCI</h4>
 
@@ -1298,7 +1329,162 @@ The PCI core exerts a lot less effort to remove a device than it does to add it.
 
 <h3 id="14.7.3">14.7.3 使用/sbin/hotplug工具</h3>
 
-Now that the Linux kernel is calling /sbin/hotplug for every device added and removed from the kernel, a number of very useful tools have been created in user space that take advantage of this. Two of the most popular tools are the Linux Hotplug scripts and udev.
+既然Linux内核为添加和删除的每个设备调用`/sbin/hotplug`，那么在用户空间中创建了许多非常有用的工具来利用这一点。 两个最流行的工具是Linux `Hotplug`脚本和`udev`。
 
+<h4 id="14.7.3.1">14.7.3.1 Linux热插拔脚本</h4>
+
+The Linux hotplug scripts started out as the very first user of the /sbin/hotplug call. These scripts look at the different environment variables that the kernel sets to describe the device that was just discovered and then tries to find a kernel module that matches up with that device.
+
+As has been described before, when a driver uses the MODULE_DEVICE_TABLE macro, the program, depmod, takes that information and creates the files located in `/lib/module/KERNEL_VERSION/modules.*map`. The * is different, depending on the bus type that the driver supports. Currently, the module map files are generated for drivers that work for devices that support the PCI, USB, IEEE1394, INPUT, ISAPNP, and CCW subsystems.
+
+The hotplug scripts use these module map text files to determine what module to try to load to support the device that was recently discovered by the kernel. They load all modules and do not stop at the first match, in order to let the kernel work out what module works best. These scripts do not unload any modules when devices are removed. If they were to try to do that, they could accidentally shut down devices that were also controlled by the same driver of the device that was removed.
+
+Note, now that the modprobe program can read the MODULE_DEVICE_TABLE information directly from the modules without the need of the module map files, the hotplug scripts might be reduced to a small wrapper around the modprobe program.
+
+<h4 id="14.7.3.2">14.7.3.2 udev</h4>
+
+在内核中创建统一的设备模型的主要原因之一就是允许用户空间能够动态地管理`/dev`设备树。先前，实现这些管理工作的是`devfs`，但是，由于缺乏主动维护者及存在着不可修复的核心bug，这部分代码渐渐被废弃了。许多内核开发者意识到，只要所有的设备信息被导出到用户空间，就能够实现对`/dev`设备树所需要的管理。
+
+`devfs`在设计上就有一些缺陷。比如，要求修改每个设备驱动以支持它，且需要设备驱动指定它在`/dev`结构目录下的名称和存放位置。而且也不能正确地处理动态主、次设备号，并且它不允许用户空间已较为简单的方式重新命名设备，这也就是说，设备的命名策略位于内核中，而不是用户空间。这显然与Linux所推崇的基本策略与机制原则相违背。
+
+随着linux内核被安装到大型服务器上，许多用户遇到了如何管理大量设备的问题。具有超过10000个独立设备的磁盘驱动阵列就带来一个非常困难的任务，如何保证每个具体的磁盘设备始终以相同的名称命名，无论设备放在磁盘阵列的哪个位置，又或者何时被内核发现。在桌面用户那里也同样面临相同的问题，比如，同时插入两个USB打印机，在系统重启的时候，无法保证命名为`/dev/lpt0`的设备不会改变，而被指定为其它的打印机。
+
+于是，`udev`诞生了。它依赖于通过`sysfs`导出到用户空间的所有设备信息，以及`/sbin/hotplug`通知添加或删除设备的信息。 这样就可以在内核之外执行策略，比如，为设备指定名称。这样就遵循了Linux策略和机制分离的基本思想，而且每个设备的名称就有了很大的灵活性。
+
+有关如何使用udev以及如何配置它的更多信息，请参阅发行版中udev软件包附带的文档。
+
+为了`udev`能够正常工作，设备驱动程序所需做的工作就是，确保分配给设备的主、次设备号都是通过`sysfs`导出到用户空间的。对于使用子系统为其分配主、次设备号的任何驱动程序，这部分工作都已由子系统完成，所以驱动程序不必执行任何操作。能够实现这种操作的子系统，如tty，misc，usb，input，scsi，block，i2c，network和frame buffer subsystems。如果驱动程序是通过`cdev_init`函数或较旧的`register_chrdev`函数来处理自己的主，次设备号，则需要修改驱动程序，以便使`udev`能够正常使用它。
+
+`udev`在`sysfs`的`/class/`目录树下查找名为`dev`的文件，以确定在内核通过`/sbin/hotplug`接口调用设备时为其分配的主、次设备号。设备驱动程序只需要为其控制的每个设备创建该文件，即可。 `class_simple`接口通常是最简单的实现方法。
+
+正如“[class_simple接口](#14.5.1)”一节所述，使用`class_simple`接口的第一步是，创建一个`struct class_simple`的结构体，并调用class_simple_create函数：
+
+    static struct class_simple *foo_class;
+    ...
+    foo_class = class_simple_create(THIS_MODULE, "foo");
+    if (IS_ERR(foo_class)) {
+        printk(KERN_ERR "Error creating foo class.\n");
+        goto error;
+    }
+
+这段代码创建了一个目录：`/sys/class/foo`。
+
+每当驱动发现新设备时，并且，如果你是按照第3章所示那样，指定的次设备号，驱动应该调用`class_simple_device_add`函数：
+
+    class_simple_device_add(foo_class, MKDEV(FOO_MAJOR, minor), NULL, "foo%d", minor);
+
+这段代码在`/sys/class/foo`目录下创建了一个子目录，被命名为`fooN`，在这里，`N`就是为设备指定的次设备号。 在这里创建了一个名为`dev`，这正是`udev`为设备创建设备节点所需要的文件。
+
+当驱动和设备解除绑定，且放弃附加的次设备号的时候，调用`class_simple_device_remove`函数，移除该设备在`sysfs`中的条目：
+
+    class_simple_device_remove(MKDEV(FOO_MAJOR, minor));
+
+稍后，移除整个驱动的时候，调用`class_simple_destroy`删除你之前调用`class_simple_create`创建的`class`：
+
+    class_simple_destroy(foo_class);
+
+通过调用`class_simple_device_add`创建的`dev`文件由主要和次要数字组成，由`：`字符分隔。 如果您的驱动程序不想使用`class_simple`接口，而是在子目录的`class`目录中提供其它文件，请使用`print_dev_t`函数正确格式化特定设备的主、次设备号。
 
 <h2 id="14.8">14.8 处理固件</h2>
+
+As a driver author,you may find yourself confronted with a device that must have
+firmware downloaded into it before it functions properly. The competition in many
+parts of the hardware market is so intense that even the cost of a bit of EEPROM for
+the device’s controlling firmware is more than the manufacturer is willing to spend.
+So the firmware is distributed on a CD with the hardware,and the operating system
+is charged with conveying the firmware to the device itself.
+
+You may be tempted to solve the firmware problem with a declaration like this:
+
+    static char my_firmware[ ] = { 0x34, 0x78, 0xa4, ... };
+
+That approach is almost certainly a mistake,however. Coding firmware into a driver
+bloats the driver code,makes upgrading the firmware hard,and is very likely to run
+into licensing problems. It is highly unlikely that the vendor has released the firmware image under the GPL,so mixing it with GPL-licensed code is usually a mistake.
+For this reason,drivers containing wired-in firmware are unlikely to be accepted into
+the mainline kernel or included by Linux distributors.
+
+<h3 id="14.8.1">14.8.1 内核固件接口</h3>
+
+The proper solution is to obtain the firmware from user space when you need it.
+Please resist the temptation to try to open a file containing firmware directly from
+kernel space,however; that is an error-prone operation,and it puts policy (in the
+form of a file name) into the kernel. Instead,the correct approach is to use the firmware interface, which was created just for this purpose:
+
+    #include <linux/firmware.h>
+    int request_firmware(const struct firmware **fw, char *name,
+                        struct device *device);
+
+A call to request_firmware requests that user space locate and provide a firmware
+image to the kernel; we look at the details of how it works in a moment. The name
+should identify the firmware that is desired; the normal usage is the name of the
+firmware file as provided by the vendor. Something like my_firmware.bin is typical. If
+the firmware is successfully loaded,the return value is 0 (otherwise the usual error
+code is returned), and the fw argument is pointed to one of these structures:
+
+    struct firmware {
+        size_t size;
+        u8 *data;
+    };
+
+That structure contains the actual firmware,which can now be downloaded to the
+device. Be aware that this firmware is unchecked data from user space; you should
+apply any and all tests you can think of to convince yourself that it is a proper firmware image before sending it to the hardware. Device firmware usually contains identification strings, checksums, and so on; check them all before trusting the data.
+
+After you have sent the firmware to the device,you should release the in-kernel
+structure with:
+
+    void release_firmware(struct firmware *fw);
+
+Since request_firmware asks user space to help,it is guaranteed to sleep before
+returning. If your driver is not in a position to sleep when it must ask for firmware,
+the asynchronous alternative may be used:
+
+int request_firmware_nowait(struct module *module,
+                            char *name, struct device *device, void *context,
+                            void (*cont)(const struct firmware *fw, void *context));
+
+The additional arguments here are module (which will almost always be THIS_MODULE),
+context (a private data pointer that is not used by the firmware subsystem),and cont.
+If all goes well, request_firmware_nowait begins the firmware load process and
+returns 0. At some future time, cont will be called with the result of the load. If the
+firmware load fails for some reason, fw is NULL.
+
+<h3 id="14.8.2">14.8.2 如何工作</h3>
+
+The firmware subsystem works with sysfs and the hotplug mechanism. When a call
+is made to request_firmware,a new directory is created under /sys/class/firmware
+using your device’s name. That directory contains three attributes:
+
+* loading
+
+    This attribute should be set to one by the user-space process that is loading the firmware. When the load process is complete,it should be set to 0. Writing a value of -1 to loading aborts the firmware loading process.
+
+* data
+
+    data is a binary attribute that receives the firmware data itself. After setting loading, the user-space process should write the firmware to this attribute.
+
+* device
+
+    This attribute is a symbolic link to the associated entry under /sys/devices.
+
+Once the sysfs entries have been created,the kernel generates a hotplug event for
+your device. The environment passed to the hotplug handler includes a variable
+FIRMWARE,which is set to the name provided to request_firmware. The handler should
+locate the firmware file,and copy it into the kernel using the attributes provided. If
+the file cannot be found, the handler should set the loading attribute to -1.
+
+If a firmware request is not serviced within 10 seconds,the kernel gives up and
+returns a failure status to the driver. That time-out period can be changed via the
+sysfs attribute /sys/class/firmware/timeout.
+
+Using the request_firmware interface allows you to distribute the device firmware
+with your driver. When properly integrated into the hotplug mechanism,the firmware loading subsystem allows devices to simply work “out of the box.” It is clearly
+the best way of handling the problem.
+
+Please indulge us as we pass on one more warning,however: device firmware should
+not be distributed without the permission of the manufacturer. Many manufacturers
+will agree to license their firmware under reasonable terms when asked politely;
+some others can be less cooperative. Either way,copying and distributing their firmware without permission is a violation of copyright law and an invitation for trouble.
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
