@@ -3,40 +3,55 @@
 * [15.1 Linux内存管理](#15.1)
     - [15.1.1 地址类型](#15.1.1)
     - [15.1.2 物理地址和页](#15.1.2)
+    - [15.1.3 高内存和低内存](#15.1.3)
+    - [15.1.4 内存映射和struct Page](#15.1.4)
+    - [15.1.5 页表](#15.1.5)
+    - [15.1.6 虚拟内存区](#15.1.6)
+    - [15.1.7 进程内存映射](#15.1.7)
 * [15.2 MMAP设备操作](#15.2)
-* [15.3 进行直接I/O](#15.2)
+    - [15.2.1 使用remap_pfn_range](#15.2.1)
+    - [15.2.2 一个简单的实现](#15.2.2)
+    - [15.2.3 添加VMA操作](#15.2.3)
+    - [15.2.4 使用nopage方法映射内存](#15.2.4)
+    - [15.2.5 重映射特定的I/O区域](#15.2.5)
+    - [15.2.6 重映射RAM](#15.2.6)
+        + [15.2.6.1 使用nopage方法重新映射RAM](#15.2.6.1)
+    - [15.2.7 重映射内核虚拟地址](#15.2.7)
+* [15.3 进行直接I/O](#15.3.1)
+    - [15.3.1 异步I/O](#15.3.1)
+    - [15.3.2 异步I/O例子](#15.3.2)
 * [15.4 直接内存存取](#15.2)
 
 ***
 
-This chapter delves into the area of Linux memory management, with an emphasis on techniques that are useful to the device driver writer. Many types of driver programming require some understanding of how the virtual memory subsystem works; the material we cover in this chapter comes in handy more than once as we get into some of the more complex and performance-critical subsystems. The virtual memory subsystem is also a highly interesting part of the core Linux kernel and, therefore, it merits a look.
+本文深入探讨了Linux内存管理的部分，重点介绍了对设备驱动作者有用的技术。许多驱动程序编程要求理解虚拟内存子系统的工作原理；当我们进入更复杂和性能关键的子系统时，本章讨论的内容不止一次派上用场。虚拟内存子系统也是Linux内核非常有意思的一部分，因此，值得一看。
 
-The material in this chapter is divided into three sections:
+本章内容被分成3部分：
 
-1. The first covers the implementation of the mmap system call, which allows the mapping of device memory directly into a user process’s address space. Not all devices require mmap support, but, for some, mapping device memory can yield significant performance improvements.
+1. 第一部分介绍`mmap`系统调用的实现，在其中，允许设备内存区域直接映射到用户进程的地址空间。并不是所有的设备都要求`mmap`支持，但是，对于其中的一些设备，如果实现设备内存的映射，会产生显著的性能提升。
 
-2. We then look at crossing the boundary from the other direction with a discussion of direct access to user-space pages. Relatively few drivers need this capability; in many cases, the kernel performs this sort of mapping without the driver even being aware of it. But an awareness of how to map user-space memory into the kernel (with get_user_pages) can be useful.
+2. 然后，我们将讨论如何通过将用户空间的地址映射到内核中，而实现直接访问用户空间。相对地，较少的驱动编程者需要了解此项能力；大多数情况下，驱动编写者都没有意识到内核实现了这种映射。但是，了解用户空间的内存映射到内核中（使用`get_user_pages`）是非常有用的。
 
-3. The final section covers direct memory access (DMA) I/O operations, which provide peripherals with direct access to system memory. Of course, all of these techniques require an understanding of how Linux memory management works, so we start with an overview of that subsystem.
+3. 最后一部分，我们讨论了对于I/O的直接内存访问（DMA），其提供了外设直接访问系统内存的能力。当然了，所有的这些技术都需要理解Linux内存管理的工作原理，所以，先让我们开始了解该子系统。
 
 
 <h2 id="15.1">15.1 Linux内存管理</h2>
 
-Rather than describing the theory of memory management in operating systems, this section tries to pinpoint[查明] the main features of the Linux implementation. Although you do not need to be a Linux virtual memory guru[老师] to implement mmap, a basic overview of how things work is useful. What follows is a fairly lengthy description of the data structures used by the kernel to manage memory. Once the necessary background has been covered, we can get into working with these structures.
+本节不是描述内存管理的理论，而是探究Linux实现的功能。尽管，你不需要成为一个实现`mmap`的Linux虚拟内存的专家，但是，对其如何工作的基本概述还是非常有用的。以下就是一段非常冗长的数据结构体的描述，内核正是用其管理内存。先让我们了解这些背景知识，然后再使用它们。
 
 <h3 id="15.1.1">15.1.1 地址类型</h3>
 
-Linux is, of course, a virtual memory system, meaning that the addresses seen by user programs do not directly correspond to the physical addresses used by the hardware. Virtual memory introduces a layer of indirection that allows a number of nice things. With virtual memory, programs running on the system can allocate far more memory than is physically available; indeed, even a single process can have a virtual address space larger than the system’s physical memory. Virtual memory also allows the program to play a number of tricks with the process’s address space, including mapping the program’s memory to device memory. 
+当然了，Linux是一个虚拟内存系统，这意味着用户程序看到的地址并不直接对应于硬件使用的物理地址。虚拟内存，引入了一层中间层。使用虚拟地址，运行在系统上的程序能够分配比可用物理内存还大的内存空间；事实上，即使单个进程也可以拥有大于物理内存的虚拟地址空间。虚拟内存也可以允许程序，对于进程的地址空间使用一些技巧，包括映射程序的内存到设备的内存。
 
-Thus far[[迄今]](), we have talked about virtual and physical addresses, but a number of the details have been glossed over. The Linux system deals with several types of addresses, each with its own semantics. Unfortunately, the kernel code is not always very clear on exactly which type of address is being used in each situation, so the programmer must be careful.
+迄今为止，我们已经讨论了虚拟和物理地址，但是略过了许多细节。Linux系统处理多个类型的地址，每一个都有自己的语义。不幸的是，内核代码在那种情况下使用哪种类型的地址定义并不是很清晰，所以，编程者必须小心。
 
-The following is a list of address types used in Linux. Figure 15-1 shows how these address types relate to physical memory.
+下面就是Linux使用的地址类型。 `Figure 15-1` 展示了这些类型的地址和实际的物理内存的关系。
 
 ![Figure 15-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_device_drivers_3_images/15-1.PNG)
 
 1. 用户虚拟地址
     
-    These are the regular addresses seen by user-space programs. User addresses are either 32 or 64 bits in length, depending on the underlying hardware architecture, and each process has its own virtual address space. 
+    这是用户空间的程序里经常看见的常规地址。用户地址通常是32位或64位，这依赖于具体的硬件架构，每个进程都有其自己的虚拟地址空间。
 
 2. 物理地址
 
@@ -44,7 +59,7 @@ The following is a list of address types used in Linux. Figure 15-1 shows how th
 
 3. 总线地址 
     
-    用在外设总线和内存之间。 Often, they are the same as the physical addresses used by the processor, but that is not necessarily the case. Some architectures can provide an I/O memory management unit (IOMMU) that remaps addresses between a bus and main memory. An IOMMU can make life easier in a number of ways (making a buffer scattered in memory appear contiguous to the device, for example), but programming the IOMMU is an extra step that must be performed when setting up DMA operations. Bus addresses are highly architecture dependent, of course. 
+    用在外设总线和内存之间的地址。通常，它们和处理器使用的物理地址相同，但是，并不是完全如此。一些架构实现了I/O内存管理单元（IOMMU），其重映射了总线和主内存之间的地址。IOMMU可以使用多种方式使事情变得更轻松（例如，使分散在内存中的缓冲区，相对于设备，看起来是连续的），但是，使用IOMMU编程，设置DMA是一步必须的操作。当然了总线地址高度依赖架构。 
 
 4. 内核逻辑地址
     
@@ -52,27 +67,27 @@ The following is a list of address types used in Linux. Figure 15-1 shows how th
 
 5. 内核虚拟地址 
     
-    内核虚拟地址和逻辑地址相似，它们是从内核空间地址到物理地址的映射。内核虚拟地址空间不必非得是线性的，一对一地到物理地址的映射。所有逻辑地址都是内核虚拟地址，但是许多内核虚拟地址不是逻辑地址。例如，由函数`vmalloc`分配的地址是虚拟地址（但不是直接物理映射）。`kmap`函数（后面还会再描述）也返回虚拟地址。虚拟地址通常存储在指针变量中。
+    内核虚拟地址和逻辑地址相似，它们是从内核空间地址到物理地址的映射。内核虚拟地址空间不必非得是线性的，一对一地对物理地址的映射。所有逻辑地址都是内核虚拟地址，但是许多内核虚拟地址不是逻辑地址。例如，由函数`vmalloc`分配的地址是虚拟地址（但不是直接物理映射）。`kmap`函数（后面还会再描述）也返回虚拟地址。虚拟地址通常存储在指针变量中。
 
-If you have a logical address, the macro __pa() (defined in `<asm/page.h`>) returns its associated physical address. Physical addresses can be mapped back to logical addresses with __va(), but only for low-memory pages.
+使用宏定义`__pa()`（其定义位于`<asm/page.h>`）,将逻辑地址转换成相关的物理地址。也可以使用`__va()`将物理地址重新映射回逻辑地址， 但是，这只适用于低地址。
 
-Different kernel functions require different types of addresses. It would be nice if there were different C types defined, so that the required address types were explicit, but we have no such luck. In this chapter, we try to be clear on which types of addresses are used where.
+不同的内核函数要求不同类型的地址。在本章中，我们试图明确在哪里使用哪种类型。
 
 <h3 id="15.1.2">15.1.2 物理地址和页</h3>
 
-Physical memory is divided into discrete units called pages. Much of the system’s internal handling of memory is done on a per-page basis. Page size varies from one architecture to the next, although most systems currently use 4096-byte pages. The constant PAGE_SIZE (defined in `<asm/page.h>`) gives the page size on any given architecture. 
+物理内存的构成单元是`page`，在系统的内存处理都是以`page`为基础进行的。尽管大多数系统使用页的大小为'4096'，但是其大小因架构而异。 常数`PAGE_SIZE`给出了每种架构的页面大小，其定义位于`<asm/page.h>`中。
 
-If you look at a memory address—virtual or physical—it is divisible into a page number and an offset within the page. If 4096-byte pages are being used, for example, the 12 least-significant bits are the offset, and the remaining, higher bits indicate the page number. If you discard the offset and shift the rest of an offset to the right, the result is called a page frame number (PFN). Shifting bits to convert between page frame numbers and addresses is a fairly common operation; the macro PAGE_SHIFT tells how many bits must be shifted to make this conversion.
+如果你仔细观察内存地址-虚拟或物理内存-它可以分为页码和页面内的偏移量。如果使用大小为4096的页，低12位表示偏移量，其余的表示页数。如果去掉低位，然后将其右移，结果就称为页帧编号（PFN）。这种位移操作可以使用宏`PAGE_SHIFT`。
 
 <h3 id="15.1.3">15.1.3 高内存和低内存</h3>
 
-逻辑内核和内核虚拟地址之间的区别，主要是在配备大量内存的32位系统上。 32位系统，最大寻址空间4GB。 直到最近，Linux-32位系统的内存被限制远远小于此值，这是因为它设置虚拟地址空间的方式。
+逻辑地址和内核虚拟地址之间的区别，主要是在配备大量内存的32位系统上。 32位系统，最大寻址空间4GB。 直到最近，由于它设置虚拟地址的方式 ，Linux 32位系统的内存被限制而远远小于此值。
 
 内核为用户空间和内核空间分割这4GB的虚拟地址空间；在这两种情况下都使用相同的映射集。典型的分割方法就是用户空间-3GB，内核空间-1GB。内核的代码和数据结构必须适合其分配的空间，但是内核地址空间的最大用户是物理内存的映射。内核不会直接操作没有映射到内核地址空间的内存。换句话说，内核需要自己的虚拟地址空间用于它必须直接接触的任何内存。因而，多年来，被内核所处理的最大物理内存数量就是能够映射到内核的虚拟地址空间的部分的数量，减去内核代码本身所占用的空间。导致的结果就是，基于x86平台的Linux系统能够使用的最大地址空间小于1GB物理内存。
 
-In response to commercial pressure to support more memory while not breaking 32bit application and the system’s compatibility, the processor manufacturers have added “address extension” features to their products. The result is that, in many cases, even 32-bit processors can address more than 4 GB of physical memory. The limitation on how much memory can be directly mapped with logical addresses remains, however. Only the lowest portion of memory (up to 1 or 2 GB, depending on the hardware and the kernel configuration) has logical addresses;* the rest (high memory) does not. Before accessing a specific high-memory page, the kernel must set up an explicit virtual mapping to make that page available in the kernel’s address space. Thus, many kernel data structures must be placed in low memory; high memory tends to be reserved for user-space process pages. 
+为了应对商业压力以支持更多内存而又不破坏32位应用程序和系统的兼容性，处理器制造商添加了“地址扩展”功能。这样一来，即使是32位的处理器也可以处理大于4GB的物理内存。但是，可以直接映射到逻辑地址的数量限制仍然存在。只有物理内存的最低地址部分具有逻辑地址（达到1或2GB，依赖于硬件和内核配置）；剩余的不行（高内存）。在访问特定的高内存页之前，内核必须建立显式虚拟映射，以便物理内存页在内核地址空间里可用。因而，许多内核数据结构被放在低内存；高内存往往保留给用户空间进程页。
 
-The term “high memory” can be confusing to some, especially since it has other meanings in the PC world. So, to make things clear, we’ll define the terms here: 
+术语“高内存”可能让人感到困惑，尤其是因为其在PC地址还有其它的意义。所以，为了清楚说明，在这里，我们定义如下：
 
 1. 低内存
     
@@ -88,38 +103,38 @@ The term “high memory” can be confusing to some, especially since it has oth
 
 <h3 id="15.1.4">15.1.4 内存映射和struct Page</h3>
 
-Historically, the kernel has used logical addresses to refer to pages of physical memory. The addition of high-memory support, however, has exposed an obvious problem with that approach—logical addresses are not available for high memory. Therefore, kernel functions that deal with memory are increasingly using pointers to struct page (defined in `<linux/mm.h>`) instead. This data structure is used to keep track of just about everything the kernel needs to know about physical memory;there is one struct page for each physical page on the system. Some of the fields of this structure include the following:
+历史上，内核使用逻辑地址引用物理内存页。然而，增加高内存的支持后，这种方法暴露了明显的问题，对于高地址来说，逻辑地址不可用。因此，处理内存的内核函数越来越多地使用指向`struct page`的指针（其定义位于`<linux/mm.h>`），此数据结构用于追踪内核需要了解的有关物理内存的所有内容；系统上的每个物理页面都有一个`struct page`与之对应。 下面是其一些常用的结构成员：
 
 1. atomic_t count; 
     
-    The number of references there are to this page. When the count drops to 0, the page is returned to the free list. 
+    页面的引用数量。当其为0时，页面将返回到空闲列表。 
 
 2. void *virtual; 
     
-    The kernel virtual address of the page, if it is mapped; NULL, otherwise. Lowmemory pages are always mapped; high-memory pages usually are not. This field does not appear on all architectures; it generally is compiled only where the kernel virtual address of a page cannot be easily calculated. If you want to look at this field, the proper method is to use the page_address macro, described below. 
+    `page`的内核虚拟地址（如果已映射）；否则为`NULL`。低内存页总是被映射，高内存页通常不被映射。该字段并不是在所有的架构中都出现；它通常只在内核虚拟地址无法轻松计算出的地方被编译。如果你想查看该成员的内容，可以使用宏`page_address`，后面会有描述。
 
 3. unsigned long flags; 
     
-    A set of bit flags describing the status of the page. These include PG_locked, which indicates that the page has been locked in memory, and PG_reserved, which prevents the memory management system from working with the page at all. 
+    
+    一组描述页面状态的位标志。这包含`PG_locked`，它表明页面已经被锁定在内存中，`PG_reserved`，这会组织内存管理系统根本不使用页面 
 
-There is much more information within struct page, but it is part of the deeper black magic of memory management and is not of concern to driver writers. 
+`struct page`中还有更多信息，但它是内存管理更深层次的内容，并不是驱动程序编写者所关心的。
 
-The kernel maintains one or more arrays of struct page entries that track all of the physical memory on the system. On some systems, there is a single array called mem_map. On some systems, however, the situation is more complicated. Nonuniform memory access (NUMA) systems and those with widely discontiguous physical memory may have more than one memory map array, so code that is meant to be portable should avoid direct access to the array when ever possible. Fortunately,itis usually quite easyto just work with struct page pointers without worrying about where they come from. 
+内核维护着一个或多个数组，其包含着`struct page`条目，用其追踪所有的物理内存。在一些系统上，有一个名为`mem_map`的单一数组。但是，在另一些系统上，情况就更为复杂了。非均匀内存访问系统（NUMA）和那些具有宽泛的不连续物理内存的系统可能具有多个内存映射数组，所以，可移植的代码应该避免在可能的情况下直接访问阵列。幸运的是，通常很容易使用`struct page`指针而不必担心它们来自何处。
 
-Some functions and macros are defined for translating between struct page pointers and virtual addresses:
+下面是转换`struct page`指针和虚拟地址的一些函数和宏：
 
 1. struct page *virt_to_page(void *kaddr); 
     
-    This macro, defined in <asm/page.h>, takes a kernel logical address and returns its associated struct page pointer. Since it requires a logical address, it does not work with memory from vmalloc or high memory. 
+    宏定义位于`<asm/page.h>`中，需要一个逻辑地址，返回与它相关的`struct page`指针。因为它的参数是逻辑地址，所以它不能使用`vmalloc`函数返回的内存和高内存。 
 
 2. struct page *pfn_to_page(int pfn);
     
-    Returns the struct page pointer for the given page frame number. If necessary, it checks a page frame number for validity with pfn_valid before passing it to pfn_to_page. 
+    根据给定的页帧编号，返回相关的`struct page`指针。可以使用`pfn_valid`检查参数是否合法。
 
 3. void *page_address(struct page *page); 
     
-    Returns the kernel virtual address of this page, if such an address exists. For high memory, that address exists only if the page has been mapped. This function is defined in `<linux/mm.h>`. In most situations, you want to use a version of kmap rather than page_address. 
-
+    返回该页的内核虚拟地址，如果这个地址存在。对于高内存，只有这个页面被映射后，地址才会存在。这个函数定义位于`<linux/mm.h>`文件中。在大多数情况下，需要使用`kmap`而不是`page_address`。
     
 `#include <linux/highmem.h>` 
 
@@ -141,10 +156,130 @@ We see some uses of these functions when we get into the example code, later in 
 
 <h3 id="15.1.5">15.1.5 页表</h3>
 
+On any modern system, the processor must have a mechanism for translating virtual addresses into its corresponding physical addresses. This mechanism is called a page table; it is essentially a multilevel tree-structured array containing virtual-to-physical mappings and a few associated flags. The Linux kernel maintains a set of page tables even on architectures that do not use such tables directly. 
+
+A number of operations commonly performed by device drivers can involve manipulating page tables. Fortunately for the driver author, the 2.6 kernel has eliminated any need to work with page tables directly. As a result, we do not describe them in any detail; curious readers may want to have a look at Understanding The Linux Kernel by Daniel P. Bovet and Marco Cesati (O’Reilly) for the full story.
+
 <h3 id="15.1.6">15.1.6 虚拟内存区</h3>
+
+The virtual memory area (VMA) is the kernel data structure used to manage distinct regions of a process’s address space. A VMA represents a homogeneous region in the virtual memory of a process: a contiguous range of virtual addresses that have the same permission flags and are backed up by the same object (a file, say, or swap space). It corresponds loosely to the concept of a “segment,” although it is better described as “a memory object with its own properties.” The memory map of a process is made up of (at least) the following areas: 
+
+* An area for the program’s executable code (often called text) 
+
+* Multiple areas for data, including initialized data (that which has an explicitly assigned value at the beginning of execution), uninitialized data (BSS),* and the program stack
+
+* One area for each active memory mapping 
+
+The memory areas of a process can be seen by looking in `/proc/<pid/maps>` (in which pid, of course, is replaced by a process ID). /proc/self is a special case of /proc/pid, because it always refers to the current process. As an example, here are a couple of memory maps (to which we have added short comments in italics):
+
+    # cat /proc/1/maps **look at init**
+    08048000-0804e000 r-xp 00000000 03:01 64652 /sbin/init # text
+    0804e000-0804f000 rw-p 00006000 03:01 64652 /sbin/init # data
+    0804f000-08053000 rwxp 00000000 00:00 0 zero-mapped BSS
+    40000000-40015000 r-xp 00000000 03:01 96278 /lib/ld-2.3.2.so text
+    40015000-40016000 rw-p 00014000 03:01 96278 /lib/ld-2.3.2.so data
+    40016000-40017000 rw-p 00000000 00:00 0 BSS for ld.so
+    42000000-4212e000 r-xp 00000000 03:01 80290 /lib/tls/libc-2.3.2.so text
+    4212e000-42131000 rw-p 0012e000 03:01 80290 /lib/tls/libc-2.3.2.so data
+    42131000-42133000 rw-p 00000000 00:00 0 BSS for libc
+    bffff000-c0000000 rwxp 00000000 00:00 0 Stack segment
+    ffffe000-fffff000 ---p 00000000 00:00 0 vsyscall page
+
+    # rsh wolf cat /proc/self/maps #### x86-64 (trimmed)
+    00400000-00405000 r-xp 00000000 03:01 1596291 /bin/cat text
+    00504000-00505000 rw-p 00004000 03:01 1596291 /bin/cat data
+    00505000-00526000 rwxp 00505000 00:00 0 bss
+    3252200000-3252214000 r-xp 00000000 03:01 1237890 /lib64/ld-2.3.3.so
+    3252300000-3252301000 r--p 00100000 03:01 1237890 /lib64/ld-2.3.3.so
+    3252301000-3252302000 rw-p 00101000 03:01 1237890 /lib64/ld-2.3.3.so
+    7fbfffe000-7fc0000000 rw-p 7fbfffe000 00:00 0 stack
+    ffffffffff600000-ffffffffffe00000 ---p 00000000 00:00 0 vsyscall
+
+每个字段的意义说明如下：
+
+    start-end perm offset major:minor inode image
+
+`/proc/*/maps`中的每个字段（除了`image`名称）都对应于结构体`struct vm_area_struct`中的一个成员：
+
+* end/start
+    
+    The beginning and ending virtual addresses for this memory area.
+
+* perm
+    
+    A bit mask with the memory area’s read, write, and execute permissions. This field describes what the process is allowed to do with pages belonging to the area. The last character in the field is either p for “private” or s for “shared.” 
+
+* offset
+    
+    Where the memory area begins in the file that it is mapped to. An offset of 0 means that the beginning of the memory area corresponds to the beginning of the file.
+
+* major/minor  
+    
+    The major and minor numbers of the device holding the file that has been mapped. Confusingly, for device mappings, the major and minor numbers refer to the disk partition holding the device special file that was opened by the user, and not the device itself.
+
+* inode  
+    
+    The inode number of the mapped file.
+
+* image   
+    
+    The name of the file (usually an executable image) that has been mapped.
+
+<h4 id="15.1.6.1">15.1.6.1 vm_area_struct</h4>
+
+当用户空间的进程调用`mmap`方法时，映射设备内存到它自己的地址空间，系统通过建立一个新的`VMA`表述这种映射。支持`mmap`的驱动程序需要该`VMA`的初始化。为此，驱动编写者至少应该理解VMA。
+
+让我们看一下`struct vm_area_struct`中最重要的成员，其定义位于(`<linux/mm.h>`)。设备驱动程序在它们的`mmap`实现中都可以使用这些成员。请注意，内核维护VMA列表和树已优化内存查找，`struct vm_area_struct`中的几个成员用来维护这个组织。因此，VMA不是驱动想在哪里创建就创建的。VMA的主要成员如下：（注意这些成员和我们刚刚看到的/proc输出之间的相似性）
+
+* unsigned long vm_start;
+* unsigned long vm_end;   
+    
+    该VMA的起始虚拟地址。这也就是`/proc/*/maps`中前2个成员。
+
+* struct file *vm_file;
+    
+    一个指向`struct file`结构的指针，该文件结构与该虚拟地址区域相关（如果有的话）。
+
+* unsigned long vm_pgoff;
+
+    文件中对应的内存区域的偏移量，单位为`页`。当一个文件或设备被映射时，这是映射到该区域的第一页的文件位置。
+
+* unsigned long vm_flags;
+
+    A set of flags describing this area. The flags of the most interest to device driver writers are VM_IO and VM_RESERVED. VM_IO marks a VMA as being a memory mapped I/O region. Among other things, the VM_IO flag prevents the region from being included in process core dumps. VM_RESERVED tells the memory management system not to attempt to swap out this VMA; it should be set in most device mappings.
+
+* struct vm_operations_struct *vm_ops; 
+    
+    A set of functions that the kernel may invoke to operate on this memory area. Its presence indicates that the memory area is a kernel “object,” like the struct file we have been using throughout the book.
+
+* void *vm_private_data;
+    
+    A field that may be used by the driver to store its own information. 
+
+Like `struct vm_area_struct`, the `vm_operations_struct` is defined in `<linux/mm.h>`; it includes the operations listed below. These operations are the only ones needed to handle the process’s memory needs, and they are listed in the order they are declared. Later in this chapter, some of these functions are implemented.
+
+* void (*open)(struct vm_area_struct *vma);
+    
+    The open method is called by the kernel to allow the subsystem implementing the VMA to initialize the area. This method is invoked any time a new reference to the VMA is made (when a process forks, for example). The one exception happens when the VMA is first created by mmap; in this case, the driver’s mmap method is called instead. 
+
+* void (*close)(struct vm_area_struct *vma)
+    
+    The open method is called by the kernel to allow the subsystem implementing the VMA to initialize the area. This method is invoked any time a new reference to the VMA is made (when a process forks, for example). The one exception happens when the VMA is first created by mmap; in this case, the driver’s mmap method is called instead.
+
+* struct page \*(*nopage)(struct vm_area_struct *vma, unsigned long address, int *type); 
+    
+    When a process tries to access a page that belongs to a valid VMA, but that is currently not in memory, the nopage method is called (if it is defined) for the related area. The method returns the struct page pointer for the physical page after, perhaps, having read it in from secondary storage. If the nopage method isn’t defined for the area, an empty page is allocated by the kernel.
+
+* int (*populate)(struct vm_area_struct *vm, unsigned long address, unsigned  long len, pgprot_t prot, unsigned long pgoff, int nonblock);
+    
+    This method allows the kernel to “prefault” pages into memory before they are accessed by user space. There is generally no need for drivers to implement the populate method.
+
 
 <h3 id="15.1.7">15.1.7 进程内存映射</h3>
 
+The final piece of the memory management puzzle is the process memory map structure, which holds all of the other data structures together. Each process in the system (with the exception of a few kernel-space helper threads) has a `struct mm_struct` (defined in `<linux/sched.h>`) that contains the process’s list of virtual memory areas, page tables, and various other bits of memory management housekeeping information, along with a semaphore (`mmap_sem`) and a spinlock (`page_table_lock`). The pointer to this structure is found in the `task` structure; in the rare cases where a driver needs to access it, the usual way is to use `current->mm`. Note that the memory management structure can be shared between processes; the Linux implementation of threads works in this way, for example. 
+
+That concludes our overview of Linux memory management data structures. With that out of the way, we can now proceed to the implementation of the mmap system call.
 
 <h2 id="15.2">15.2 mmap设备操作</h2>
 
@@ -160,8 +295,7 @@ We see some uses of these functions when we get into the example code, later in 
     2a95828000-2a958a8000 rw-s fcc00000 03:01 282652  /dev/mem 
     2a958a8000-2a9d8a8000 rw-s e8000000 03:01 282652  /dev/mem ...
 
-The full list of the X server’s VMAs is lengthy, but most of the entries are not of interest here. We do see, however, four separate mappings of /dev/mem, which give some insight into how the X server works with the video card. The first mapping is at a0000, which is the standard location for video RAM in the 640-KB ISA hole. Further down, we see a large mapping at e8000000, an address which is above the highest RAM address on the system. This is a direct mapping of the video memory on the adapter. 
-X服务器的VMA的全部列表很长，但是大部分在这里也不需要。但是，我们可以看到`/dev/mem`有四个独立的映射，
+X服务器的VMA的全部列表很长，但是大部分在这里也不需要。但是，我们可以看到`/dev/mem`有四个独立的映射，它们可以深入理解X-Server如何和视频卡一起配合使用。第一个映射是在0xa000，这是640KB ISA孔中视频RAM的标准位置。再往下看，可以在0xe8000000处看到一个更大的映射，这个地址高于系统上最高的RAM地址。这是适配器上的视频内存的直接映射。
 
 可以在`/proc/iomem`查看这些区域:
 
@@ -230,7 +364,7 @@ There are two ways of building the page tables: doing it all at once with a func
 
 <h3 id="15.2.1">15.2.1 使用remap_pfn_range</h3>
 
-The job of building new page tables to map a range of physical addresses is handled by remap_pfn_range and io_remap_page_range, which have the following prototypes:
+构建新页表，将其映射到一段物理地址上，这些工作可以由函数`remap_pfn_range`和`io_remap_page_range`完成，它们具有下面的原型：
 
     int remap_pfn_range(struct vm_area_struct *vma,
                         unsigned long virt_addr, unsigned long pfn,
@@ -239,27 +373,27 @@ The job of building new page tables to map a range of physical addresses is hand
                         unsigned long virt_addr, unsigned long phys_addr,
                         unsigned long size, pgprot_t prot);
 
-The value returned by the function is the usual 0 or a negative error code. Let’s look at the exact meaning of the function’s arguments:
+函数返回值是通常的0或负错误代码。 让我们看一下函数参数的确切含义：
 
 1. vma
     
-    The virtual memory area into which the page range is being mapped. 
+    虚拟内存区域，某段页范围映射到其上。
 
 2. virt_addr
     
-    The user virtual address where remapping should begin. The function builds page tables for the virtual address range between virt_addr and virt_addr+size.
+    重映射开始的用户虚拟地址。这个函数在`virt_addr`和`virt_addr+size`之间的虚拟地址范围内构建页表。
 
 3. pfn
    
-   The page frame number corresponding to the physical address to which the virtual address should be mapped. The page frame number is simply the physical address right-shifted by PAGE_SHIFT bits. For most uses, the vm_pgoff field of the VMA structure contains exactly the value you need. The function affects physical addresses from (pfn<<PAGE_SHIFT) to (pfn<<PAGE_SHIFT)+size. 
+   虚拟地址映射到的物理地址上对应的页帧编号。页帧编号就是通过宏`PAGE_SHIFT`右移获得的。对于大多数用途，`VMA`结构的`vm_pgoff`包含你所需要的值。函数影响的物理地址从`pfn<<PAGE_SHIFT`到`(pfn<<PAGE_SHIFT)+size`。
 
 4. size
     
-    The dimension, in bytes, of the area being remapped. 
+    重映射的维度（以字节为单位）。
 
 5. prot
     
-    The “protection” requested for the new VMA. The driver can (and should) use the value found in vma->vm_page_prot. 
+    为新`VMA`请求保护，驱动程序可以（应该）使用`vma->vm_page_prot`中的值。 
 
 The arguments to remap_pfn_range are fairly straightforward, and most of them are already provided to you in the VMA when your mmap method is called. You may be wondering why there are two functions, however. The first (remap_pfn_range) is intended for situations where pfn refers to actual system RAM, while io_remap_ page_range should be used when phys_addr points to I/O memory. In practice, the two functions are identical on every architecture except the SPARC, and you see remap_pfn_range used in most situations. In the interest of writing portable drivers, however, you should use the variant of remap_pfn_range that is suited to your particular situation. 
 
@@ -267,9 +401,7 @@ One other complication has to do with caching: usually, references to device mem
 
 <h3 id="15.2.2">15.2.2 一个简单的实现</h3>
 
-If your driver needs to do a simple, linear mapping of device memory into a user address space, remap_pfn_range is almost all you really need to do the job. The following code is derived from drivers/char/mem.c and shows how this task is performed in a typical module called simple (Simple Implementation Mapping Pages with Little Enthusiasm):
-
-如果您的驱动程序需要将设备内存简单，线性映射到用户地址空间，则`remap_pfn_range`几乎就是您真正需要完成的任务。 以下代码派生自`drivers/char/mem.c`，并显示了如何在一个名为`simple`的简单模块中执行此任务：
+如果您的驱动程序需要将设备内存简单，线性映射到用户地址空间，则`remap_pfn_range`几乎就是您想要的函数。 以下代码派生自`drivers/char/mem.c`，最终编译为一个名为`simple`的模块，并执行：
 
     static int simple_remap_mmap(struct file *filp, struct vm_area_struct *vma)
     {
@@ -283,7 +415,7 @@ If your driver needs to do a simple, linear mapping of device memory into a user
         return 0;
     }
 
-As you can see, remapping memory just a matter of calling remap_pfn_range to create the necessary page tables.
+如您所见，重映射内存只需调用`remap_pfn_range`来创建必要的页表即可。
 
 <h3 id="15.2.3">15.2.3 添加VMA操作</h3>
 
@@ -307,20 +439,20 @@ To this end, we override the default vma->vm_ops with operations that call print
         .close = simple_vma_close,
     };
 
-To make these operations active for a specific mapping, it is necessary to store a pointer to simple_remap_vm_ops in the vm_ops field of the relevant VMA. This is usually done in the mmap method. If you turn back to the simple_remap_mmap example, you see these lines of code:
+要想使上面的操作对具体的映射有效，就必须把结构体`simple_remap_vm_ops`赋值给相关`VMA`的`vm_ops`成员。这通常在`mmap`方法中完成。如果你返回到`simple_remap_mmap`例子中，你会看见下面这些行代码：
 
     vma->vm_ops = &simple_remap_vm_ops;
     simple_vma_open(vma);
 
 Note the explicit call to simple_vma_open. Since the open method is not invoked on the initial mmap, we must call it explicitly if we want it to run.
 
-<h3 id="15.2.4">15.2.4 Mapping Memory with nopage</h3>
+<h3 id="15.2.4">15.2.4 使用nopage方法映射内存</h3>
 
 Although remap_pfn_range works well for many, if not most, driver mmap implementations, sometimes it is necessary to be a little more flexible. In such situations, an implementation using the nopage VMA method may be called for. 
 
 One situation in which the nopage approach is useful can be brought about by the mremap system call, which is used by applications to change the bounding addresses of a mapped region. As it happens, the kernel does not notify drivers directly when a mapped VMA is changed by mremap. If the VMA is reduced in size, the kernel can quietly flush out the unwanted pages without telling the driver. If, instead, the VMA is expanded, the driver eventually finds out by way of calls to nopage when mappings must be set up for the new pages, so there is no need to perform a separate notification. The nopage method, therefore, must be implemented if you want to support the mremap system call. Here, we show a simple implementation of nopage for the simple device. 
 
-The nopage method, remember, has the following prototype:
+`nopage`方法的原型如下：
 
     struct page *(*nopage)(struct vm_area_struct *vma,
                             unsigned long address, int *type);
@@ -378,7 +510,7 @@ Note that this implementation works for ISA memory regions but not for those on 
 If the nopage method is left NULL, kernel code that handles page faults maps the zero page to the faulting virtual address. The zero page is a copy-on-write page that reads as 0 and that is used, for example, to map the BSS segment. Any process referencing the zero page sees exactly that: a page filled with zeroes. If the process writes to the page, it ends up modifying a private copy. Therefore, if a process extends a mapped region by calling mremap, and the driver hasn’t implemented nopage, the process ends up with zero-filled memory instead of a segmentation fault.
 
 
-<h3 id="15.2.5">15.2.5 Remapping Speciﬁc I/O Regions </h3>
+<h3 id="15.2.5">15.2.5 重新映射特定的I/O区域</h3>
 
 All the examples we’ve seen so far are reimplementations of /dev/mem; they remap physical addresses into user space. The typical driver, however, wants to map only the small address range that applies to its peripheral device, not all memory. In order to map to user space only a subset of the whole memory range, the driver needs only to play with the offsets. The following does the trick for a driver mapping a region of simple_region_size bytes, beginning at physical address simple_region_start (which should be page-aligned):
 
@@ -405,7 +537,7 @@ The simplest way to prevent extension of the mapping is to implement a simple no
 
 As we have seen, the nopage method is called only when the process dereferences an address that is within a known VMA but for which there is currently no valid page table entry. If we have used remap_pfn_range to map the entire device region, the nopage method shown here is called only for references outside of that region. Thus, it can safely return NOPAGE_SIGBUS to signal an error. Of course, a more thorough implementation of nopage could check to see whether the faulting address is within the device area, and perform the remapping if that is the case. Once again, however, nopage does not work with PCI memory areas, so extension of PCI mappings is not possible.
 
-<h3 id="15.2.6">15.2.6 Remapping RAM</h3>
+<h3 id="15.2.6">15.2.6 重映射RAM</h3>
 
 An interesting limitation of remap_pfn_range is that it gives access only to reserved pages and physical addresses above the top of physical memory. In Linux, a page of physical addresses is marked as “reserved” in the memory map to indicate that it is not available for memory management. On the PC, for example, the range between 640 KB and 1 MB is marked as reserved, as are the pages that host the kernel code itself. Reserved pages are locked in memory and are the only ones that can be safely mapped to user space; this limitation is a basic requirement for system stability.
 
@@ -421,7 +553,7 @@ The limitations of remap_pfn_range can be seen by running mapper, one of the sam
 
 The inability of remap_pfn_range to deal with RAM suggests that memory-based devices like scull can’t easily implement mmap, because its device memory is conventional RAM, not I/O memory. Fortunately, a relatively easy workaround is available to any driver that needs to map RAM into user space; it uses the nopage method that we have seen earlier.
 
-<h4 id="15.2.6.1">15.2.6.1 Remapping RAM with the nopage method</h4>
+<h4 id="15.2.6.1">15.2.6.1 使用nopage方法重新映射RAM</h4>
 
 The way to map real RAM to user space is to use vm_ops->nopage to deal with page faults one at a time. A sample implementation is part of the scullp module, introduced in Chapter 8. 
 
@@ -524,7 +656,7 @@ The scullp device now works as expected, as you can see in this sample output fr
     brw-rw---- 1 root floppy 2, 20 Sep 15 07:40 fd0h360
     brw-rw---- 1 root floppy 2, 12 Sep 15 07:40 fd0H360
 
-<h3 id="15.2.7">15.2.7 Remapping Kernel Virtual Addresses</h3>
+<h3 id="15.2.7">15.2.7 重映射内核虚拟地址</h3>
 
 Although it’s rarely necessary, it’s interesting to see how a driver can map a kernel virtual address to user space using mmap. A true kernel virtual address, remember, is an address returned by a function such as vmalloc—that is, a virtual address mapped in the kernel page tables. The code in this section is taken from scullv, which is the module that works like scullp but allocates its storage through vmalloc. 
 
