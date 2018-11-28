@@ -25,3 +25,9 @@ MarkdownPreview不仅支持在浏览器中预览markdown文件，还可以导出
 
 * *"parser"："markdown"*也可设置为*"parser":"github"*，改为使用Github在线API解析markdown。
 
+# 4 中文字体问题
+## 4.1 改善中文字体显示问题
+
+`sublime text3`默认中文显示，字体非常怪异。需要设置一下，才能看上去比较正常。只需在`preference->setting->settings-user`中添加下面的一行代码即可。
+    
+    "font_options": ["gdi"]

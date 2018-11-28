@@ -1,4 +1,4 @@
-#include <linux/config.h>
+// #include <linux/config.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -22,7 +22,7 @@ MODULE_AUTHOR("Jonathan Corbet");
 MODULE_LICENSE("Dual BSD/GPL");
 
 /*
- * 设备文件的open方法实现-什么也没做
+ * simple设备文件的open方法实现-什么也没做
  */
 static int simple_open (struct inode *inode, struct file *filp)
 {
@@ -31,25 +31,10 @@ static int simple_open (struct inode *inode, struct file *filp)
 
 
 /*
- * 文件的close方法的实现-什么也没做
+ * simple设备文件的close方法的实现-什么也没做
  */
 static int simple_release(struct inode *inode, struct file *filp)
 {
-    return 0;
-}
-
-/*
- * 新建一个VMA，然后把对其操作的方法添加到结构体中。
- */
-static int simple_remap_mmap(struct file *filp, struct vm_area_struct *vma)
-{
-    if (remap_pfn_range(vma, vma->vm_start, vm->vm_pgoff,
-                        vma->vm_end - vma->vm_start,
-                        vma->vm_page_prot))
-        return -EAGAIN;
-    
-    vma->vm_ops = &simple_remap_vm_ops;
-    simple_vma_open(vma);
     return 0;
 }
 
@@ -70,12 +55,17 @@ void simple_vma_close(struct vm_area_struct *vma)
     printk(KERN_NOTICE "Simple VMA close.\n");
 }
 
-
+/*
+ * vm_operations_struct结构体的实现，类似于file_operations
+ */
 static struct vm_operations_struct simple_remap_vm_ops = {
     .open = simple_vma_open,
     .close = simple_vma_close,
 };
 
+/*
+ * 新建一个VMA，然后把对其操作的方法添加到结构体中。
+ */
 static int simple_remap_mmap(struct file *filp, struct vm_area_struct *vma)
 {
     if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
@@ -83,10 +73,16 @@ static int simple_remap_mmap(struct file *filp, struct vm_area_struct *vma)
                 vma->vm_page_prot))
         return -EAGAIN;
 
+    printk (KERN_NOTICE "vma information\n");
+    printk (KERN_NOTICE "vma->vm_start = %lx;", vma->vm_start);
+    printk (KERN_NOTICE "vma->vm_end = %lx;", vma->vm_end);
+    printk (KERN_NOTICE "vma->vm_pgoff = %lx;", vma->vm_pgoff);
+
     vma->vm_ops = &simple_remap_vm_ops;
     simple_vma_open(vma);
     return 0;
 }
+
 /*
  * 使用nopage版本
  */
@@ -99,11 +95,15 @@ struct page *simple_vma_nopage(struct vm_area_struct *vma,
     unsigned long pageframe = physaddr >> PAGE_SHIFT;
 
     // 打印一些调试信息
+    printk (KERN_NOTICE "vma information\n");
+    printk (KERN_NOTICE "vma->vm_start = %lx;", vma->vm_start);
+    printk (KERN_NOTICE "vma->vm_end = %lx;", vma->vm_end);
+    printk (KERN_NOTICE "vma->vm_pgoff = %lx;", vma->vm_pgoff);
     printk (KERN_NOTICE "---- Nopage, off %lx phys %lx\n", offset, physaddr);
     printk (KERN_NOTICE "VA is %p\n", __va (physaddr));
     printk (KERN_NOTICE "Page at %p\n", virt_to_page (__va (physaddr)));
     if (!pfn_valid(pageframe))
-        return NOPAGE_SIGBUS;
+        return NULL;
     pageptr = pfn_to_page(pageframe);
     printk (KERN_NOTICE "page->index = %ld mapping %p\n", pageptr->index, pageptr->mapping);
     printk (KERN_NOTICE "Page frame %ld\n", pageframe);
@@ -113,11 +113,18 @@ struct page *simple_vma_nopage(struct vm_area_struct *vma,
     return pageptr;
 }
 
+/*
+ * vm_operations_struct结构体的实现，类似于file_operations
+ */
 static struct vm_operations_struct simple_nopage_vm_ops = {
     .open =   simple_vma_open,
     .close =  simple_vma_close,
-    .nopage = simple_vma_nopage,
+    // .nopage = simple_vma_nopage, /* 2.6.10及以后版本没有这个成员了 */
 };
+
+/*
+ * 使用nopage实现mmap方法，按页操作
+ */
 static int simple_nopage_mmap(struct file *filp, struct vm_area_struct *vma)
 {
     unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
@@ -130,6 +137,7 @@ static int simple_nopage_mmap(struct file *filp, struct vm_area_struct *vma)
     simple_vma_open(vma);
     return 0;
 }
+
 /*
  * 为每个设备设置cdev结构
  */
@@ -163,9 +171,10 @@ static struct file_operations simple_nopage_ops = {
     .mmap    = simple_nopage_mmap,
 };
 
-#define MAX_SIMPLE_DEV 2
 // 用来记录两个字符设备
+#define MAX_SIMPLE_DEV 2
 static struct cdev SimpleDevs[MAX_SIMPLE_DEV];
+
 /*
  * 模块-初始化函数
  */
