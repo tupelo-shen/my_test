@@ -156,21 +156,25 @@ We see some uses of these functions when we get into the example code, later in 
 
 <h3 id="15.1.5">15.1.5 页表</h3>
 
-On any modern system, the processor must have a mechanism for translating virtual addresses into its corresponding physical addresses. This mechanism is called a page table; it is essentially a multilevel tree-structured array containing virtual-to-physical mappings and a few associated flags. The Linux kernel maintains a set of page tables even on architectures that do not use such tables directly. 
+在现代操作系统中，处理器必须有将虚拟地址映射到物理地址的机制。这个机制就称为“页表”；其本质上就是一个树形结构数组，包含虚拟到物理内存的映射和一些相关的标志。即使不使用页表的架构上，Linux内核也维护着这样的一组页表。
 
-A number of operations commonly performed by device drivers can involve manipulating page tables. Fortunately for the driver author, the 2.6 kernel has eliminated any need to work with page tables directly. As a result, we do not describe them in any detail; curious readers may want to have a look at Understanding The Linux Kernel by Daniel P. Bovet and Marco Cesati (O’Reilly) for the full story.
+通常情况下，有设备驱动程序执行的许多操作都可以操作页表。幸运的是，2.6版本的内核消除了直接操作页表的必要性。于是，我们就不在此详细描述其细节了；感兴趣的读者可以阅读`Daniel P. Bovet` 和 `Marco Cesati (O’Reilly)`它们对Linux内核的理解。
 
 <h3 id="15.1.6">15.1.6 虚拟内存区</h3>
 
-The virtual memory area (VMA) is the kernel data structure used to manage distinct regions of a process’s address space. A VMA represents a homogeneous region in the virtual memory of a process: a contiguous range of virtual addresses that have the same permission flags and are backed up by the same object (a file, say, or swap space). It corresponds loosely to the concept of a “segment,” although it is better described as “a memory object with its own properties.” The memory map of a process is made up of (at least) the following areas: 
+虚拟内存区（`VMA`）是用来管理进程的地址空间的目标区域的内核数据结构。`VMA`表示进程的虚拟内存中的一块同类的区域：就是一段连续的虚拟地址，它们拥有相同的权限标志并由同一对象进行备份（一个文件，或者说交换空间）。它大概与“段”的概念相同，尽管将其描述为`一个具有相同属性的内存对象`可能更为合适。进程的内存布局至少由下面这些区域组成：
 
-* An area for the program’s executable code (often called text) 
+* 程序可执行代码区（通常称为`text`） 
 
-* Multiple areas for data, including initialized data (that which has an explicitly assigned value at the beginning of execution), uninitialized data (BSS),* and the program stack
+* 数据的多个区域，包括初始化数据（在程序开始执行之前显式指定数值的数据），未初始化数据（BSS），和堆栈（stack）
 
-* One area for each active memory mapping 
+* 程序中使用的动态库之类的内存映射 
 
-The memory areas of a process can be seen by looking in `/proc/<pid/maps>` (in which pid, of course, is replaced by a process ID). /proc/self is a special case of /proc/pid, because it always refers to the current process. As an example, here are a couple of memory maps (to which we have added short comments in italics):
+具体可以查看下图，系统内存分布图：
+
+![Figure 15-1-6](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_device_drivers_3_images/15-1-6.png)
+
+一个进程的内存区域可以在`/proc/<pid/maps>`文件中查看（在这里，`pid`代表的是进程的实际ID）。`/proc/self`是`/proc/pid`的一种特殊情况，总是引用当前的进程。下面我们来看几个内存映射（我们在每行后面做了简要说明）：
 
     # cat /proc/1/maps **look at init**
     08048000-0804e000 r-xp 00000000 03:01 64652 /sbin/init # text
@@ -203,27 +207,56 @@ The memory areas of a process can be seen by looking in `/proc/<pid/maps>` (in w
 
 * end/start
     
-    The beginning and ending virtual addresses for this memory area.
+    这段内存的起始/结束位置。
 
 * perm
     
-    A bit mask with the memory area’s read, write, and execute permissions. This field describes what the process is allowed to do with pages belonging to the area. The last character in the field is either p for “private” or s for “shared.” 
+    内存区域的读、写和执行权限的位掩码。此字段描述了对这段区域内的页可进行的操作。该字段的最后一个字符`p`表示`private`或`shared`。 
 
 * offset
     
-    Where the memory area begins in the file that it is mapped to. An offset of 0 means that the beginning of the memory area corresponds to the beginning of the file.
+    内存区域在它所映射的文件里的位置。偏移量为0表示内存区域开始处对应于文件的开始处。
 
 * major/minor  
     
-    The major and minor numbers of the device holding the file that has been mapped. Confusingly, for device mappings, the major and minor numbers refer to the disk partition holding the device special file that was opened by the user, and not the device itself.
+    保存拥有已映射文件的设备的主次设备号。令人困惑的是，对于设备映射，主次设备号引用的是由用户打开的设备文件的磁盘分区的主次设备号，而不是设备本身的设备号。
 
 * inode  
     
-    The inode number of the mapped file.
+    映射文件的节点数量。
 
 * image   
     
-    The name of the file (usually an executable image) that has been mapped.
+    已映射文件的名称（通常是可执行镜像）。
+
+测试程序simple_test的系统内存分布（`cat /proc/835/maps`，系统平台是`mini2440`，内核是`Linux3.3.7`）：
+
+    00008000-00009000 r-xp 00000000 00:0e 2133150    /aaron/simple_test # text
+    00010000-00011000 rwxp 00000000 00:0e 2133150    /aaron/simple_test # data
+    b6f8a000-b6fcc000 r-xp 00000000 00:0e 1999623    /lib/libuClibc-0.9.33.2.so
+    b6fcc000-b6fd3000 ---p 00000000 00:00 0         # bss
+    b6fd3000-b6fd4000 r-xp 00041000 00:0e 1999623    /lib/libuClibc-0.9.33.2.so
+    b6fd4000-b6fd5000 rwxp 00042000 00:0e 1999623    /lib/libuClibc-0.9.33.2.so
+    b6fd5000-b6fd9000 rwxp 00000000 00:00 0 
+    b6fd9000-b6fdf000 r-xp 00000000 00:0e 1999615    /lib/ld-uClibc-0.9.33.2.so
+    b6fe2000-b6fe4000 r-xs 00000000 00:0e 1880931    /dev/simple
+    b6fe4000-b6fe6000 rwxp 00000000 00:00 0 
+    b6fe6000-b6fe7000 r-xp 00005000 00:0e 1999615    /lib/ld-uClibc-0.9.33.2.so
+    b6fe7000-b6fe8000 rwxp 00006000 00:0e 1999615    /lib/ld-uClibc-0.9.33.2.so
+    bec31000-bec52000 rw-p 00000000 00:00 0          [stack]
+    ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]
+
+程序的打印结果是
+
+    vma information
+    vma->vm_start = b6fe2000;
+    vma->vm_end = b6fe4000;
+    vma->vm_pgoff = 0;
+    Simple VMA open, virt b6fe2000, phys 0
+    b6fe2000
+    b6fe3000
+    Simple VMA close.
+
 
 <h4 id="15.1.6.1">15.1.6.1 vm_area_struct</h4>
 
@@ -234,7 +267,7 @@ The memory areas of a process can be seen by looking in `/proc/<pid/maps>` (in w
 * unsigned long vm_start;
 * unsigned long vm_end;   
     
-    该VMA的起始虚拟地址。这也就是`/proc/*/maps`中前2个成员。
+    该VMA的起始/结束虚拟地址。这也就是`/proc/*/maps`中前2个成员。
 
 * struct file *vm_file;
     
@@ -279,7 +312,7 @@ Like `struct vm_area_struct`, the `vm_operations_struct` is defined in `<linux/m
 
 The final piece of the memory management puzzle is the process memory map structure, which holds all of the other data structures together. Each process in the system (with the exception of a few kernel-space helper threads) has a `struct mm_struct` (defined in `<linux/sched.h>`) that contains the process’s list of virtual memory areas, page tables, and various other bits of memory management housekeeping information, along with a semaphore (`mmap_sem`) and a spinlock (`page_table_lock`). The pointer to this structure is found in the `task` structure; in the rare cases where a driver needs to access it, the usual way is to use `current->mm`. Note that the memory management structure can be shared between processes; the Linux implementation of threads works in this way, for example. 
 
-That concludes our overview of Linux memory management data structures. With that out of the way, we can now proceed to the implementation of the mmap system call.
+上面是我们对Linux内存管理的数据结构的概述。有了这个，我们现在就可以继续学习`mmap`系统调用了。
 
 <h2 id="15.2">15.2 mmap设备操作</h2>
 
@@ -346,11 +379,11 @@ X服务器的VMA的全部列表很长，但是大部分在这里也不需要。�
 
 这些限制对于驱动来说不是很大的约束，因为程序访问设备毕竟还是依赖于设备的。因为程序必须知道设备的工作原理，程序员不需要因为要查看页对齐而困扰。一个更大的困扰是，当ISA设备应用在非x86平台上时，因为它们的ISA设备的视图不是连续的。例如，某些Alpha计算机把ISA内存看作是分散的8位，16位，32位的项，没有直接映射。在这些情况下，你不能直接使用mmap。不能直接将ISA地址直接映射到Alpha地址，是因为两个系统的数据传输规范的不兼容。因而，早期的Alpha处理器只能发起32位和64位内存访问，ISA只能进行8位和16位数据传输，它们之间没有直接的映射协议。
 
-There are sound advantages to using mmap when it’s feasible to do so. For instance, we have already looked at the X server, which transfers a lot of data to and from video memory; mapping the graphic display to user space dramatically improves the throughput, as opposed to an lseek/write implementation. Another typical example is a program controlling a PCI device. Most PCI peripherals map their control registers to a memory address, and a high-performance application might prefer to have direct access to the registers instead of repeatedly having to call ioctl to get its work done. 
+在可行的情况下使用`mmap`有很多好处。比如，我们已经看过了X-server，其与视频内存有大量的数据传输；将图像显示映射到用户空间可以显著提高吞吐量，起到使用`lseek/write`所达不到的效果。另外的一个典型例子就是，控制PCI设备的程序。大部分的PCI设备映射控制寄存器到内存中，高性能的应用程序选择直接访问寄存器，而不是反复调用ioctl来完成工作。
 
-The mmap method is part of the file_operations structure and is invoked when the mmap system call is issued. With mmap, the kernel performs a good deal of work before the actual method is invoked, and, therefore, the prototype of the method is quite different from that of the system call. This is unlike calls such as ioctl and poll, where the kernel does not do much before calling the method. 
+`mmap`方法也是结构体`file_operations`的成员之一，当发起`mmap`系统调用的时候就会被调用。使用`mmap`，内核在调用实际的方法之前执行大量的工作，因此，该方法的原型与系统调用的原型完全不同。这与ioctl和`poll`之类的调用不同，在调用这些方法之前内核没有做太多工作。
 
-The system call is declared as follows (as described in the mmap(2) manual page):
+系统调用声明如下（`mmap(2)`帮助手册里描述）：
 
     mmap(caddr_t addr, size_t len, int prot, int flags, int fd, off_t offset) 
 
@@ -358,9 +391,9 @@ The system call is declared as follows (as described in the mmap(2) manual page)
 
     int (*mmap) (struct file *filp, struct vm_area_struct *vma); 
 
-The filp argument in the method is the same as that introduced in Chapter 3, while vma contains the information about the virtual address range that is used to access the device. Therefore, much of the work has been done by the kernel; to implement mmap, the driver only has to build suitable page tables for the address range and, if necessary, replace vma->vm_ops with a new set of operations. 
+参数`filp`如第三章里介绍的一样，而`vma`包含用于访问设备的虚拟地址范围的信息。因此，大部分工作都是由内核完成的；为了实现`mmap`，驱动程序只需要为地址范围构建合适的页表，并在必要时，用一组新的操作替换`vma->vm_pos`。
 
-There are two ways of building the page tables: doing it all at once with a function called remap_pfn_range or doing it a page at a time via the nopage VMA method. Each method has its advantages and limitations. We start with the “all at once” approach, which is simpler. From there, we add the complications needed for a realworld implementation.
+有两种构建页表的方法：使用`remap_pfn_range`一次完成所有内存映射，或者使用`nopage VMA`方法一次执行一页。每种方法都有其优点和局限性。我们从`一次性`方法开始，这更简单。然后，我们再根据真实设备逐渐增加难度。
 
 <h3 id="15.2.1">15.2.1 使用remap_pfn_range</h3>
 

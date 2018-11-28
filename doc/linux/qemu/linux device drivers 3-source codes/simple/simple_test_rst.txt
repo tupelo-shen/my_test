@@ -1,0 +1,12 @@
+vma information
+vma->vm_start = b6f82000;
+vma->vm_end = b6f84000;
+vma->vm_pgoff = 0;
+Simple VMA open, virt b6f82000, phys 0
+b6f82000
+
+
+b6f83000
+
+Simple VMA close.
+
