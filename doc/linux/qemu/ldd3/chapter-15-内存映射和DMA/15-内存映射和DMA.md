@@ -428,9 +428,9 @@ X服务器的VMA的全部列表很长，但是大部分在这里也不需要。�
     
     为新`VMA`请求保护，驱动程序可以（应该）使用`vma->vm_page_prot`中的值。 
 
-The arguments to remap_pfn_range are fairly straightforward, and most of them are already provided to you in the VMA when your mmap method is called. You may be wondering why there are two functions, however. The first (remap_pfn_range) is intended for situations where pfn refers to actual system RAM, while io_remap_ page_range should be used when phys_addr points to I/O memory. In practice, the two functions are identical on every architecture except the SPARC, and you see remap_pfn_range used in most situations. In the interest of writing portable drivers, however, you should use the variant of remap_pfn_range that is suited to your particular situation. 
+`remap_pfn_range`的参数十分简单，当你的`mmap`方法被调用时，大多数参数已经在`VMA`中提供给你了。但是，为什么会有2个函数呢？第一个，`remap_pfn_range`设计的目的是用于在`pfn`引用实际的系统RAM的情况下，而`io_remap_page_range`应该用于`phys_addr`指向I/O内存时。实际上，除了SPARC架构之外，这两个函数在每个体系架构上都是相同的，大多数情况下都会使用`remap_pfn_range`。
 
-One other complication has to do with caching: usually, references to device memory should not be cached by the processor. Often the system BIOS sets things up properly, but it is also possible to disable caching of specific VMAs via the protection field. Unfortunately, disabling caching at this level is highly processor dependent. The curious reader may wish to look at the pgprot_noncached function from drivers/char/mem.c to see what’s involved. We won’t discuss the topic further here.
+另一个复杂因素和缓存有关：通常，处理器不应缓存对设备内存的引用。正常情况下，系统BIOS会正确设置，但也可以通过保护字段禁用特定的VMA的缓存。不幸的是，禁用缓存高度依赖于处理器的。好奇的读者可以通过`drivers/char/mem.c`中的`pgprot_noncached`函数来查看所涉及的内容。
 
 <h3 id="15.2.2">15.2.2 一个简单的实现</h3>
 
@@ -602,7 +602,7 @@ The zero-order limitation is mostly intended to keep the code simple. It is poss
 
 Code that is intended to map RAM according to the rules just outlined needs to implement the open, close, and nopage VMA methods; it also needs to access the memory map to adjust the page usage counts. 
 
-This implementation of scullp_mmap is very short, because it relies on the nopage function to do all the interesting work:
+`scullp_mmap`的实现非常短，因为它依赖于`nopage`函数去完成所有有趣的工作：
 
     int scullp_mmap(struct file *filp, struct vm_area_struct *vma)
     {
