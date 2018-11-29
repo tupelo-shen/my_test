@@ -9,37 +9,48 @@ using namespace std::chrono_literals;
 
 int g_index = 10;
 Queue_s<int> q;
+std::initializer_list<float> list = {1, 2, 3, 4, 5};
+Queue_s<float> q1(list);
 
 void threadFunction_1()
 {
-    std::thread::id this_id = std::this_thread::get_id();
-    std::cout << "thread [" << this_id << "] start...\n";
+    std::this_thread::sleep_for(1s);
+    std::thread::id this_id_1 = std::this_thread::get_id();
+    // std::cout << "thread[" << this_id_1 << "] start..." << std::endl;
     while(true)
     {
-        //std::this_thread::sleep_for(1.5s);
+        std::this_thread::sleep_for(0.5s);
         int value = 0;
-        value = q.wait_and_pop();
-        printf("wait_and_pop done! value=%d  thread id:%d\n", value, this_id);
+        // value = q.wait_and_pop();
+        if (q.try_pop((int&)value))
+        {
+            std::cout << "thread[" << this_id_1 <<
+                "] poped: " << value << std::endl;
+        }
     }
 }
 void threadFunction_2()
 {
-    std::cout << "threadFunction_2 start\n";
+    std::this_thread::sleep_for(0.5s);
+    std::thread::id this_id_2 = std::this_thread::get_id();
+    std::cout << "thread[" << this_id_2 << "] start..." << std::endl;
     while(true)
     {     
         std::this_thread::sleep_for(1s);  
         g_index++;
         q.push(g_index);
-        printf("push %d\n", g_index); 
+        std::cout << "thread[" << this_id_2 << "] pushed:" << g_index << std::endl; 
     }
 }
 int main()
 {
     std::thread thd1(threadFunction_2);
     std::thread thd2(threadFunction_1);
+    std::thread thd3(threadFunction_1);
 
     thd1.join();
     thd2.join();
+    thd3.join();
 
     SystemPause();
 }
