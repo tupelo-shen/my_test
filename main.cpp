@@ -1,42 +1,56 @@
+//#include <vector>
 #include <iostream>
- 
-struct Empty {};
-struct Base { int a; };
-struct Derived : Base { int b; };
-struct Bit { unsigned bit: 1; };
+#include <chrono>
+#include <thread>
+#include "Common.h"
+#include "Queue-pthread_s.h"
 
-struct A
+using namespace std::chrono_literals;
+
+int g_index = 10;
+Queue_s<int> q;
+std::initializer_list<float> list = {1, 2, 3, 4, 5};
+Queue_s<float> q1(list);
+
+void threadFunction_1()
 {
-    char a;
-    short b;
-    char c;
-}; 
-
-struct B
+    std::this_thread::sleep_for(1s);
+    std::thread::id this_id_1 = std::this_thread::get_id();
+    // std::cout << "thread[" << this_id_1 << "] start..." << std::endl;
+    while(true)
+    {
+        std::this_thread::sleep_for(0.5s);
+        int value = 0;
+        // value = q.wait_and_pop();
+        if (q.try_pop((int&)value))
+        {
+            std::cout << "thread[" << this_id_1 <<
+                "] poped: " << value << std::endl;
+        }
+    }
+}
+void threadFunction_2()
 {
-    struct A  a;
-    int b;
-};
-
+    std::this_thread::sleep_for(0.5s);
+    std::thread::id this_id_2 = std::this_thread::get_id();
+    std::cout << "thread[" << this_id_2 << "] start..." << std::endl;
+    while(true)
+    {     
+        std::this_thread::sleep_for(1s);  
+        g_index++;
+        q.push(g_index);
+        std::cout << "thread[" << this_id_2 << "] pushed:" << g_index << std::endl; 
+    }
+}
 int main()
 {
-    Empty e;
-    Derived d;
-    Base& b = d;
-    [[maybe_unused]] Bit bit;
-    int a[10];
-    std::cout << "size of empty class: "              << sizeof e          << '\n'  // out->1
-              << "size of pointer: "                  << sizeof &e         << '\n'  // out->4
-//            << "size of function: "                 << sizeof(void())    << '\n'  // error
-//            << "size of incomplete type: "          << sizeof(int[])     << '\n'  // error
-//            << "size of bit field: "                << sizeof bit.bit    << '\n'  // error
-              << "size of array of 10 int: "          << sizeof(int[10])   << '\n'  // out->40
-              << "size of array of 10 int (2): "      << sizeof a          << '\n'  // out->40
-              << "length of array of 10 int: "        << ((sizeof a) / (sizeof *a)) << '\n' // out->10
-              << "length of array of 10 int (2): "    << ((sizeof a) / (sizeof a[0])) << '\n' // out->10
-              << "size of the Derived: "              << sizeof d          << '\n'  // out->8
-              << "size of the Derived through Base: " << sizeof b          << '\n'  // out->4
-              << "size of struct A: "                 << sizeof(struct A)          << '\n'  // out->8
-              << "size of struct B: "                 << sizeof (struct B)          << '\n'; // out->12
- 
+    std::thread thd1(threadFunction_2);
+    std::thread thd2(threadFunction_1);
+    std::thread thd3(threadFunction_1);
+
+    thd1.join();
+    thd2.join();
+    thd3.join();
+
+    SystemPause();
 }

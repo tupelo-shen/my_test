@@ -26,8 +26,7 @@ private:
     mutable std::mutex                  m_mutex;
     mutable std::condition_variable     m_cv;
     using   queue_type = std::queue<Type>;
-    queue_type                          m_queue;     
-    //std::queue<Type>            *m_queue;
+    queue_type                          m_queue;
 
 public:
     using value_type= typename queue_type::value_type;
@@ -44,6 +43,7 @@ public:
     {
         for(auto itor=first;itor!=last;++itor){
             m_queue.push(*itor);
+            // printf("%f\n",*itor);
         }
     }
     explicit Queue_s(const container_type &c):m_queue(c){}
