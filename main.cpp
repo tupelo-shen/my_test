@@ -1,54 +1,34 @@
 //#include <vector>
 #include <iostream>
-#include <chrono>
-#include <thread>
+// #include <chrono>
+// #include <thread>
 #include "Common.h"
-#include "Queue-pthread_s.h"
+// #include "Queue-pthread_s.h"
+#include "Stack.h"
 
-int g_index = 10;
-Queue_s<int> q;
-std::initializer_list<float> list = {1, 2, 3, 4, 5};
-Queue_s<float> q1(list);
-
-void threadFunction_1()
+int main(void)
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    std::thread::id this_id_1 = std::this_thread::get_id();
-    // std::cout << "thread[" << this_id_1 << "] start..." << std::endl;
-    while(true)
+    try
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        int value = 0;
-        // value = q.wait_and_pop();
-        if (q.try_pop((int&)value))
+        Stack<int,10> int10Stack;
+        Stack<int,20> int20Stack;
+        for(int i = 0; i < 21; i++)
         {
-            std::cout << "thread[" << this_id_1 <<
-                "] poped: " << value << std::endl;
+            int20Stack.push(i);
+            std::cout << "Pushed: " << i << std::endl;
         }
     }
-}
-void threadFunction_2()
-{
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    std::thread::id this_id_2 = std::this_thread::get_id();
-    std::cout << "thread[" << this_id_2 << "] start..." << std::endl;
-    while(true)
-    {     
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));  
-        g_index++;
-        q.push(g_index);
-        std::cout << "thread[" << this_id_2 << "] pushed:" << g_index << std::endl; 
+    catch(std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+        return 0;
     }
 }
-int main()
-{
-    std::thread thd1(threadFunction_2);
-    std::thread thd2(threadFunction_1);
-    std::thread thd3(threadFunction_1);
-
-    thd1.join();
-    thd2.join();
-    thd3.join();
-
-    SystemPause();
-}
+class Grid  
+{  
+public:  
+    // ... 
+    Grid(const Grid<T,EMPTY>& src);  
+    Grid<T,EMPTY>& operator=( const Grid<T,EMPTY>& rhs);  
+    // ...  
+};  
