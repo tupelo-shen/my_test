@@ -5,6 +5,10 @@
 
     template<class T, class Container = std::deque<T> > class queue;
 
+`queue`是一种容器适配器，是FIFO（先进先出）数据结构的实现，其中，元素插入容器的一端，从另一端读取。
+
+`queue`被实现为一个容器适配器，它是使用特定容器类的封装对象作为其底层容器的类，提供一组特定的成员函数来访问其元素。元素被`push`到队尾。从队列的前面`pop`。
+
 ## 模板参数
 
 * T
