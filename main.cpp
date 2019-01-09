@@ -6,29 +6,25 @@
 // #include "Queue-pthread_s.h"
 #include "Stack.h"
 
-int main(void)
+#include <cstdio>
+struct S
 {
-    try
-    {
-        Stack<int,10> int10Stack;
-        Stack<int,20> int20Stack;
-        for(int i = 0; i < 21; i++)
-        {
-            int20Stack.push(i);
-            std::cout << "Pushed: " << i << std::endl;
-        }
+    int f1(double d) {
+        return printf("%f \n", d);      // 变量参数函数调用
     }
-    catch(std::exception& e)
-    {
-        std::cout << e.what() << std::endl;
-        return 0;
+    int f2() {
+        return f1(7);                   // 成员函数调用，等同于this->f1()
+                                        // int型参数转化成double型
     }
+};
+void f() {
+   puts("function called");             // 函数调用
 }
-class Grid  
-{  
-public:  
-    // ... 
-    Grid(const Grid<T,EMPTY>& src);  
-    Grid<T,EMPTY>& operator=( const Grid<T,EMPTY>& rhs);  
-    // ...  
-};  
+int main()
+{
+    f();                                // 函数调用
+    S s;
+    s.f2();                             // 成员函数调用
+}
+
+
