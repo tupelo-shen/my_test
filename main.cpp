@@ -7,24 +7,62 @@
 #include "Stack.h"
 
 #include <cstdio>
-struct S
+#include <new>
+
+int main(void)
 {
-    int f1(double d) {
-        return printf("%f \n", d);      // 变量参数函数调用
+    int     a[3][4] = { {1, 4, 7, 10}, {2, 5, 8, 11}, {3, 6, 9, 12} } ;
+    int*    ptr = &a[0][0];
+    int*    tmp = new int[3*4];
+    
+    // enum _WEEK
+    // {
+    //     MONDAY,
+    //     TUESDAY,
+    //     WEDNESDAY,
+    //     THURSDAY,
+    //     FRIDAY,
+    //     SATURDAY,
+    //     SUNDAY     
+    // };
+    
+    enum class WEEK
+    {
+        MONDAY,
+        TUESDAY,
+        WEDNESDAY,
+        THURSDAY,
+        FRIDAY,
+        SATURDAY,
+        SUNDAY     
+    };
+
+    WEEK day = WEEK::MONDAY;
+    // _WEEK day_0 = 4;
+
+    for ( auto& x : a)
+    {
+        std::cout << x << std::endl;
     }
-    int f2() {
-        return f1(7);                   // 成员函数调用，等同于this->f1()
-                                        // int型参数转化成double型
+
+    for (int j = 0; j < 4; ++j)
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            std::cout << "a[" << i << "][" << j <<"] = "<< a[i][j] << " ; pointer = " << &a[i][j] << std::endl;
+        }
     }
-};
-void f() {
-   puts("function called");             // 函数调用
-}
-int main()
-{
-    f();                                // 函数调用
-    S s;
-    s.f2();                             // 成员函数调用
+
+    for (int i = 0; i < 12; ++i)
+    {
+        printf("a + [%d]: 0x%p = %d\n", i, ptr+i, *(ptr+i));
+    }
+
+    for (int i = 0; i < 12; ++i)
+    {
+        printf("tmp + %d = 0x%p\n", i, tmp+i);
+    }
+    delete [] tmp;
 }
 
 
