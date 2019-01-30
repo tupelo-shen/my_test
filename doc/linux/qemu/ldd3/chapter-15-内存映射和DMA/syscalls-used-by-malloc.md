@@ -173,3 +173,5 @@
         sploitfun@sploitfun-VirtualBox:~/ptmalloc.ppt/syscalls$
 
 注意，在我们的程序中`ASLR`被关闭。
+
+相关文章： [栈缓存溢出](https://blog.csdn.net/shenwanjiang111/article/details/86692256)
