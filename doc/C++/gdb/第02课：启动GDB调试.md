@@ -18,23 +18,23 @@
 
 通过以上代码得到 chatserver 的 PID 为 26621，然后使用 gdb attach 26621 把 GDB 附加到 chatserver 进程，操作并输出如下：
 
-[zhangyl@localhost flamingoserver]$ gdb attach 26621
-Attaching to process 26661
-Reading symbols from /home/zhangyl/flamingoserver/chatserver...done.
-Reading symbols from /usr/lib64/mysql/libmysqlclient.so.18...Reading symbols from /usr/lib64/mysql/libmysqlclient.so.18...(no debugging symbols found)...done.
-Reading symbols from /lib64/libpthread.so.0...(no debugging symbols found)...done.
-[New LWP 42931]
-[New LWP 42930]
-[New LWP 42929]
-[New LWP 42928]
-[New LWP 42927]
-[New LWP 42926]
-[New LWP 42925]
-[New LWP 42924]
-[New LWP 42922]
-[Thread debugging using libthread_db enabled]
-Using host libthread_db library "/lib64/libthread_db.so.1".
-Loaded symbols for /lib64/libpthread.so.0
+    [zhangyl@localhost flamingoserver]$ gdb attach 26621
+    Attaching to process 26661
+    Reading symbols from /home/zhangyl/flamingoserver/chatserver...done.
+    Reading symbols from /usr/lib64/mysql/libmysqlclient.so.18...Reading symbols from /usr/lib64/mysql/libmysqlclient.so.18...(no debugging symbols found)...done.
+    Reading symbols from /lib64/libpthread.so.0...(no debugging symbols found)...done.
+    [New LWP 42931]
+    [New LWP 42930]
+    [New LWP 42929]
+    [New LWP 42928]
+    [New LWP 42927]
+    [New LWP 42926]
+    [New LWP 42925]
+    [New LWP 42924]
+    [New LWP 42922]
+    [Thread debugging using libthread_db enabled]
+    Using host libthread_db library "/lib64/libthread_db.so.1".
+    Loaded symbols for /lib64/libpthread.so.0
 
 为了节约篇幅，上述代码中我删掉了一些无关的信息。当提示 “Attaching to process 26621” 时就说明我们已经成功地将 GDB 附加到目标进程了。需要注意的是，程序使用了一些系统库（如 libc.so），由于这是发行版本的 Linux 系统，这些库是没有调试符号的，因而 GDB 会提示找不到这些库的调试符号。因为目的是调试 chatserver，对系统 API 调用的内部实现并不关注，所以这些提示可以不用关注，只要 chatserver 这个文件有调试信息即可。
 
