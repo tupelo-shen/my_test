@@ -18,12 +18,15 @@ CGDB 的官网[请点击这里查看](http://cgdb.github.io/)，执行以下命�
 
 > 安装过程中可能遇到的问题:
 > ubuntu configure: error: CGDB requires curses.h or ncurses/curses.h to build.
+> 
 > sudo apt-get install libncurses5-dev libncursesw5-dev
 >
 > Please install makeinfo before installing
+> 
 > sudo apt-get install autoconf automake
 >
 > sudo apt-get install texinfo 
+> 
 > sudo apt-get install libreadline6 libreadline6-dev
 >
 > CentOS 系统可以百度，好多记录安装过程中的问题的解决方法。
