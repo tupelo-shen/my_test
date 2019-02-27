@@ -2,7 +2,7 @@
 #include "Average.h"
 #include "Common.h"
 
-// Returns n! (the factorial of n).  For negative n, n! is defined to be 1.
+// n的阶乘 n! ，对于负数 n，n!=1.
 int Factorial(int n) 
 {
     int result = 1;

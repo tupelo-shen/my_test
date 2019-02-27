@@ -49,32 +49,29 @@ public:
     void Set(const char* c_string);
 };
 
-// Queue is a simple queue implemented as a singled-linked list.
-//
-// The element type must support copy constructor.
-template <typename E>  // E is the element type
+// Queue 是一个单链表队列，元素类型 E 必须支持拷贝构造函数
+template <typename E>
 class Queue;
- 
-// QueueNode is a node in a Queue, which consists of an element of
-// type E and a pointer to the next node.
-template <typename E>  // E is the element type
+
+// QueueNode 是队列 Queue 中的一个节点，它包含一个类型为E的元素和
+// 一个指向下一个节点的指针。
+template <typename E>
 class QueueNode {
     friend class Queue<E>;
  
 public:
-    // Gets the element in this node.
+    // 获取节点中的元素
     const E& element() const { return element_; }
  
-    // Gets the next node in the queue.
+    // 获取队列Queue中的下一个节点
     QueueNode* next() { return next_; }
     const QueueNode* next() const { return next_; }
  
 private:
-    // Creates a node with a given element value.  The next pointer is
-    // set to NULL.
+    // 用一个给定的元素创建一个节点。指向下一个节点的指针设为NULL
     explicit QueueNode(const E& an_element) : element_(an_element), next_(NULL) {}
  
-    // We disable the default assignment operator and copy c'tor.
+    // 在这儿，禁止默认赋值构造函数和拷贝构造函数
     const QueueNode& operator = (const QueueNode&);
     QueueNode(const QueueNode&);
  
@@ -82,19 +79,19 @@ private:
     QueueNode* next_;
 };
  
-template <typename E>  // E is the element type.
+template <typename E>
 class Queue {
 public:
-    // Creates an empty queue.
+    // 创建一个空队列
     Queue() : head_(NULL), last_(NULL), size_(0) {}
  
-    // D'tor.  Clears the queue.
+    // 析构函数，销毁队列
     ~Queue() { Clear(); }
  
-    // Clears the queue.
+    // 清除队列
     void Clear() {
         if (size_ > 0) {
-            // 1. Deletes every node.
+            // 1. 删除每一个节点
             QueueNode<E>* node = head_;
             QueueNode<E>* next = node->next();
             for (; ;) {
@@ -104,27 +101,25 @@ public:
                 next = node->next();
             }
  
-            // 2. Resets the member variables.
+            // 2. 重置成员变量
             head_ = last_ = NULL;
             size_ = 0;
         }
     }
  
-    // Gets the number of elements.
+    // 得到队列中的元素个数
     size_t Size() const { return size_; }
  
-    // Gets the first element of the queue, or NULL if the queue is empty.
+    // 得到队列中的第一个（Head）元素，如果队列为空，则返回NULL
     QueueNode<E>* Head() { return head_; }
     const QueueNode<E>* Head() const { return head_; }
  
-    // Gets the last element of the queue, or NULL if the queue is empty.
+    // 得到队列中的最后一个（End）元素，如果队列为空，则返回NULL
     QueueNode<E>* Last() { return last_; }
     const QueueNode<E>* Last() const { return last_; }
- 
-    // Adds an element to the end of the queue.  A copy of the element is
-    // created using the copy constructor, and then stored in the queue.
-    // Changes made to the element in the queue doesn't affect the source
-    // object, and vice versa.
+
+    // 从队尾向队列中添加一个元素。使用拷贝构造函数拷贝一份element，然后存贮到
+    // 队列中。
     void Enqueue(const E& element) {
         QueueNode<E>* new_node = new QueueNode<E>(element);
  
@@ -138,8 +133,7 @@ public:
         }
     }
  
-    // Removes the head of the queue and returns it.  Returns NULL if
-    // the queue is empty.
+    // 移除队列的头并返回这个节点的元素，如果这个队列为空则返回NULL
     E* Dequeue() {
         if (size_ == 0) {
             return NULL;
@@ -158,9 +152,7 @@ public:
         return element;
     }
  
-    // Applies a function/functor on each element of the queue, and
-    // returns the result in a new queue.  The original queue is not
-    // affected.
+    // 对队列中的每一个元素都应用一个函数，且返回新队列的结果。原队列不会受影响。
     template <typename F>
     Queue* Map(F function) const {
         Queue* new_queue = new Queue();
@@ -172,11 +164,11 @@ public:
     }
  
 private:
-    QueueNode<E>* head_;  // The first node of the queue.
-    QueueNode<E>* last_;  // The last node of the queue.
-    size_t size_;  // The number of elements in the queue.
+    QueueNode<E>* head_;        // 队列的第一个节点
+    QueueNode<E>* last_;        // 队列的最后一个节点
+    size_t size_;               // 队列的元素个数.
  
-    // We disallow copying a queue.
+    // 我们不允许复制队列
     Queue(const Queue&);
     const Queue& operator = (const Queue&);
 };

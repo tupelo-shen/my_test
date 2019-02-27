@@ -8,6 +8,16 @@
 
 #include <cstdio>
 #include <new>
+#include <map>
+
+// std::map<bool,int> mymap{
+//     {false, 10},
+//     {true,  3},
+//     {false, 7}
+// };
+// mymap.insert(pair<bool,int>(false,10));
+// mymap.insert(pair<bool,int>(true,3));
+// mymap.insert(pair<bool,int>(false,7));
 
 int main(void)
 {

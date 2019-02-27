@@ -41,16 +41,12 @@ TEST(IsPrimeTest, Negative) {
     EXPECT_FALSE(IsPrime(INT_MIN));     // INT_MIN 定义在 <limits.h> 文件中
 }
  
-// Tests some trivial cases.
-TEST(IsPrimeTest, Trivial) {
+// 测试 正输入(>0)
+TEST(IsPrimeTest, Positive) {
     EXPECT_FALSE(IsPrime(0));
     EXPECT_FALSE(IsPrime(1));
     EXPECT_TRUE(IsPrime(2));
     EXPECT_TRUE(IsPrime(3));
-}
- 
-// Tests positive input.
-TEST(IsPrimeTest, Positive) {
     EXPECT_FALSE(IsPrime(4));
     EXPECT_TRUE(IsPrime(5));
     EXPECT_FALSE(IsPrime(6));
@@ -58,32 +54,112 @@ TEST(IsPrimeTest, Positive) {
     EXPECT_TRUE(IsPrime(11));
     EXPECT_TRUE(IsPrime(23));
 }
+// --------------------<测试 参数化>-----------------------------------
+using namespace ::testing;
 
+struct paramList
+{
+    bool    out;
+    int     in;
+};
+// #include <map>
+// static std::map<bool,int> mymap;
+// mymap.insert(pair<bool,int>(false,10));
+// mymap.insert(pair<bool,int>(true,3));
+// mymap.insert(pair<bool,int>(false,7));
+std::map<bool,int> mymap{
+    {false, 10},
+    {true,  3},
+    {false, 7}
+};
+class A : public ::testing::TestWithParam<std::pair<const bool,int>>
+{
+
+};
+TEST_P(A, IsPrime)
+{
+    // bool out = GetParam().out;
+    // int in = GetParam().in;
+    // bool out = testing::get<0>(GetParam());
+    // int in = testing::get<1>(GetParam());
+    bool out = testing::get<0>(GetParam());
+    int in = testing::get<1>(GetParam());
+
+    // std::map<bool, int>::iterator iter;
+    // for(iter = GetParam().begin(); iter != GetParam().end(); iter++)
+    // {
+    //     bool out = iter->first;
+    //     int  in = iter->second;
+        EXPECT_EQ(out, IsPrime(in));
+    // }
+       
+}
+// INSTANTIATE_TEST_CASE_P(P,
+//     A,
+//     Values(paramList{false, 10}, paramList{true, 3}));
+INSTANTIATE_TEST_CASE_P(P,
+    A,
+    ValuesIn(mymap.begin(), mymap.end()));
+// class A_IsPrime_Test : public A 
+// { 
+//     public: 
+//         A_IsPrime_Test() {} 
+//         virtual void TestBody(); 
+//     private: 
+//         static int AddToRegistry() 
+//         { 
+//             ::testing::UnitTest::GetInstance()->parameterized_test_registry(). GetTestCasePatternHolder<A>
+//                 ( "A", ::testing::internal::CodeLocation( "gtest/gtest_Average.cpp", 70))->
+//                 AddTestPattern( "A", "IsPrime", new ::testing::internal::TestMetaFactory< A_IsPrime_Test>()); 
+
+//             return 0; 
+//         } 
+//         static int gtest_registering_dummy_ __attribute__ ((unused)); 
+//         A_IsPrime_Test(A_IsPrime_Test const &) ; 
+//         void operator=(A_IsPrime_Test const &) ; 
+// }; 
+// int A_IsPrime_Test::gtest_registering_dummy_ = A_IsPrime_Test::AddToRegistry(); 
+// void A_IsPrime_Test::TestBody()
+// {
+//     bool out = GetParam().out;
+//     int in = GetParam().in;
+//     switch (0) 
+//     case 0: 
+//     default: 
+//         if (const ::testing::AssertionResult gtest_ar = (::testing::internal:: EqHelper<(sizeof(::testing::internal::IsNullLiteralHelper(out)) == 1)>::Compare("out", "IsPrime(in)", out, IsPrime(in)))) ; 
+//         else 
+//             ::testing::internal::AssertHelper(::testing::TestPartResult::kNonFatalFailure, "gtest/gtest_Average.cpp", 74, gtest_ar.failure_message()) = ::testing::Message();
+// }
+// INSTANTIATE_TEST_CASE_P(P,
+//     A,
+//     Values(paramList{false, 10}, paramList{true, 3}));
+// static ::testing::internal::ParamGenerator<A::ParamType> gtest_PA_EvalGenerator_() 
+// { 
+//     return Values(paramList{false, 10}, paramList{true, 3}); 
+// } 
+// static ::std::string gtest_PA_EvalGenerateName_( const ::testing::TestParamInfo<A::ParamType>& info) 
+// { 
+//     return ::testing::internal::GetParamNameGen<A::ParamType> ()(info); 
+// } 
+// static int gtest_PA_dummy_ __attribute__ ((unused)) = ::testing::UnitTest::GetInstance()->parameterized_test_registry(). GetTestCasePatternHolder<A>( "A", ::testing::internal::CodeLocation( "gtest/gtest_Average.cpp", 79))->AddTestCaseInstantiation( "P", &gtest_PA_EvalGenerator_, &gtest_PA_EvalGenerateName_, "gtest/gtest_Average.cpp", 79);
 // --------------------<测试 MyString>---------------------------------
 // 示例 2: 展示了一个具有多个函数方法的Class的测试方法
 //
 // 通常，为了保持结构的整洁，按照函数进行一对一测试。当然，你也可以添加其它测试
  
-// 测试构造函数
+// 测试 默认构造函数
 TEST(MyString, DefaultConstructor) {
     const MyString s;
  
-    // Asserts that s.c_string() returns NULL.
+    // 断言 s.c_string() 返回 NULL.
     //
-    // If we write NULL instead of
+    // 如果在此处我们用 static_cast<const char *>(NULL) 代替 NULL 的话，
+    // 在gcc3.4版本上会产生Warning。原因是 EXPECT_EQ 为了在失败时打印结果
+    // 需要知道它的参数类型。因为 NULL被定义为 0，编译器将会使用int的格式化
+    // 函数打印它。但是，gcc认为 NULL是一个指针，而不是 int型，因而会发生告警。
     //
-    //   static_cast<const char *>(NULL)
-    //
-    // in this assertion, it will generate a warning on gcc 3.4.  The
-    // reason is that EXPECT_EQ needs to know the types of its
-    // arguments in order to print them when it fails.  Since NULL is
-    // #defined as 0, the compiler will use the formatter function for
-    // int to print it.  However, gcc thinks that NULL should be used as
-    // a pointer, not an int, and therefore complains.
-    //
-    // The root of the problem is C++'s lack of distinction between the
-    // integer number 0 and the null pointer constant.  Unfortunately,
-    // we have to live with this fact.
+    // 问题的根本原因就是C++缺少整数0和NULL指针常量之间的区别。不幸的是，
+    // 我们必须忍受这个事实。
     EXPECT_STREQ(NULL, s.c_string());
  
     EXPECT_EQ(0u, s.Length());
@@ -113,56 +189,32 @@ TEST(MyString, Set) {
     s.Set(kHelloString);
     EXPECT_EQ(0, strcmp(s.c_string(), kHelloString));
  
-    // Set should work when the input pointer is the same as the one
-    // already in the MyString object.
+    // 用Set方法对自身的字符串再拷贝一份，应该没有变化
     s.Set(s.c_string());
     EXPECT_EQ(0, strcmp(s.c_string(), kHelloString));
  
-    // Can we set the MyString to NULL?
+    // 测试我们是否可以将字符串设为NULL
     s.Set(NULL);
     EXPECT_STREQ(NULL, s.c_string());
-}
- 
-//Sample 4: another basic example of using Google Test
-// Tests the Increment() method.
-TEST(Counter, Increment) {
-    Counter c;
- 
-    // EXPECT_EQ() evaluates its arguments exactly once, so they
-    // can have side effects.
- 
-    EXPECT_EQ(0, c.Increment());
-    EXPECT_EQ(1, c.Increment());
-    EXPECT_EQ(2, c.Increment());
 }
 
 // --------------------<测试 MyString>---------------------------------
 // 示例 3: Google Test 一个更为高级的功能-测试夹具（test fixture）
 //
-// A test fixture is a place to hold objects and functions shared by
-// all tests in a test case.  Using a test fixture avoids duplicating
-// the test code necessary to initialize and cleanup those common
-// objects for each test.  It is also useful for defining sub-routines
-// that your tests need to invoke a lot.
+// 所谓的“测试夹具”， 就是存贮测试用例中所有测试共享的对象和函数的地方。尤其是
+// 初始化代码和清除代码，这样可以避免重复的拷贝、粘贴操作。
+// 
+// 所有的测试在代码共享的意义上共享“测试夹具”代码，而不是数据共享。每个测试都
+// 拥有测试夹具的拷贝。在一个测试中修改的数据是不会传递到另一个测试中去的。
+// 
+// 这样设计的思路就是，所有的测试是独立的、可重复的。尤其是，当一个测试失败
+// 不能影响另一个测试的结果。如果一个测试的结果依赖于另一个测试的结果，那么
+// 这2个测试应该被合并为1个更大的测试。
 //
-// The tests share the test fixture in the sense of code sharing, not
-// data sharing.  Each test is given its own fresh copy of the
-// fixture.  You cannot expect the data modified by one test to be
-// passed on to another test, which is a bad idea.
-//
-// The reason for this design is that tests should be independent and
-// repeatable.  In particular, a test should not fail as the result of
-// another test's failure.  If one test depends on info produced by
-// another test, then the two tests should really be one big test.
-//
-// The macros for indicating the success/failure of a test
-// (EXPECT_TRUE, FAIL, etc) need to know what the current test is
-// (when Google Test prints the test result, it tells you which test
-// each failure belongs to).  Technically, these macros invoke a
-// member function of the Test class.  Therefore, you cannot use them
-// in a global function.  That's why you should put test sub-routines
-// in a test fixture.
- 
+// 指示测试成功/失败的宏（EXPECT_TRUE，FAIL等）需要知道当前测试是什么（
+// Google Test打印测试结果的时候，告诉你每个失败都属于哪个测试。）从技术上讲，
+// 这些宏调用Test类的成员函数。因此，为什么应该子测试放入一个测试夹具的原因。
+// 
 // 为了使用 TEST_F 测试夹具这个功能，必须从 testing::Test 派生一个类
 class QueueTest : public testing::Test {
 protected:  // 使用public也可
@@ -173,10 +225,9 @@ protected:  // 使用public也可
         q2_.Enqueue(2);
         q2_.Enqueue(3);
     }
- 
-    // virtual void TearDown() will be called after each test is run.
-    // You should define it if there is cleanup work to do.  Otherwise,
-    // you don't have to provide it.
+
+    // 每个测试运行之后，virtual void TearDown()都会被调用。如果没有cleanup工作
+    // 要处理，则不需要提供该函数。
     //
     // virtual void TearDown() {
     // }
@@ -188,14 +239,13 @@ protected:  // 使用public也可
  
     // 测试 Queue::Map() 使用的一个辅助函数
     void MapTester(const Queue<int> * q) {
-        // Creates a new queue, where each element is twice as big as the
-        // corresponding one in q.
+        // 创建一个新的队列，每个元素都是原有队列对应元素的2倍
         const Queue<int> * const new_q = q->Map(Double);
  
-        // Verifies that the new queue has the same size as q.
+        // 验证新的队列和原队列大小相同
         ASSERT_EQ(q->Size(), new_q->Size());
  
-        // Verifies the relationship between the elements of the two queues.
+        // 验证2个队列中的元素是否为2倍关系
         for ( const QueueNode<int> * n1 = q->Head(), * n2 = new_q->Head();
             n1 != NULL; n1 = n1->next(), n2 = n2->next() ) {
                 EXPECT_EQ(2 * n1->element(), n2->element());
@@ -241,8 +291,9 @@ TEST_F(QueueTest, Map) {
     MapTester(&q1_);
     MapTester(&q2_);
 }
- 
-// 示例 5: 本例展示了如何从测试夹具派生子夹具来多个测试用例
+
+/*----------------------<示例 5--共有Test Fixture>--------------------*/
+// <<<示例 5>>>: 本例展示了如何从测试夹具派生子夹具来编写多个测试用例
 //
 // 在使用测试夹具的时候，指定了使用该测试夹具的测试用例名称。
 // 因此，一个测试夹具只能给一个测试用例使用。
@@ -257,8 +308,7 @@ TEST_F(QueueTest, Map) {
 // 测试用例使用派生自“QuickTest”的自测试夹具。
 class QuickTest : public testing::Test {
 protected:
-    // Remember that SetUp() is run immediately before a test starts.
-    // This is a good place to record the start time.
+    // 要记住，SetUp()函数在测试开始之前执行。在此，记录测试开始的时间。
     virtual void SetUp() {
         start_time_ = time(NULL);
     }
@@ -276,12 +326,10 @@ protected:
     time_t start_time_;
 };
  
-// We derive a fixture named IntegerFunctionTest from the QuickTest
-// fixture.  All tests using this fixture will be automatically
-// required to be quick.
+// 从QuickTest派生出一个新的测试夹具类-IntegerFunctionTest。该测试类中所有的测试
+// 就是要求测试时间不能太慢。
 class IntegerFunctionTest : public QuickTest {
-    // We don't need any more logic than already in the QuickTest fixture.
-    // Therefore the body is empty.
+    // 因为我们的逻辑都在QuickTest中，所以在此为空，当然了，你也可以在此添加新的逻辑或共享对象
 };
  
 // 现在开始编写 IntegerFunctionTest 测试用例的测试点
@@ -322,20 +370,19 @@ TEST_F(IntegerFunctionTest, IsPrime) {
     EXPECT_FALSE(IsPrime(6));
     EXPECT_TRUE(IsPrime(23));
 }
- 
-// The next test case (named "QueueTest") also needs to be quick, so
-// we derive another fixture from QuickTest.
-//
-// The QueueTest test fixture has some logic and shared objects in
-// addition to what's in QuickTest already.  We define the additional
-// stuff inside the body of the test fixture, as usual.
+
+// 下面一个测试用例（命名为"QueueTest"也需要执行时间快，所以从 QuickTest 
+// 再派生一个新的测试夹具-QueueTest1
+
+// QueueTest 的测试夹具除了具有QuickTest中的内容之外，还有一些逻辑和共享对象。
+// 我们在QueueTest1中定义自己独有的测试内容。
 class QueueTest1 : public QuickTest {
 protected:
     virtual void SetUp() {
-        // First, we need to set up the super fixture (QuickTest).
+        // 首先，我们调用父测试夹具类中的SetUp函数(QuickTest).
         QuickTest::SetUp();
  
-        // Second, some additional setup for this fixture.
+        // 其次，添加该测试夹具的一些额外的设置
         q1_.Enqueue(1);
         q2_.Enqueue(2);
         q2_.Enqueue(3);
@@ -354,14 +401,13 @@ protected:
     Queue<int> q2_;
 };
  
-// Now, let's write tests using the QueueTest fixture.
- 
-// Tests the default constructor.
+// 现在让我们为 QueueTest1 测试用例编写测试点吧。
+// 测试默认构造函数
 TEST_F(QueueTest1, DefaultConstructor) {
     EXPECT_EQ(0u, q0_.Size());
 }
  
-// Tests Dequeue().
+// 测试 Dequeue().
 TEST_F(QueueTest1, Dequeue) {
     int* n = q0_.Dequeue();
     EXPECT_TRUE(n == NULL);
@@ -380,7 +426,7 @@ TEST_F(QueueTest1, Dequeue) {
 }
  
 /*-------------------<TYPED_TEST 和 TYPED_TEST_P 宏>------------------*/
-// 示例6：此示例演示如何测试同一接口的多个实现的公共属性(又称接口测试)。
+// <<<示例6>>>：此示例演示如何测试同一接口的多个实现的公共属性(又称接口测试)。
  
 // 首先，我们创建了一些工厂函数来创建实现的实例。如果你的实现可以通过相同的方法
 // 实现，可以跳过这一步。
@@ -468,52 +514,35 @@ TYPED_TEST(PrimeTableTest, CanGetNextPrime) {
     EXPECT_EQ(131, this->table_->GetNextPrime(128));
 }
  
-// That's it!  Google Test will repeat each TYPED_TEST for each type
-// in the type list specified in TYPED_TEST_CASE.  Sit back and be
-// happy that you don't have to define them multiple times.
+// 就是这样！Google Test将会为TYPED_TEST_CASE用例中指定的每一种类型，重复
+// 进行TYPED_TEST测试。这样，我们就不需要重复定义多次了。
  
 #endif  // GTEST_HAS_TYPED_TEST
  
-#if GTEST_HAS_TYPED_TEST_P
- 
+// #if GTEST_HAS_TYPED_TEST_P
+#if 1 
+
 using testing::Types;
  
-// Sometimes, however, you don't yet know all the types that you want
-// to test when you write the tests.  For example, if you are the
-// author of an interface and expect other people to implement it, you
-// might want to write a set of tests to make sure each implementation
-// conforms to some basic requirements, but you don't know what
-// implementations will be written in the future.
-//
-// How can you write the tests without committing to the type
-// parameters?  That's what "type-parameterized tests" can do for you.
-// It is a bit more involved than typed tests, but in return you get a
-// test pattern that can be reused in many contexts, which is a big
-// win.  Here's how you do it:
- 
-// First, define a test fixture class template.  Here we just reuse
-// the PrimeTableTest fixture defined earlier:
 // 但是有时候，我们在写测试用例的时候还不知道所有要测试的类型。例如，
 // 你是接口的实现者，由其他开发者实现具体的实现，但是，又想写一组测试程序保证
-// 它们的实现满足基本的要求，而你又不知打具体的实现。
+// 它们的实现满足基本的要求，而你又不知道具体的实现。
 //
 // 如何在不提交类型参数的情况下编写测试？“ type-parameterized tests ”可以
 // 帮助你。这比 “ typed tests ”测试更为复杂，但是，作为回报，你可以得到一个
 // 可以在许多开发环境中重复使用的测试模式，这是一个很大的胜利。
 // 
 // 下面让我们来看一下如何实现：
-// 首先，定义一个 
+// 首先，定义一个测试夹具类模板。在这儿，我们只是重用之前定义的夹具类 PrimeTableTest：
 template <class T>
 class PrimeTableTest2 : public PrimeTableTest<T> {
 };
  
-// Then, declare the test case.  The argument is the name of the test
-// fixture, and also the name of the test case (as usual).  The _P
-// suffix is for "parameterized" or "pattern".
+// 然后，声明测试用例。参数是“测试夹具”的名称，通常也是测试用例的名称。
+// _P后缀用于“参数化”或“模式”
 TYPED_TEST_CASE_P(PrimeTableTest2);
- 
-// Next, use TYPED_TEST_P(TestCaseName, TestName) to define a test,
-// similar to what you do with TEST_F.
+
+// 接下来，使用TYPED_TEST_P(TestCaseName, TestName) 定义一个测试，与 TEST_F相似
 TYPED_TEST_P(PrimeTableTest2, ReturnsFalseForNonPrimes) {
     EXPECT_FALSE(this->table_->IsPrime(-5));
     EXPECT_FALSE(this->table_->IsPrime(0));
@@ -541,264 +570,276 @@ TYPED_TEST_P(PrimeTableTest2, CanGetNextPrime) {
     EXPECT_EQ(131, this->table_->GetNextPrime(128));
 }
  
-// Type-parameterized tests involve one extra step: you have to
-// enumerate the tests you defined:
+// 类型参数化测试与类型测试相比，多了一步：注册测试实例，也就是枚举想要的测试目标
 REGISTER_TYPED_TEST_CASE_P(
-    PrimeTableTest2,  // The first argument is the test case name.
-    // The rest of the arguments are the test names.
+    PrimeTableTest2,  // 第一个参数是测试用例名称，接下来的参数是各个测试的名称
     ReturnsFalseForNonPrimes, ReturnsTrueForPrimes, CanGetNextPrime);
- 
-// At this point the test pattern is done.  However, you don't have
-// any real test yet as you haven't said which types you want to run
-// the tests with.
- 
-// To turn the abstract test pattern into real tests, you instantiate
-// it with a list of types.  Usually the test pattern will be defined
-// in a .h file, and anyone can #include and instantiate it.  You can
-// even instantiate it more than once in the same program.  To tell
-// different instances apart, you give each of them a name, which will
-// become part of the test case name and can be used in test filters.
- 
-// The list of types we want to test.  Note that it doesn't have to be
-// defined at the time we write the TYPED_TEST_P()s.
+
+// 至此，测试pattern就完成了。但是，你还没有进行任何真正的测试，因为还没有说明
+// 运行那种类型的测试。
+
+// 要将抽象测试模式（Pattern）转换成真实的测试，需要使用类型列表对其进行实例化。
+// 通常，这些测试模式会被定义在某一个.h文件中，任何人都可以#include并实例化它。
+// 甚至可以在同一程序中多次实例化它。为了区分不同的实例，可以为每个实例取不同
+// 的名称该名称将会成为测试用例名称的一部分，可以用于测试过滤器。
+
+// 指定类型，使用列表的格式。在编写TYPED_TEST_P()之类的测试时不必定义它。
 typedef Types<OnTheFlyPrimeTable, PreCalculatedPrimeTable>
     PrimeTableImplementations;
-INSTANTIATE_TYPED_TEST_CASE_P(OnTheFlyAndPreCalculated,    // Instance name
-    PrimeTableTest2,             // Test case name
-    PrimeTableImplementations);  // Type list
+INSTANTIATE_TYPED_TEST_CASE_P(OnTheFlyAndPreCalculated,    // 实例名称
+    PrimeTableTest2,             // 测试用例名称
+    PrimeTableImplementations);  // 类型列表
  
 #endif  // GTEST_HAS_TYPED_TEST_P
  
-// /*-----------------------------TEST_P macro--------------------------------*/
-// //Sample 7: This sample shows how to test common properties of multiple
-// // implementations of an interface (aka interface tests) using
-// // value-parameterized tests. Each test in the test case has
-// // a parameter that is an interface pointer to an implementation
-// // tested.
+/*-------------------------------------------------------------------------
+                        <TEST_P 宏>-<值参数化>                             
+--------------------------------------------------------------------------*/
+// <<<示例7>>>： 该示例展示了怎样测试interface的不同实现的共同属性，运用的方法就是
+// [值参数化测试-value-parameterized tests]。在这个测试用例中，每个测试点都有一个
+// 参数，该参数是一个接口指针，指向要测试的具体接口实现。
+
+#if 1 // GTEST_HAS_PARAM_TEST
  
-// #if GTEST_HAS_PARAM_TEST
+using ::testing::TestWithParam;
+using ::testing::Values;
  
-// using ::testing::TestWithParam;
-// using ::testing::Values;
+// 作为一般规则，为了防止测试影响后面的测试，你应该为每个测试点创建和销毁测试对象
+// 而不是重用它们。在该示例中，我们将会为PrimeTable对象定义一个简单的工厂函数。
+// 我们将会在测试用例的SetUp()方法中实例化对象，在 TearDown() 方法中删除它们。
+typedef PrimeTable* CreatePrimeTableFunc();
  
-// // As a general rule, to prevent a test from affecting the tests that come
-// // after it, you should create and destroy the tested objects for each test
-// // instead of reusing them.  In this sample we will define a simple factory
-// // function for PrimeTable objects.  We will instantiate objects in test's
-// // SetUp() method and delete them in TearDown() method.
-// typedef PrimeTable* CreatePrimeTableFunc();
+PrimeTable* CreateOnTheFlyPrimeTable() {
+    return new OnTheFlyPrimeTable();
+}
  
-// PrimeTable* CreateOnTheFlyPrimeTable() {
-//     return new OnTheFlyPrimeTable();
-// }
+template <size_t max_precalculated>
+PrimeTable* CreatePreCalculatedPrimeTable() {
+    return new PreCalculatedPrimeTable(max_precalculated);
+}
  
-// template <size_t max_precalculated>
-// PrimeTable* CreatePreCalculatedPrimeTable() {
-//     return new PreCalculatedPrimeTable(max_precalculated);
-// }
+// 在测试夹具类中，构造函数，SetUp()，和 TearDown()等函数体内，你可以通过GetParam()
+// 方法引用测试参数。在本例中，测试参数是一个工厂函数，调用它在SetUp()函数产生
+// PrimeTable的实例。
+class PrimeTableTest1 : public TestWithParam<CreatePrimeTableFunc*> {
+public:
+    virtual ~PrimeTableTest1() { delete table_; }
+    virtual void SetUp() { table_ = (*GetParam())(); }
+    virtual void TearDown() {
+        delete table_;
+        table_ = NULL;
+    }
  
-// // Inside the test body, fixture constructor, SetUp(), and TearDown() you
-// // can refer to the test parameter by GetParam().  In this case, the test
-// // parameter is a factory function which we call in fixture's SetUp() to
-// // create and store an instance of PrimeTable.
-// class PrimeTableTest1 : public TestWithParam<CreatePrimeTableFunc*> {
-// public:
-//     virtual ~PrimeTableTest1() { delete table_; }
-//     virtual void SetUp() { table_ = (*GetParam())(); }
-//     virtual void TearDown() {
-//         delete table_;
-//         table_ = NULL;
-//     }
+protected:
+    PrimeTable* table_;
+};
  
-// protected:
-//     PrimeTable* table_;
-// };
+TEST_P(PrimeTableTest1, ReturnsFalseForNonPrimes) {
+    EXPECT_FALSE(table_->IsPrime(-5));
+    EXPECT_FALSE(table_->IsPrime(0));
+    EXPECT_FALSE(table_->IsPrime(1));
+    EXPECT_FALSE(table_->IsPrime(4));
+    EXPECT_FALSE(table_->IsPrime(6));
+    EXPECT_FALSE(table_->IsPrime(100));
+}
  
-// TEST_P(PrimeTableTest1, ReturnsFalseForNonPrimes) {
-//     EXPECT_FALSE(table_->IsPrime(-5));
-//     EXPECT_FALSE(table_->IsPrime(0));
-//     EXPECT_FALSE(table_->IsPrime(1));
-//     EXPECT_FALSE(table_->IsPrime(4));
-//     EXPECT_FALSE(table_->IsPrime(6));
-//     EXPECT_FALSE(table_->IsPrime(100));
-// }
+TEST_P(PrimeTableTest1, ReturnsTrueForPrimes) {
+    EXPECT_TRUE(table_->IsPrime(2));
+    EXPECT_TRUE(table_->IsPrime(3));
+    EXPECT_TRUE(table_->IsPrime(5));
+    EXPECT_TRUE(table_->IsPrime(7));
+    EXPECT_TRUE(table_->IsPrime(11));
+    EXPECT_TRUE(table_->IsPrime(131));
+}
  
-// TEST_P(PrimeTableTest1, ReturnsTrueForPrimes) {
-//     EXPECT_TRUE(table_->IsPrime(2));
-//     EXPECT_TRUE(table_->IsPrime(3));
-//     EXPECT_TRUE(table_->IsPrime(5));
-//     EXPECT_TRUE(table_->IsPrime(7));
-//     EXPECT_TRUE(table_->IsPrime(11));
-//     EXPECT_TRUE(table_->IsPrime(131));
-// }
+TEST_P(PrimeTableTest1, CanGetNextPrime) {
+    EXPECT_EQ(2, table_->GetNextPrime(0));
+    EXPECT_EQ(3, table_->GetNextPrime(2));
+    EXPECT_EQ(5, table_->GetNextPrime(3));
+    EXPECT_EQ(7, table_->GetNextPrime(5));
+    EXPECT_EQ(11, table_->GetNextPrime(7));
+    EXPECT_EQ(131, table_->GetNextPrime(128));
+}
+
+// 为了运行<值参数化>-测试，你需要实例化它们，或者将他们绑定到用作测试参数的值列表。
+// 你可以在不同的编译单元里实例它们，甚至实例化多次。
+INSTANTIATE_TEST_CASE_P(
+    OnTheFlyAndPreCalculated,
+    PrimeTableTest1,
+    Values(&CreateOnTheFlyPrimeTable, &CreatePreCalculatedPrimeTable<1000>));
  
-// TEST_P(PrimeTableTest1, CanGetNextPrime) {
-//     EXPECT_EQ(2, table_->GetNextPrime(0));
-//     EXPECT_EQ(3, table_->GetNextPrime(2));
-//     EXPECT_EQ(5, table_->GetNextPrime(3));
-//     EXPECT_EQ(7, table_->GetNextPrime(5));
-//     EXPECT_EQ(11, table_->GetNextPrime(7));
-//     EXPECT_EQ(131, table_->GetNextPrime(128));
-// }
+#else
  
-// // In order to run value-parameterized tests, you need to instantiate them,
-// // or bind them to a list of values which will be used as test parameters.
-// // You can instantiate them in a different translation module, or even
-// // instantiate them several times.
-// //
-// // Here, we instantiate our tests with a list of two PrimeTable object
-// // factory functions:
-// INSTANTIATE_TEST_CASE_P(
-//     OnTheFlyAndPreCalculated,
-//     PrimeTableTest1,
-//     Values(&CreateOnTheFlyPrimeTable, &CreatePreCalculatedPrimeTable<1000>));
+// 对于某些编译器来说，Google Test可能不支持值参数化。如果我们使用条件编译来编译
+// 引用gtest_main库的所有代码，那么MSVC链接器根本不会链接该库，因此会发生错误
+// (fatal error LNK1561: entry point must be defined)。这个dummy测试保证
+// gtest_main被链接。
+TEST(DummyTest, ValueParameterizedTestsAreNotSupportedOnThisPlatform) {}
  
-// #else
+#endif  // GTEST_HAS_PARAM_TEST
+
+/*-------------------------------------------------------------------------
+                        <全局变量测试>                             
+--------------------------------------------------------------------------*/
+// <<< 示例 8 >>>: 本例演示了如何测试依赖某些全局标志变量的代码。
+// Combine() 帮助列举这些标志所有可能的组合，每个测试给出一个组合作为参数。
  
-// // Google Test may not support value-parameterized tests with some
-// // compilers. If we use conditional compilation to compile out all
-// // code referring to the gtest_main library, MSVC linker will not link
-// // that library at all and consequently complain about missing entry
-// // point defined in that library (fatal error LNK1561: entry point
-// // must be defined). This dummy test keeps gtest_main linked in.
-// TEST(DummyTest, ValueParameterizedTestsAreNotSupportedOnThisPlatform) {}
+#if GTEST_HAS_COMBINE // GTEST_HAS_COMBINE
  
-// #endif  // GTEST_HAS_PARAM_TEST
+// 假设我们想要引入一个新的、更高级的PrimeTable实现，它结合了PrecalcPrimeTable的
+// 速度和OnTheFlyPrimeTable的多样性。在这个类中，它实例化了2个成员PrecalcPrimeTable
+// 和 OnTheFlyPrimeTable，根据情况使用更为合适的那一个。但是在低内存的条件下，
+// 可以告诉它不要实例化PrecalcPrimeTable，而仅仅使用OnTheFlyPrimeTable
+class HybridPrimeTable : public PrimeTable {
+public:
+    HybridPrimeTable(bool force_on_the_fly, int max_precalculated)
+        : on_the_fly_impl_(new OnTheFlyPrimeTable),
+        precalc_impl_(force_on_the_fly ? NULL :
+        new PreCalculatedPrimeTable(max_precalculated)),
+        max_precalculated_(max_precalculated) {}
+    virtual ~HybridPrimeTable() {
+        delete on_the_fly_impl_;
+        delete precalc_impl_;
+    }
  
-// // Sample 8: This sample shows how to test code relying on some global flag variables.
-// // Combine() helps with generating all possible combinations of such flags,
-// // and each test is given one combination as a parameter.
+    virtual bool IsPrime(int n) const {
+        if (precalc_impl_ != NULL && n < max_precalculated_)
+            return precalc_impl_->IsPrime(n);
+        else
+            return on_the_fly_impl_->IsPrime(n);
+    }
  
-// #if GTEST_HAS_COMBINE
+    virtual int GetNextPrime(int p) const {
+        int next_prime = -1;
+        if (precalc_impl_ != NULL && p < max_precalculated_)
+            next_prime = precalc_impl_->GetNextPrime(p);
  
-// // Suppose we want to introduce a new, improved implementation of PrimeTable
-// // which combines speed of PrecalcPrimeTable and versatility of
-// // OnTheFlyPrimeTable (see prime_tables.h). Inside it instantiates both
-// // PrecalcPrimeTable and OnTheFlyPrimeTable and uses the one that is more
-// // appropriate under the circumstances. But in low memory conditions, it can be
-// // told to instantiate without PrecalcPrimeTable instance at all and use only
-// // OnTheFlyPrimeTable.
-// class HybridPrimeTable : public PrimeTable {
-// public:
-//     HybridPrimeTable(bool force_on_the_fly, int max_precalculated)
-//         : on_the_fly_impl_(new OnTheFlyPrimeTable),
-//         precalc_impl_(force_on_the_fly ? NULL :
-//         new PreCalculatedPrimeTable(max_precalculated)),
-//         max_precalculated_(max_precalculated) {}
-//     virtual ~HybridPrimeTable() {
-//         delete on_the_fly_impl_;
-//         delete precalc_impl_;
-//     }
+        return next_prime != -1 ? next_prime : on_the_fly_impl_->GetNextPrime(p);
+    }
  
-//     virtual bool IsPrime(int n) const {
-//         if (precalc_impl_ != NULL && n < max_precalculated_)
-//             return precalc_impl_->IsPrime(n);
-//         else
-//             return on_the_fly_impl_->IsPrime(n);
-//     }
+private:
+    OnTheFlyPrimeTable* on_the_fly_impl_;
+    PreCalculatedPrimeTable* precalc_impl_;
+    int max_precalculated_;
+};
  
-//     virtual int GetNextPrime(int p) const {
-//         int next_prime = -1;
-//         if (precalc_impl_ != NULL && p < max_precalculated_)
-//             next_prime = precalc_impl_->GetNextPrime(p);
+using ::testing::TestWithParam;
+using ::testing::Bool;
+using ::testing::Values;
+using ::testing::Combine;
  
-//         return next_prime != -1 ? next_prime : on_the_fly_impl_->GetNextPrime(p);
-//     }
+// 为了测试 HybridPrimeTable 的所有代码分支，我们必须使用 PreCalculatedPrimeTable
+// 范围内、外的数字进行测试，还有 PreCalculatedPrimeTable 被禁止的情况。我们定义
+// 一个测试夹具类，它接受不同的参数组合，从而实例化一个HybridPrimeTable实例。
+class PrimeTableTest3 : public TestWithParam< testing::tuple<bool, int> > {
+protected:
+    virtual void SetUp() {
+        // This can be written as
+        //
+        // bool force_on_the_fly;
+        // int max_precalculated;
+        // tie(force_on_the_fly, max_precalculated) = GetParam();
+        //
+        // once the Google C++ Style Guide allows use of ::std::tr1::tie.
+        //
+        bool force_on_the_fly = testing::get<0>(GetParam());
+        int max_precalculated = testing::get<1>(GetParam());
+        table_ = new HybridPrimeTable(force_on_the_fly, max_precalculated);
+    }
+    virtual void TearDown() {
+        delete table_;
+        table_ = NULL;
+    }
+    HybridPrimeTable* table_;
+};
  
-// private:
-//     OnTheFlyPrimeTable* on_the_fly_impl_;
-//     PreCalculatedPrimeTable* precalc_impl_;
-//     int max_precalculated_;
-// };
+TEST_P(PrimeTableTest3, ReturnsFalseForNonPrimes) {
+    // 在测试体内，你可以通过GetParam()函数引用测试参数。在本测试case中，测试的参数是
+    // PrimeTable接口指针，我们可以直接使用。
+    // 请注意，你也可以将他保存在测试夹具 PrimeTableTest3的 SetUp()方法或构造函数中，
+    // 并在测试中使用其保存的副本
  
-// using ::testing::TestWithParam;
-// using ::testing::Bool;
-// using ::testing::Values;
-// using ::testing::Combine;
+    EXPECT_FALSE(table_->IsPrime(-5));
+    EXPECT_FALSE(table_->IsPrime(0));
+    EXPECT_FALSE(table_->IsPrime(1));
+    EXPECT_FALSE(table_->IsPrime(4));
+    EXPECT_FALSE(table_->IsPrime(6));
+    EXPECT_FALSE(table_->IsPrime(100));
+}
  
-// // To test all code paths for HybridPrimeTable we must test it with numbers
-// // both within and outside PreCalculatedPrimeTable's capacity and also with
-// // PreCalculatedPrimeTable disabled. We do this by defining fixture which will
-// // accept different combinations of parameters for instantiating a
-// // HybridPrimeTable instance.
-// class PrimeTableTest3 : public TestWithParam< ::std::tr1::tuple<bool, int> > {
-// protected:
-//     virtual void SetUp() {
-//         // This can be written as
-//         //
-//         // bool force_on_the_fly;
-//         // int max_precalculated;
-//         // tie(force_on_the_fly, max_precalculated) = GetParam();
-//         //
-//         // once the Google C++ Style Guide allows use of ::std::tr1::tie.
-//         //
-//         bool force_on_the_fly = ::std::tr1::get<0>(GetParam());
-//         int max_precalculated = ::std::tr1::get<1>(GetParam());
-//         table_ = new HybridPrimeTable(force_on_the_fly, max_precalculated);
-//     }
-//     virtual void TearDown() {
-//         delete table_;
-//         table_ = NULL;
-//     }
-//     HybridPrimeTable* table_;
-// };
+TEST_P(PrimeTableTest3, ReturnsTrueForPrimes) {
+    EXPECT_TRUE(table_->IsPrime(2));
+    EXPECT_TRUE(table_->IsPrime(3));
+    EXPECT_TRUE(table_->IsPrime(5));
+    EXPECT_TRUE(table_->IsPrime(7));
+    EXPECT_TRUE(table_->IsPrime(11));
+    EXPECT_TRUE(table_->IsPrime(131));
+}
  
-// TEST_P(PrimeTableTest3, ReturnsFalseForNonPrimes) {
-//     // Inside the test body, you can refer to the test parameter by GetParam().
-//     // In this case, the test parameter is a PrimeTable interface pointer which
-//     // we can use directly.
-//     // Please note that you can also save it in the fixture's SetUp() method
-//     // or constructor and use saved copy in the tests.
+TEST_P(PrimeTableTest3, CanGetNextPrime) {
+    EXPECT_EQ(2, table_->GetNextPrime(0));
+    EXPECT_EQ(3, table_->GetNextPrime(2));
+    EXPECT_EQ(5, table_->GetNextPrime(3));
+    EXPECT_EQ(7, table_->GetNextPrime(5));
+    EXPECT_EQ(11, table_->GetNextPrime(7));
+    EXPECT_EQ(131, table_->GetNextPrime(128));
+}
  
-//     EXPECT_FALSE(table_->IsPrime(-5));
-//     EXPECT_FALSE(table_->IsPrime(0));
-//     EXPECT_FALSE(table_->IsPrime(1));
-//     EXPECT_FALSE(table_->IsPrime(4));
-//     EXPECT_FALSE(table_->IsPrime(6));
-//     EXPECT_FALSE(table_->IsPrime(100));
-// }
+// 为了运行值参数化测试，必须要实例化它们，或者把他们绑定到一个数值列表上，然后作为
+// 测试参数。可以在不同的编译单元实例化，也可以实例化多次。
+
+// 在这里，我们使用值列表实例化我们的测试参数。我们必须组合bool型标志的所有可能值
+// 和一些有用的int值去测试。在这里我们选择了一个小数（1）和素数查找范围以内的数（10）。
+// Combine()将会产生所有可能的组合。
+INSTANTIATE_TEST_CASE_P(MeaningfulTestParameters,
+    PrimeTableTest3,
+    Combine(Bool(), Values(1, 10)));
  
-// TEST_P(PrimeTableTest3, ReturnsTrueForPrimes) {
-//     EXPECT_TRUE(table_->IsPrime(2));
-//     EXPECT_TRUE(table_->IsPrime(3));
-//     EXPECT_TRUE(table_->IsPrime(5));
-//     EXPECT_TRUE(table_->IsPrime(7));
-//     EXPECT_TRUE(table_->IsPrime(11));
-//     EXPECT_TRUE(table_->IsPrime(131));
-// }
+#else
  
-// TEST_P(PrimeTableTest3, CanGetNextPrime) {
-//     EXPECT_EQ(2, table_->GetNextPrime(0));
-//     EXPECT_EQ(3, table_->GetNextPrime(2));
-//     EXPECT_EQ(5, table_->GetNextPrime(3));
-//     EXPECT_EQ(7, table_->GetNextPrime(5));
-//     EXPECT_EQ(11, table_->GetNextPrime(7));
-//     EXPECT_EQ(131, table_->GetNextPrime(128));
-// }
+// 对于某些编译器来说，Google Test可能不支持值参数化。如果我们使用条件编译来编译
+// 引用gtest_main库的所有代码，那么MSVC链接器根本不会链接该库，因此会发生错误
+// (fatal error LNK1561: entry point must be defined)。这个dummy测试保证
+// gtest_main被链接。
+TEST(DummyTest, CombineIsNotSupportedOnThisPlatform) {}
  
-// // In order to run value-parameterized tests, you need to instantiate them,
-// // or bind them to a list of values which will be used as test parameters.
-// // You can instantiate them in a different translation module, or even
-// // instantiate them several times.
-// //
-// // Here, we instantiate our tests with a list of parameters. We must combine
-// // all variations of the boolean flag suppressing PrecalcPrimeTable and some
-// // meaningful values for tests. We choose a small value (1), and a value that
-// // will put some of the tested numbers beyond the capability of the
-// // PrecalcPrimeTable instance and some inside it (10). Combine will produce all
-// // possible combinations.
-// INSTANTIATE_TEST_CASE_P(MeaningfulTestParameters,
-//     PrimeTableTest3,
-//     Combine(Bool(), Values(1, 10)));
+#endif  // GTEST_HAS_COMBINE
+
+#if GTEST_HAS_COMBINE
+class funcTest : public testing::TestWithParam<testing::tuple<int, int>>
+{
+protected:
+    virtual void SetUp()
+    {
+        a = testing::get<0>(GetParam());
+        b = testing::get<1>(GetParam());
+    }
+    virtual void TearDown()
+    {
+
+    }
+
+    int a;
+    int b;
+};
+
+int func(int a, int b)
+{
+    return a+b;
+}
+
+TEST_P(funcTest, test0)
+{
+    std::cout << a << "+" << b << "=" << func(a,b) << std::endl;
+    // eq（a+b, func(a,b));
+}
+
+INSTANTIATE_TEST_CASE_P(MyFuncTest,
+    funcTest,
+    Combine(Values(1,2,3), Values(1,2)));
+
+#else
+
+TEST(DummyTest, CombineIsNotSupportedOnThisPlatform) {std::cout << "***\n";}
  
-// #else
- 
-// // Google Test may not support Combine() with some compilers. If we
-// // use conditional compilation to compile out all code referring to
-// // the gtest_main library, MSVC linker will not link that library at
-// // all and consequently complain about missing entry point defined in
-// // that library (fatal error LNK1561: entry point must be
-// // defined). This dummy test keeps gtest_main linked in.
-// TEST(DummyTest, CombineIsNotSupportedOnThisPlatform) {}
- 
-// #endif  // GTEST_HAS_COMBINE
+#endif  // GTEST_HAS_COMBINE
