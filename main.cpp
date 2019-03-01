@@ -1,78 +1,33 @@
-//#include <vector>
 #include <iostream>
-// #include <chrono>
-// #include <thread>
-#include "Common.h"
-// #include "Queue-pthread_s.h"
-#include "Stack.h"
+#include <ctime>
+#include "stl_math.h"
 
-#include <cstdio>
-#include <new>
-#include <map>
+using namespace ana_stl;
 
-// std::map<bool,int> mymap{
-//     {false, 10},
-//     {true,  3},
-//     {false, 7}
-// };
-// mymap.insert(pair<bool,int>(false,10));
-// mymap.insert(pair<bool,int>(true,3));
-// mymap.insert(pair<bool,int>(false,7));
+time_t start_time;
+time_t end_time;
 
 int main(void)
 {
-    int     a[3][4] = { {1, 4, 7, 10}, {2, 5, 8, 11}, {3, 6, 9, 12} } ;
-    int*    ptr = &a[0][0];
-    int*    tmp = new int[3*4];
+    start_time = time(NULL);
+    fibonacci(1);
+    end_time = time(NULL);
+    printf("time difference = %ld \n", end_time - start_time);
+
+    start_time = time(NULL);
+    fibonacci(10);
+    end_time = time(NULL);
+    printf("time difference = %ld \n", end_time - start_time);
+
+    start_time = time(NULL);
+    fibonacci(50);
+    end_time = time(NULL);
+    printf("time difference = %ld \n", end_time - start_time);
+
+    test m_test;
     
-    // enum _WEEK
-    // {
-    //     MONDAY,
-    //     TUESDAY,
-    //     WEDNESDAY,
-    //     THURSDAY,
-    //     FRIDAY,
-    //     SATURDAY,
-    //     SUNDAY     
-    // };
-    
-    enum class WEEK
-    {
-        MONDAY,
-        TUESDAY,
-        WEDNESDAY,
-        THURSDAY,
-        FRIDAY,
-        SATURDAY,
-        SUNDAY     
-    };
-
-    WEEK day = WEEK::MONDAY;
-    // _WEEK day_0 = 4;
-
-    for ( auto& x : a)
-    {
-        std::cout << x << std::endl;
-    }
-
-    for (int j = 0; j < 4; ++j)
-    {
-        for (int i = 0; i < 3; ++i)
-        {
-            std::cout << "a[" << i << "][" << j <<"] = "<< a[i][j] << " ; pointer = " << &a[i][j] << std::endl;
-        }
-    }
-
-    for (int i = 0; i < 12; ++i)
-    {
-        printf("a + [%d]: 0x%p = %d\n", i, ptr+i, *(ptr+i));
-    }
-
-    for (int i = 0; i < 12; ++i)
-    {
-        printf("tmp + %d = 0x%p\n", i, tmp+i);
-    }
-    delete [] tmp;
+    printf("m_test.add = %ld \n", m_test.add(1, 2));
+    return 0;
 }
 
 

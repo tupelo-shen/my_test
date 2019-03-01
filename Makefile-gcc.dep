@@ -9,3 +9,4 @@ src/Common.o: src/Common.cpp src/Common.h
 src/IntArray.o: src/IntArray.cpp src/IntArray.h
 src/SimpleFactory.o: src/SimpleFactory.cpp src/SimpleFactory.h \
  src/AbstractProduct.h
+src/stl_math.o: src/ana_stl/stl_math.cpp inc/ana_stl/stl_math.h

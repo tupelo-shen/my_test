@@ -1,6 +1,7 @@
 # -----<< All objects >>-----
 SIM_OBJS = main.o
 SRC_DIR = src
+STL_SRC_DIR = src/ana_stl
 GTEST_DIR = gtest
 SRC_TEST_DIR = src/thread-test
 SRC_OBJS = src/BindingTest.o \
@@ -9,7 +10,10 @@ SRC_OBJS = src/BindingTest.o \
 			src/Common.o \
 			src/AbstractProduct.o \
 			src/SimpleFactory.o \
-			src/AbstractFactory.o
+			src/AbstractFactory.o \
+			src/stl_math.o
+
+# ANA_STL_OBJS = 	src/ana_stl/stl_math.o
 
 GTEST_OBJS = 	gtest/gtest_Average.o \
 				gtest/gtest_main.o
@@ -27,12 +31,12 @@ GTEST_SIMULATOR = gtest_simulator.exe
 GMOCK_SIMULATOR = gmock_simulator.exe
 
 # -----<< Tool chaine >>-----
-# CMNINC	= -I inc/ -I src/ -I inc/googletest_msys32/include \
-# 		  -I inc/ana_stl \
-# 		  -I inc/gtest 
-
 CMNINC	= -I inc/ -I src/ -I inc/googletest_msys32/include \
-		  -I inc/gtest
+		  -I inc/ana_stl \
+		  -I inc/gtest 
+
+# CMNINC	= -I inc/ -I src/ -I inc/googletest_msys32/include \
+# 		  -I inc/gtest
 
 GPP		= g++
 
@@ -82,8 +86,9 @@ gtest: $(GTEST_SIMULATOR) Makefile-gtest.dep
 gmock: $(GMOCK_SIMULATOR) Makefile-gmock.dep
 	@echo $(GMOCK_SIMULATOR) build finished.
 
-Makefile-gcc.dep: src/*.cpp Makefile
-	@g++ -MM $(CMNINC) src/*.cpp    | sed -e 's/^\([^ ]\)/src\/\1/' > $@
+Makefile-gcc.dep: src/*.[ch]* src/ana_stl/*.c* inc/ana_stl/*.h* Makefile
+	@g++ -MM $(CMNINC) src/*.c*    | sed -e 's/^\([^ ]\)/src\/\1/' > $@
+	@g++ -MM $(CMNINC) $(STL_SRC_DIR)/*.c* | sed -e 's/^\([^ ]\)/src\/\1/' >> $@
 
 Makefile-gtest.dep:gtest/*.cpp Makefile	
 	@g++ -MM $(CMNINC) gtest/*.cpp    | sed -e 's/^\([^ ]\)/gtest\/\1/' > $@
@@ -91,7 +96,7 @@ Makefile-gtest.dep:gtest/*.cpp Makefile
 Makefile-gmock.dep:gtest/*.cpp Makefile	
 	@g++ -MM $(CMNINC) gtest/*.cpp    | sed -e 's/^\([^ ]\)/gtest\/\1/' > $@
 
-$(SIMULATOR): main.cpp src/*.h $(SRC_OBJS)
+$(SIMULATOR): main.cpp src/*.h inc/ana_stl/*.h $(SRC_OBJS)
 	@echo compiling...
 	$(GPP) -o $(SIMULATOR) main.cpp $(SRC_OBJS) $(GPPFLAGS) $(LIBS)	
 
@@ -112,7 +117,10 @@ gmock_macro :
 	$(GPP) -E -P 		gtest/gtest_Average.cpp > gtest_Average_macro_expansion.cpp $(CMNINC) $(LIBS)
 	@echo gmock macro expansion build finished.
 
-src/%.o : src/%.cpp
+$(SRC_DIR)/%.o : $(SRC_DIR)/%.cpp
+	$(GPP) -c           $(GPPFLAGS) -o $@ $<
+
+$(SRC_DIR)/%.o : $(STL_SRC_DIR)/%.cpp
 	$(GPP) -c           $(GPPFLAGS) -o $@ $<
 
 gtest/%.o : gtest/%.cpp
@@ -123,4 +131,5 @@ depend: Makefile-gcc.dep Makefile-gtest.dep Makefile-gmock.dep
 
 clean:
 	rm -f *.o *.exe $(SRC_DIR)/*.o $(SRC_DIR)/*.exe $(SRC_TEST_DIR)/*.o $(SRC_TEST_DIR)/*.exe \
-	$(GTEST_DIR)/*.o  gtest_Average_macro_expansion.cpp  gmock_test_macro_expansion.cpp
+	$(GTEST_DIR)/*.o  gtest_Average_macro_expansion.cpp  gmock_test_macro_expansion.cpp \
+	$(STL_SRC_DIR)/*.o
