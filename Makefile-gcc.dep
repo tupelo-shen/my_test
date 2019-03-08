@@ -6,7 +6,10 @@ src/Average.o: src/Average.cpp src/Average.h src/Common.h
 src/BindingTest.o: src/BindingTest.cpp src/BindingTest.h
 src/Callback.o: src/Callback.cpp src/Callback.h
 src/Common.o: src/Common.cpp src/Common.h
+src/EEPROM_Driver.o: src/EEPROM_Driver.cpp src/EEPROM_Driver.h
 src/IntArray.o: src/IntArray.cpp src/IntArray.h
+src/Mode_Listener_test.o: src/Mode_Listener_test.cpp src/Mode_Listener_test.h
+src/PF_EEPROM_Driver.o: src/PF_EEPROM_Driver.c
 src/SimpleFactory.o: src/SimpleFactory.cpp src/SimpleFactory.h \
  src/AbstractProduct.h
 src/stl_math.o: src/ana_stl/stl_math.cpp inc/ana_stl/stl_math.h

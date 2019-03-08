@@ -11,7 +11,8 @@ SRC_OBJS = src/BindingTest.o \
 			src/AbstractProduct.o \
 			src/SimpleFactory.o \
 			src/AbstractFactory.o \
-			src/stl_math.o
+			src/stl_math.o \
+			src/EEPROM_Driver.o
 
 # ANA_STL_OBJS = 	src/ana_stl/stl_math.o
 
@@ -47,7 +48,19 @@ GCCFLAGS = -g -Wall -pipe -m32 -finput-charset=UTF-8 -fexec-charset=UTF-8 \
 GPPFLAGS =  -std=c++0x $(GCCFLAGS) -DBOOST_THREAD_USE_LIB 
 
 ifndef MINGW32_HOME
-LIBS = 
+LIBS = -L Libraries \
+				-lboost_thread \
+				-lboost_regex \
+				-lboost_filesystem \
+				-lboost_system \
+				-lboost_program_options \
+				-lboost_chrono \
+				-lrt \
+				-lana_mrb \
+				-lana_stl \
+				-lmruby \
+				-lliq_hart \
+				-lgtest 
 
 ARMCC	= wine /home/30015139/.wine/drive_c/Keil_v5/ARM/ARMCC/bin/armcc
 ARMLINK	= wine /home/30015139/.wine/drive_c/Keil_v5/ARM/ARMCC/bin/armlink
@@ -62,8 +75,14 @@ else
 # 			-lgtest-mt
 LIBS =	-L libs/googletest_msys32/lib/ \
 			-lgtest \
-			-lgmock
-
+			-lgmock \
+			-lboost_chrono-mt \
+			-lboost_thread-mt \
+			-lboost_system-mt \
+			-lboost_regex-mt \
+			-lboost_filesystem-mt \
+			-lboost_program_options-mt
+			
 ARMCC	= armcc
 ARMLINK	= armlink
 FROMELF	= fromelf
