@@ -21,15 +21,30 @@ char eeprom_ram[EEPROM_RAM_SIZE] = {0};
 // locate the position for the bin file that is used as EEPROM
 const char* fake_eeprom_filename = "fake_eeprom.bin";
 /******************************************************************************/
+/**
+ * @brief   DRV_EEPROM_Initialize
+ *
+ *              空の関数
+ *
+ * @param[in]   void
+ * @return      0           成功
+ */
+/******************************************************************************/
 int DRV_EEPROM_Initialize( void)
 {
     return (0);
 }
 /******************************************************************************/
-/*
-@param data[out]    READデータ
-@param num [in]     読み出しサイズ
-*/
+/**
+ * @brief   DRV_EEPROM_WriteData
+ *
+ *              EEPROM　へデータを書込み
+ *
+ * @param[in]   addr        データの開始のEEPROMのアドレス
+ * @param[in]   data        書込み待ちのデータのバッファー
+ * @param[in]   num         書込み待ちのデータサイズ
+ * @return      0           成功
+ */
 /******************************************************************************/
 int DRV_EEPROM_WriteData(unsigned short addr , char* data, unsigned int num)
 {
@@ -58,10 +73,18 @@ int DRV_EEPROM_WriteData(unsigned short addr , char* data, unsigned int num)
     return 0;
 }
 
-/*
-@param data[out]    READデータ
-@param num [in]     読み出しサイズ
-*/
+/******************************************************************************/
+/**
+ * @brief   DRV_EEPROM_ReadData
+ *
+ *              EEPROM　からデータを書込み
+ *
+ * @param[in]   addr        データの開始のEEPROMのアドレス
+ * @param[out]  data        読み出しデータのバッファー
+ * @param[in]   num         読み出しサイズ
+ * @return      0           成功
+ */
+/******************************************************************************/
 int DRV_EEPROM_ReadData(unsigned short addr , char* data, unsigned int num)
 {
     try

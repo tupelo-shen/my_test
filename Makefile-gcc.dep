@@ -10,6 +10,17 @@ src/EEPROM_Driver.o: src/EEPROM_Driver.cpp src/EEPROM_Driver.h
 src/IntArray.o: src/IntArray.cpp src/IntArray.h
 src/Mode_Listener_test.o: src/Mode_Listener_test.cpp src/Mode_Listener_test.h
 src/PF_EEPROM_Driver.o: src/PF_EEPROM_Driver.c
+src/PF_UART_Driver.o: src/PF_UART_Driver.cpp src/PF_UART_Driver.h \
+ src/SIM_UartSim.h src/SIM_UartTimerSim.h src/SIM_BlockingReader.h \
+ src/SIM_UartSimHart.h
+src/SIM_BlockingReader.o: src/SIM_BlockingReader.cpp src/SIM_BlockingReader.h
+src/SIM_Option.o: src/SIM_Option.cpp src/SIM_Option.h
+src/SIM_UartSim.o: src/SIM_UartSim.cpp src/SIM_UartSim.h src/PF_UART_Driver.h \
+ src/SIM_UartTimerSim.h src/SIM_BlockingReader.h src/SIM_Option.h
+src/SIM_UartSimHart.o: src/SIM_UartSimHart.cpp src/SIM_UartSimHart.h \
+ src/PF_UART_Driver.h src/SIM_BlockingReader.h src/SIM_UartTimerSim.h \
+ src/SIM_UartSim.h
+src/SIM_UartTimerSim.o: src/SIM_UartTimerSim.cpp src/SIM_UartTimerSim.h
 src/SimpleFactory.o: src/SimpleFactory.cpp src/SimpleFactory.h \
  src/AbstractProduct.h
 src/stl_math.o: src/ana_stl/stl_math.cpp inc/ana_stl/stl_math.h

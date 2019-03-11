@@ -12,7 +12,13 @@ SRC_OBJS = src/BindingTest.o \
 			src/SimpleFactory.o \
 			src/AbstractFactory.o \
 			src/stl_math.o \
-			src/EEPROM_Driver.o
+			src/EEPROM_Driver.o \
+			src/PF_UART_Driver.o \
+			src/SIM_BlockingReader.o \
+			src/SIM_UartTimerSim.o \
+			src/SIM_UartSim.o \
+			src/SIM_UartSimHart.o \
+			src/SIM_Option.o
 
 # ANA_STL_OBJS = 	src/ana_stl/stl_math.o
 
@@ -76,12 +82,18 @@ else
 LIBS =	-L libs/googletest_msys32/lib/ \
 			-lgtest \
 			-lgmock \
+			-lwsock32 \
+			-lws2_32 \
 			-lboost_chrono-mt \
 			-lboost_thread-mt \
 			-lboost_system-mt \
 			-lboost_regex-mt \
 			-lboost_filesystem-mt \
 			-lboost_program_options-mt
+			# -lmruby_mt \
+			# -lana_stl-mt \
+			# -lana_mrb-mt \
+			# -lliq_hart_mt \
 			
 ARMCC	= armcc
 ARMLINK	= armlink
