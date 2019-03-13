@@ -18,7 +18,8 @@ SRC_OBJS = src/BindingTest.o \
 			src/SIM_UartTimerSim.o \
 			src/SIM_UartSim.o \
 			src/SIM_UartSimHart.o \
-			src/SIM_Option.o
+			src/SIM_Option.o \
+			src/SIM_SerialPort.o
 
 # ANA_STL_OBJS = 	src/ana_stl/stl_math.o
 

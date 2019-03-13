@@ -211,7 +211,7 @@ unsigned long UartSim::getFIFOTrg()
 
 /******************************************************************************/
 /**
- * @brief   UartSim
+ * @brief   contructor
  *
  *              contructor
  *
@@ -221,10 +221,8 @@ unsigned long UartSim::getFIFOTrg()
 /******************************************************************************/
 UartSim::UartSim()
 {
-//    ModbusUtil::trace("UartSim::UartSim()");
-
     this->thread_state = NO_WORK;
-//  this->m_thr_rcv = new ana_stl::Thread(this);
+
     this->m_thr_rcv = boost::thread(&UartSim::run, this);
     this->m_timer0.init(std::bind(&UartSim::HandlerRecvTimer0, this, std::placeholders::_1));
     this->m_timer1.init(std::bind(&UartSim::HandlerRecvTimer1, this, std::placeholders::_1));
@@ -325,15 +323,9 @@ void UartSim::run()
             this->thread_state = NO_WORK;
         }
 
-#ifdef UARTSIM_DEBUG
-        std::cout << "UartSim::run(): notified" << std::endl;
-#endif
-
         // do some work here
         {
-//            ModbusUtil::trace("UartSim::run() - recvPacket(start), portName : ", this->getPortName());
             this->m_recv_len = recvPacket(this->m_recv_buf, sizeof(this->m_recv_buf));
-//            ModbusUtil::trace("UartSim::run() - recvPacket(end  ), portName : ", this->getPortName());
         }
 
         if (this->m_RE != 0 && this->m_evt_func != NULL && this->m_recv_len != 0)
@@ -342,8 +334,6 @@ void UartSim::run()
             this->m_evt_func(PF_UART_EVENT_RX_TIMER1_TIMEOUT, this->userData);
         }
     }
-
-//    ModbusUtil::trace("UartSim::run() - RecvThread(end  )");
 }
 
 /******************************************************************************/

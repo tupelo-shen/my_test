@@ -15,6 +15,7 @@ src/PF_UART_Driver.o: src/PF_UART_Driver.cpp src/PF_UART_Driver.h \
  src/SIM_UartSimHart.h
 src/SIM_BlockingReader.o: src/SIM_BlockingReader.cpp src/SIM_BlockingReader.h
 src/SIM_Option.o: src/SIM_Option.cpp src/SIM_Option.h
+src/SIM_SerialPort.o: src/SIM_SerialPort.cpp src/SIM_SerialPort.h
 src/SIM_UartSim.o: src/SIM_UartSim.cpp src/SIM_UartSim.h src/PF_UART_Driver.h \
  src/SIM_UartTimerSim.h src/SIM_BlockingReader.h src/SIM_Option.h
 src/SIM_UartSimHart.o: src/SIM_UartSimHart.cpp src/SIM_UartSimHart.h \

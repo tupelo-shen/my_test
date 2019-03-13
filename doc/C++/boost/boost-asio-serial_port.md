@@ -40,7 +40,7 @@ serial_port类头文件和命名空间声明
 
     如前所述，*serial_port* 类成功打开 *COM1* 后， *COM1*对于 *serial_port* 类来说就成了一种文件流。咱们就可以使用 *serial_port* 类中的成员函数对流进行读写数据操作。
 
-    向串口发送数据时是采用 *boost::asio::serial_port* 下含 *write* 字符串的函数将程序中的数据写入到串口流， 接收串口数据时是用含 *read* 字符串的函数从串口读出数据，再放到程序变量中。 比如用串口对象调用的 *write_some()*， *read_some()*之类属于 *serial_port*的成员函数，还有在函数内部指明串口对象的 *write()*，*read()*等非 *serial_port*类的成员函数，但它们是 *boost::asio*下的函数。看名就知道“只写/读一些”的函数（比如读到空格或者其它特殊字符就会停止读下去）不如“*write/read*”函数功能完好。所以，咱都还是用 *write()，read()* 一类的函数从串口写、读完整的数据串吧。
+    向串口发送数据时是采用 *boost::asio::serial_port* 下含 *write* 字符串的函数将程序中的数据写入到串口流， 接收串口数据时是用含 *read* 字符串的函数从串口读出数据，再放到程序变量中。 比如用串口对象调用的 *write_some()*， *read_some()*之类属于 *serial_port*的成员函数，还有在函数内部指明串口对象的 *write()*，*read()*等非 *serial_port*类的成员函数，但它们是 *boost::asio*下的函数。看名就知道 *write_some/read_some* 的函数（ 比如读到空格或者其它特殊字符就会停止读下去）不如“*write/read*”函数功能完善。所以，咱都还是用 *write()，read()* 一类的函数从串口写、读完整的数据串吧。
 
     1. 向串口写数据
         
