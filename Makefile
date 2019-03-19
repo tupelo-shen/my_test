@@ -12,7 +12,7 @@ SRC_OBJS = src/BindingTest.o \
 			src/SimpleFactory.o \
 			src/AbstractFactory.o \
 			src/stl_math.o \
-			src/EEPROM_Driver.o \
+			src/PF_EEPROM_Driver.o \
 			src/PF_UART_Driver.o \
 			src/SIM_BlockingReader.o \
 			src/SIM_UartTimerSim.o \
