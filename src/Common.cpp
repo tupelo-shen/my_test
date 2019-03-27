@@ -101,6 +101,3 @@ extern "C" int SCGetDPCondResis(float value)
     return (dp);
 }
 
-
-
-

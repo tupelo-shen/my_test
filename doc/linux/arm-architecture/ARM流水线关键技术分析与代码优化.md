@@ -45,13 +45,13 @@ ARM9系列处理器的流水线分为取指、译码、执行、访存、回写�
 
 当指令序列中含有具有分支功能的指令(如 *BL* 等)时，流水线也会被阻断，如图-4所示。分支指令在执行时，其后第1条指令被译码，其后第2条指令进行取指，但 是这两步操作的指令并不被执行。因为分支指令执行完毕后，程序应该转到跳转的目标地址处执行，因此在流水线上需要丢弃这两条指令，同时程序计数器就会转移 到新的位置接着进行取指、译码和执行。此外还有一些特殊的转移指令需要在跳转完成的同时进行写链接寄存器、程序计数寄存器，如BL执行过程中包括两个附加 操作——写链接寄存器和调整程序指针。这两个操作仍然占用执行单元，这时处于译码和取指的流水线被阻断了。
 
-![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/ARM7%E6%B5%81%E6%B0%B4%E7%BA%BF%E6%8A%80%E6%9C%AF.PNG)
+![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/%E5%B8%A6%E6%9C%89%E5%88%86%E6%94%AF%E6%8C%87%E4%BB%A4%E7%9A%84%E6%B5%81%E6%B0%B4%E7%BA%BF.PNG)
 
 # 3.3 中断流水线
 
 处理器中断的发生具有不确定性，与当前所执行的指令没有任何关系。在中断发生时，处理器总是会执行完当前正被执行的指令，然后去响应中断。如图5所示，在 *Ox90000*处的指令ADD执行期间IRQ中断发生，这时要等待ADD指令执行完毕，IRQ才获得执行单元，处理器开始处理IRQ中断，保存程序返回地 址并调整程序指针指向Oxl8内存单元。在Oxl8处有IRO中断向量(也就是跳向IRQ中断服务的指令)，接下来执行跳转指令转向中断服务程序，流水线 又被阻断，执行0x18处指令的过程同带有分支指令的流水线。
 
-![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/ARM7%E6%B5%81%E6%B0%B4%E7%BA%BF%E6%8A%80%E6%9C%AF.PNG)
+![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/%E4%B8%AD%E6%96%AD%E6%B5%81%E6%B0%B4%E7%BA%BF.PNG)
 
 #4 五级流水线
 
@@ -61,7 +61,7 @@ ARM9系列处理器的流水线分为取指、译码、执行、访存、回写�
 
 五级流水线只存在一种互锁，即寄存器冲突。读寄存器是在译码阶段，写寄存器是在回写阶段。如果当前指令(A)的目的操作数寄存器和下一条指令(B)的源操 作数寄存器一致，B指令就需要等A回写之后才能译码。这就是五级流水线中的寄存器冲突。如图6所示，LDR指令写R9是在回写阶段，而MOV中需要用到的 R9正是LDR在回写阶段将会重新写入的寄存器值，MOV译码需要等待，直到LDR指令的寄存器回写操作完成。(注：现在处理器设计中，可以通过寄存器旁 路技术对流水线进行优化，解决流水线的寄存器冲突问题。)
 
-![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/ARM7%E6%B5%81%E6%B0%B4%E7%BA%BF%E6%8A%80%E6%9C%AF.PNG)
+![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/%E4%BA%94%E7%BA%A7%E6%B5%81%E6%B0%B4%E7%BA%BF%E7%9A%84%E4%BA%92%E9%94%81.PNG)
 
 虽然流水线互锁会增加代码执行时间，但是为初期的设计者提供了巨大的方便，可以不必考虑使用的寄存器会不会造成冲突；而且编译器以及汇编程序员可以通过重新设计代码的顺序或者其他方法来减少互锁的数量。另外分支指令和中断的发生仍然会阻断五级流水线。
 
@@ -75,7 +75,7 @@ ARM9系列处理器的流水线分为取指、译码、执行、访存、回写�
 
 实现第一个拷贝过程的程序代码及指令的执行时空图如图7所示。
 
-![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/未经优化.PNG)
+![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/%E6%9C%AA%E7%BB%8F%E4%BC%98%E5%8C%96%E7%9A%84%E4%BA%94%E7%BA%A7%E6%B5%81%E6%B0%B4%E7%BA%BF.PNG)
 
 全部拷贝过程由两个结构相同的循环各自独立完成，分别实现两块数据的拷贝，并且两个拷贝过程极为类似，分析其中一个即可。
 
@@ -88,7 +88,7 @@ T1～T3是3个单独的时钟周期；T4～T11是一个循环，在时空图中�
 
 对代码调整和流水线的时空图如图8所示。
 
-![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/优化后.PNG)
+![Picture!](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/%E4%BC%98%E5%8C%96%E5%90%8E%E7%9A%84%E6%B5%81%E6%B0%B4%E7%BA%BF.PNG)
 
 调整之后，T1～T5是5个单独的时钟周期，T6～T13是一个循环，同样在T14的时候BNE指令在写LR的同时，循环的第一条指令开始取指，所以总的指令周期数为5+10×10+2×9+2=125。
 
