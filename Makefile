@@ -19,7 +19,8 @@ SRC_OBJS = src/BindingTest.o \
 			src/SIM_UartSim.o \
 			src/SIM_UartSimHart.o \
 			src/SIM_Option.o \
-			src/SIM_SerialPort.o
+			src/SIM_SerialPort.o \
+			src/COM_CrcCalculation.o
 
 # ANA_STL_OBJS = 	src/ana_stl/stl_math.o
 
