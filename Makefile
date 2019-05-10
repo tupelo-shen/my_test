@@ -40,7 +40,7 @@ GTEST_SIMULATOR = gtest_simulator.exe
 GMOCK_SIMULATOR = gmock_simulator.exe
 
 # -----<< Tool chaine >>-----
-CMNINC	= -I inc/ -I src/ -I inc/googletest_msys32/include \
+CMNINC	= -I inc/ -I src/ -I libs/googletest_msys32/include \
 		  -I inc/ana_stl \
 		  -I inc/gtest 
 
@@ -106,7 +106,8 @@ WINE_INC = -I/c/Keil_v5/ARM/Pack/Keil/Kinetis_K60_DFP/1.4.0/Device/Include \
 	   -I/c/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS/Driver/Include
 endif
 
-all: sim gtest gmock
+# all: sim gtest gmock
+all: gtest gmock
 	@bash --norc -c "date '+%Y-%m-%d %H:%M %S'"
 	@echo finished of making Extutable file.
 	
