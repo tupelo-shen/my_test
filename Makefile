@@ -106,8 +106,8 @@ WINE_INC = -I/c/Keil_v5/ARM/Pack/Keil/Kinetis_K60_DFP/1.4.0/Device/Include \
 	   -I/c/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS/Driver/Include
 endif
 
-# all: sim gtest gmock
-all: gtest gmock
+all: sim gtest gmock
+# all: gtest gmock
 	@bash --norc -c "date '+%Y-%m-%d %H:%M %S'"
 	@echo finished of making Extutable file.
 	
@@ -167,3 +167,12 @@ clean:
 	rm -f *.o *.exe $(SRC_DIR)/*.o $(SRC_DIR)/*.exe $(SRC_TEST_DIR)/*.o $(SRC_TEST_DIR)/*.exe \
 	$(GTEST_DIR)/*.o  gtest_Average_macro_expansion.cpp  gmock_test_macro_expansion.cpp \
 	$(STL_SRC_DIR)/*.o
+
+
+test = abcdefghisdabcjsdlfkj
+
+test2 = $(test) | sed -e 's/abc/123/g'
+debug:
+		sed -i '$$d' pg_dummy.hex
+		@echo $(test)
+		@echo $(test2)
