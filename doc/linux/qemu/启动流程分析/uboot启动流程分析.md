@@ -91,6 +91,13 @@
 
         在uboot搬运到DDR中运行前进行最小系统的初始化，之后就将uboot搬运到DDR中运行。那么，此时NOR Flash和SRAM的任务就完成了（也就是没有用了）。
 
+总结：
+
+从norflash启动可以省事多了，不仅如此，我们自己编写的裸机程序需要调试，一般也是直接烧写到norflash中进行的，因为只要我们将编译好的可执行文件放到norflash的开始，开发板上电以后就会从norflash的第一条指令开始取指执行，我们后面写裸机程序的调试就是用这种方式进行的。
+从norflash启动虽然从开发的角度会很方便（其实也方便不了多少），但是从产品的角度却增加了它的成本，毕竟norflash还是相对较贵的，我们明明只要一块nandflash就足够启动整个开发板了，就没必要在产品中添加一块norflash了，只要代码改改就能省下不少成本，何乐不为。而且nandflash对产品是必不可少的，因为后面还要存放内核和文件系统，起码需要几十兆的空间，用norflash来存储也不现实。
+
+也许你会想，能不能只用norflash，不用nandflash和SDRAM行不行呢，毕竟norflash即可以存储，也可以运行程序的啊，从理论来说是可以的，但是了解一下他们的市场价格、运行速度和工作原理，应该就会知道答案了。
+
 <h1 id="2">2 uboot链接文件</h1>
 
 前面我们已经了解了嵌入式设备的存储介质，以及它们的用途。但是，对于编译后的代码如何在内存上分配，处理器是不知道，这需要我们人为地指定。这时候，后缀为lds的链接文件出现了，它规定了编译后的代码各个段是如何分配的。理解了它，对于我们对u-boot也是大有帮助的。下面我们直接看代码内容，如果需要了解语法，请参考[2.2 链接文件语法](#2.2)。
@@ -161,7 +168,19 @@
 
 我们先来看一下S3C2440的内存分布图：
 
-![]()
+![uboot_pic_1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B%E5%88%86%E6%9E%90/images/uboot_pic_1.PNG)
+
+如上图所示，如果选择NAND flash为引导ROM时，为了支持NAND Flash的BootLoader，S3C2440A配备了一个内置的SRAM 缓冲器，叫做“Steppingstone”， 具体如下图所示。引导启动时，NAND Flash 存储器的开始4K 字节将被自动加载到Steppingstone 中并且执行自动加载到Steppingstone的引导代码。
+
+![uboot_pic_2](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B%E5%88%86%E6%9E%90/images/uboot_pic_2.PNG)
+
+所以说，虽然我们在链接文件u-boot.lds中指定了起始地址是0x00000000，但是在config.mk的编译构造文件中还指定了起始地址是0x33f80000。因为我们的u-boot代码在上面的4k代码执行完成后，还是要跳转到0x33f80000处执行的。所以，链接文件中的默认0x00000000起始地址不需要起作用。
+
+查看S3C2440的datasheet，如下图所示，
+
+![uboot_pic_3](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B%E5%88%86%E6%9E%90/images/uboot_pic_3.PNG)
+
+可以看出64M空间对应的地址为0x30000000~0x33FFFFFF。TEXT_BASE=0x33F80000 即为程序加载起始地址，可以使用的空间大小即为 0x33F80000 到 0x33FFFFFF 共 512K ，如果你u-boot包含的功能太多，觉得不够用，你可以把 0x33F80000调小一点， 即和往低地址移一些，移的过程中注意内存页对齐就行了，一般是4KB.
 
 <h2 id="2.3">2.3 链接文件语法</h2>
 
@@ -198,56 +217,40 @@ ELF的做法是在数据段里建立一个指向这些变量的指针数据，�
 
 对于跨模块的函数调用也是如此，不做细致分析了。
 
-
 <h1 id="3">3 uboot启动流程第一阶段</h1>
 
 主要脉络： *部分硬件初始化 -> 加载完整的uboot到RAM -> 跳转到第二阶段入口开始执行*
 
 <h2 id="3.1">3.1 start.S文件分析</h2>
 
+文件位置： *u-boot/cpu/arm920t/start.S*
+
 ### 1. 启动-_start
 
 查看下面的代码：
 
-    .globl _start                           //定义一个全局标号_star
-    _start: b    reset                      //标号_start处的内容为跳转到reset标号开始执行
-    //将_undefined_instruction标号表示的内容作为地址，加载到PC中，
-    //这种用法可以实现执行流程的跳转
-        ldr    pc, _undefined_instruction
-        ldr    pc, _software_interrupt
-        ldr    pc, _prefetch_abort
-        ldr    pc, _data_abort
-        ldr    pc, _not_used
-        ldr    pc, _irq
-        ldr    pc, _fiq
-    //以上七条ldr pc,x加上b reset共八条指令组成中断向量表
-          …
-    //_undefined_instruction标号表示定义了一个word类型的变量undefined_instruction
-    _undefined_instruction: .word undefined_instruction
-    …
-    //exception handlers                    //异常处理
-    .align    5                             //5字节对齐
-
-    //可知undefined_instruction的真正用途是指向此处代码，即异常处理的具体实现
-    undefined_instruction:
-    get_bad_stack
-    bad_save_user_regs
-    bl    do_undefined_instruction
+    _start:                                 # 异常处理向量表
+    b start_code
+    ldr pc, _undefined_instruction          # 未定义指令异常：0x00000004
+    ldr pc, _software_interrupt             # 软中断异常:0x00000008
+    ldr pc, _prefetch_abort                 # 预取异常：0x0000000C
+    ldr pc, _data_abort                     # 数据异常:0x00000010
+    ldr pc, _not_used                       # 未使用：0x00000014
+    ldr pc, _irq                            # 外部中断请求IRQ:0x00000018
+    ldr pc, _fiq                            # 快束中断请求FIQ:0x0000001C
 
 从上面的内容可以看出，除第1行代码之外，其余代码都是跳转到特定位置去执行中断服务子程序。
 
 正常情况下，程序的执行流程是不会走到中断处理流程中去的，而是直接跳转到reset处开始执行。那我们接下来就看reset处的代码都干了什么。
 
-### 2. reset
+### 2. reset-设置超级管理模式
 
-    reset:
-        /*
-         * set the cpu to SVC32 mode -> 设置CPU为SVC32模式，即管理模式
-         */
-        mrs    r0, cpsr                 // 读出
-        bic    r0, r0, #0x1f            // 低五位清0
-        orr    r0, r0, #0xd3            // 与D3做与操作
-        msr    cpsr,r0                  // 写回
+    start_code:
+        # 设置CPU为SVC32模式，即超级管理权限模式
+        mrs r0,cpsr
+        bic r0,r0,#0x1f
+        orr r0,r0,#0xd3
+        msr cpsr,r0
 
 cpsr 是ARM体系结构中的程序状态寄存器，其结构如下：
 
@@ -275,7 +278,25 @@ cpsr 是ARM体系结构中的程序状态寄存器，其结构如下：
 > 而svc模式本身就属于特权模式，本身就可以访问那些受控资源，而且，比sys模式还多了些自己模式下的影子寄存器，所以，相对sys模式来说，
 > 可以访问资源的能力相同，但是拥有更多的硬件资源。
 
-e-mailで送ります。
+### 3. 关闭看门狗
+
+    ldr     r0, =pWTCON         # 取得看门狗寄存器的地址
+    mov     r1, #0x0            # 将R1寄存器清0
+    str     r1, [r0]            # 将看门狗寄存器清0，即将看门狗禁止，包括定时器定时，溢出中断及溢出复位等
+
+### 4. 关中断
+
+    mov r1, #0xffffffff         # 设R1寄存器为0xFFFF FFFF
+    ldr r0, =INTMSK             # 读取中断屏蔽寄存器的地址
+    str r1, [r0]                # 将中断屏蔽寄存器中的位全设1,屏蔽所有中断
+
+    ldr r1, =INTSUBMSK_val      # 设R1寄存器为0xFFFF
+    ldr r0, =INTSUBMSK          # 读取辅助中断屏蔽寄存器的地址
+    str r1, [r0]                # 将辅助中断屏蔽寄中的11个中断信号屏蔽掉，本人觉得INTSUBMS_val应设成7ff
+
+### 5. 设置时钟
+
+
 
 <h1 id="4">4 uboot启动流程第二阶段</h1>
 
