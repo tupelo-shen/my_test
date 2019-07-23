@@ -6,7 +6,9 @@
     - [2.2 链接文件语法](#2.2)
 * [3 uboot启动流程第一阶段](#3)
     - [3.1 start.S文件分析](#3.1)
-    - [3.2 存储器](#3.2)
+    - [3.2 ARM汇编指令](#3.2)
+        + [3.2.1 常用命令](#3.2.1)
+        + [3.2.2 协处理器相关](#3.2.2)
 * [4 uboot启动流程第二阶段](#4)
     - [4.1 uboot是什么？](#4.1)
     - [4.2 存储器](#4.2)
@@ -254,15 +256,15 @@ ELF的做法是在数据段里建立一个指向这些变量的指针数据，�
 
 cpsr 是ARM体系结构中的程序状态寄存器，其结构如下：
 
-| M[4:0] | cpu mode | accessible register |
-|--------|----------|---------------------|
-| 0b10000 | user        | pc,R14~R0,CPSR |
-| 0b10001 | FIQ         | PC,R14_FIQ-R8_FIQ,R7~R0,CPSR,SPSR_FIQ |
-| 0b10010 | IRQ         | PC,R14_IRQ-R13_IRQ,R12~R0,CPSR,SPSR_IRQ |
-| 0b10011 | SUPERVISOR  | PC,R14_SVC-R13_SVC,R12~R0,CPSR,SPSR_SVC |
-| 0b10111 | ABORT       | PC,R14_ABT-R13_ABT,R12~R0,CPSR,SPSR_ABT |
-| 0b11011 | UNDEFINED   | PC,R14_UND-R8_UND,R12~R0,CPSR,SPSR_UND |
-| 0b11111 | SYSTEM      | PC,R14-R0,CPSR(ARM V4以及更高版本） |
+| M[4:0] | CPU模式 | 可访问寄存器 | 说明 |
+|--------|----------|---------------------| ----- |
+| 0b10000 | user        | pc,R14~R0,CPSR | 正常ARM程序执行状态
+| 0b10001 | FIQ         | PC,R14_FIQ-R8_FIQ,R7~R0,CPSR,SPSR_FIQ | 为支持数据传输或通道处理设计 |
+| 0b10010 | IRQ         | PC,R14_IRQ-R13_IRQ,R12~R0,CPSR,SPSR_IRQ | 用于一般用途的中断处理 |
+| 0b10011 | SUPERVISOR  | PC,R14_SVC-R13_SVC,R12~R0,CPSR,SPSR_SVC | 操作系统保护模式 |
+| 0b10111 | ABORT       | PC,R14_ABT-R13_ABT,R12~R0,CPSR,SPSR_ABT | 数据或指令预取中止后进入 |
+| 0b11011 | UNDEFINED   | PC,R14_UND-R8_UND,R12~R0,CPSR,SPSR_UND | 执行未定义指令时进入 |
+| 0b11111 | SYSTEM      | PC,R14-R0,CPSR(ARM V4以及更高版本） | 操作系统的特权用户模式 |
 
 ---
 
@@ -296,6 +298,83 @@ cpsr 是ARM体系结构中的程序状态寄存器，其结构如下：
 
 ### 5. 设置时钟
 
+### 6. 关闭MMU，设置ARM时序
+
+    #ifndef CONFIG_SKIP_LOWLEVEL_INIT
+    cpu_init_crit:
+        /*
+         * flush v4 I/D caches
+         */
+        mov r0, #0
+        mcr p15, 0, r0, c7, c7, 0   /* flush v3/v4 cache */
+        mcr p15, 0, r0, c8, c7, 0   /* flush v4 TLB */
+
+        /*
+         * 禁用MMU和缓存
+         */
+        mrc p15, 0, r0, c1, c0, 0
+        bic r0, r0, #0x00002300 @ clear bits 13, 9:8 (--V- --RS)
+        bic r0, r0, #0x00000087 @ clear bits 7, 2:0 (B--- -CAM)
+        orr r0, r0, #0x00000002 @ set bit 2 (A) Align
+        orr r0, r0, #0x00001000 @ set bit 12 (I) I-Cache
+        mcr p15, 0, r0, c1, c0, 0
+
+        /*
+         * 在重加载之前，我们必须设置RAM的时序，因为内存的时序依赖于板子，
+         * 在board目录下可以发现lowlevel_init.S文件
+         */
+        mov ip, lr
+    #if defined(CONFIG_AT91RM9200DK) || defined(CONFIG_AT91RM9200EK) || defined(CONFIG_AT91RM9200DF)
+    #else
+        bl  lowlevel_init
+    #endif
+        mov lr, ip
+        mov pc, lr
+    #endif /* CONFIG_SKIP_LOWLEVEL_INIT */
+
+第242~246行，使I/D cache失效： 协处理寄存器操作，将r0中的数据写入到协处理器p15的c7中，c7对应cp15的cache控制寄存器
+
+第247行，使TLB操作寄存器失效：将r0数据送到cp15的c8、c7中。C8对应TLB操作寄存器
+
+第252行，将c1、c0的值写入到r0中
+
+第257行，将设置好的r0值写入到协处理器p15的c1、c0中，关闭MMU
+
+第264行，将lr寄存器内容保存到ip寄存器中，用于子程序调用返回
+
+第265行，跳转到lowlevel_init入口地址执行，lowlevel_init在lowlevel_init.S文件中，代码如下：
+
+#### 1. Cache是什么呢？
+
+Cache是处理器内部的一个高速缓存单元，为了应对处理器和外部存储器之间的速度不匹配而设立的。其速度要比内存的读写速度快好多，接近处理器的工作速度，一般处理器从内存中读取数据到Cache中，到下次再用到数据时，会先去cache中查找，如果cache中存在的话，就不会访问内存了，用以提高系统性能。
+
+#### 2. 系统引导时为什么关闭Cache？
+
+从上面的解释中，可以看出，在系统未初始化完成时，代码还没有转移到内存中，也就是说，我们还没有用到内存，先将MMU和Cache关闭，以免发生不可预料的错误。
+
+#### 3. 怎样使Cache中的数据无效？
+
+
+
+<h2 id="3.2">3.2 ARM汇编指令</h2>
+
+<h3 id="3.2.1">3.2.1 常用命令</h3>
+
+1. bl - 跳转指令
+
+    除了包含b指令单纯的跳转功能，还执行，在跳转之前，把r15寄存器=PC=CPU地址；把下一条要执行的指令赋值给r14，也就是r14=lr。然后跳转到对应的位置，开始执行。执行完毕后，再用 *mov pc, lr* 再跳转到调用之前的地址。 所以，就是调用子程序的过程。
+
+<h3 id="3.2.2">3.2.2 协处理器相关</h3>
+
+1. MCR - ARM寄存器数据传到协处理器寄存器
+
+    协处理器的格式为：
+
+        MCR [协处理器编号]，[协处理器操作码1]，[源寄存器]，[目的寄存器1]，[目的寄存器2]，[协处理器操作码2]
+
+            其中协处理器操作码1 和协处理器操作码2 为协处理器将要执行的操作，
+
+            源寄存器为ARM 处理器的寄存器，目的寄存器1 和目的寄存器2 均为协处理器的寄存器。
 
 
 <h1 id="4">4 uboot启动流程第二阶段</h1>
