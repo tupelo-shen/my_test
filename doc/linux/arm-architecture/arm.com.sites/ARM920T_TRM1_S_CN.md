@@ -48,7 +48,7 @@ ARM920T处理器支持添加嵌入式跟踪宏单元（ETM），用于实时跟�
 
 图1-1展示了ARM920T处理器的功能框图：
 
-![ARM920T功能框图](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/picture1-1.PNG)
+![ARM920T功能框图](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/%E5%9B%BE1-1ARM920T%E5%8A%9F%E8%83%BD%E6%A1%86%E5%9B%BE.PNG)
 
 图示说明：
 
@@ -72,7 +72,7 @@ ARM920T处理器采用ARM9TDMI完整内核，其实现了ARM v4T架构。支持A
 
 ARM920T处理器的编程模型是在ARM9TDMI核的编程模型的基础上进行添加和修改而成的。
 
-* ARM920T处理器包含2个协处理器： 
+* ARM920T处理器包含2个协处理器：
     - CP14， 允许软件访问debug通信通道。可以使用指令MCR和MRC指令访问这些寄存器。这些将会在Debug通信通道部分进行描述。
     - 系统控制协处理器，CP15，提供寄存器控制cache，MMU，保护系统，时钟模式以及ARM920T的其它系统选项、比如大小端的选择。同上，也可以使用MCR和MRC指令访问这些寄存器。
 * ARM920T还有一个外部协处理器接口，允许在同一块芯片上连接一个紧密耦合的协处理器，比如，一个浮点计算单元。用户可以使用适当的协处理器指令访问连接扫外部协处理器接口的任何协处理器提供的寄存器和操作。
@@ -100,11 +100,148 @@ CP15定义了16个寄存器。其内容见表2-2。
 
 > 寄存器位置0处，可以当做2个寄存器，具体的行为依赖于opcode_2的值。
 
-<h3 id="2.3.1">2.3.1 访问权限和域</h3>
+<h3 id="2.3.1">2.3.1 ARM920T地址</h3>
+
+ARM920T系统中具有3种不同类型的地址：
+
+* 虚拟地址（VA）
+* 修正后的虚拟地址（MVA）
+* 物理地址（PA）
+
+下面是一个ARM9TDMI核请求指令时发生的地址操作的示例（参见图2-10）。
+
+1. 指令的虚拟地址VA（IVA）由ARM9TDMI核发起。
+2. 根据ProcID翻译成指令MVA（IMVA）。指令缓存（ICache）和MMU看到的是IMVA。
+3. 如果IMMU在IMVA之上执行的保护检查没有中止，并且IMVA tag也在ICache中，则指令数据就会返回到ARM9TDMI核中。
+4. 如果ICache未命中（IMVA 的Tag在ICache中不存在），IMMU执行转换，将其转换为指令物理地址（IPA）。这个地址会被发送给 *AMBA*总线执行外部访问。
+
+表2-3 ARM920T中的地址类型
+
+| Domain   | ARM9TDMI | Caches and TLBs | AMBA bus |
+|----------| ------------- |------------|------------|
+| 地址     | 虚拟地址（VA） | 修正后虚拟地址（MVA） | 物理地址（PA） |
+
+<h3 id="2.3.2">2.3.2 访问CP15的寄存器</h3>
+
+下表2-4是本段内容中使用的术语或缩略语
+
+表2-4 CP15缩略语
+
+| 术语 | 缩略语 | 描述 |
+| ---------- | ------------- | ------------ |
+| 不可预知 | UNP | 对于读，读取的值可能是任何值；对于写，写入的值可能导致不可预知的行为 |
+| 应该是0 | SBZ | 所有位应为0 |
+
+需要注意的是，对CP15读写任何数据，都不会对其造成永久的损害。
+
+除了寄存器1的V位之外，所有CP15寄存器的位都由BnRES设置为0，而V位取值为VINITHI。
+
+用户只能在特权模式下使用MRC和MCR指令访问CP15寄存器。这些指令的汇编格式如下所示
+
+    MCR/MRC{cond} P15,opcode_1,Rd,CRn,CRm,opcode_2
+
+CRn指定要访问的协处理器。CRm字段和 opcode_2字段指定寻址寄存器时的特定操作。通过L位区分MRC（L=1）和MCR（L=0）。
+
+<h3 id="2.3.3">2.3.3 寄存器 0- ID寄存器</h3>
+
+只读存储器，返回32位的设备ID码。
+
+可以通过设置opcode_2为除了1之外的任何值读取CP15寄存器0（当读取时，CRm字段的值应为0），获取设备ID。例如，
+
+    MRC p15,0,Rd,c0,c0,0 ; #返回设备ID
+
+设备ID的具体内容参考下面表2-5，
+
+表2-5 寄存器0 - 设备ID
+
+| 寄存器位 | 功能 | 值（16进制） |
+| ---------- | ------------- | ------------ |
+| 31:24 | 实施者 | 0x41 |
+| 23:20 | 规范版本 | 0x1 |
+| 19:16 | 架构（ARMv4T） | 0x2 |
+| 15:4 | Part number | 0x920 |
+| 3:0 | Layout revision | Revision |
+
+<h3 id="2.3.4">2.3.4 寄存器 0 - cache类型寄存器</h3>
+
+这是一个只读寄存器，包含cache的大小和架构，允许操作系统建立如何执行缓存清理和锁定等操作。所有的ARMv4T和后面带有缓存的处理器都包含这个寄存器，允许RTOS厂商实现面向未来的操作系统版本。
+
+通过设置opcode_2为1，就可以读取CP15寄存器0-cache类型寄存器。例如：
+
+    MRC p15,0,Rd,c0,c0,1 ; # 返回Cache的细节
+
+寄存器的各个位表示如下所示：
+
+* ctype \[28:25\] - Cache类型
+* S位 \[24\] - 指定Cache是一个统一的Canche，还是指令和数据Cache是分开的。
+* Dsize \[23:12\] - 指定数据Cache的大小，line长度和关联性
+* Isize \[11:0\] - 指定指令Cache的大小，line长度和关联性
+* 其余位为 0
+
+Dsize和Isize具有相同的格式，具体如下：
+
+* size - 和M位一起决定Cache的大小
+* assoc - 和M位一起决定Cache的相关性
+* M位 - 乘法位
+* len - Cache line的长度
+
+表2-6 Cache type寄存器格式
+
+| 功能 | 寄存器位 | 值 |
+| ---------- | ------------- | ------------ |
+| 保留 | 31:29 | 0b000 |
+| Cache类型 | 28:25 | 0b0110 |
+| S位 | 24 | 0b1 = 哈佛架构 |
+| Dsize（保留） | 23：21 | 0b000 |
+| Dsize（size） | 20:18 | 0b101 = 16KB |
+| Dsize（assoc） | 17:15 | 0b110 = 64-way |
+| Dsize（M位） | 14 | 0b0 |
+| Dsize（len） | 13:12 | 0b10 = 每个line具有8个word（32个字节） |
+| Isize（保留） | 11:9 | 0b000 |
+| Isize（size） | 8:6 | 0b101 = 16KB |
+| Isize（assoc） | 5:3 | 0b110 = 64-way |
+| Isize（M位） | 2 | 0b0 |
+| Isize（len） | 1:0 | 0b10 = 每个line具有8个word（32个字节） |
+
+位\[28:25\]表示Cache的主要类型。在这儿，0x6表示缓存提供：
+
+* Cache-clean-step操作
+* Cache-flush-step操作
+* lockdown工具
+
+Cache的大小由M位和size字段决定。M位表明是数据和指令Cache。
+
+表2-7 Cache大小编码（M=0）
+
+| size字段 | Cache大小 |
+| ----- | ------------- |
+| 0b000 | 512B |
+| 0b001 | 1KB |
+| 0b010 | 2KB |
+| 0b011 | 4KB |
+| 0b100 | 8KB |
+| 0b101 | 16KB |
+| 0b110 | 32KB |
+| 0b111 | 64KB |
+
+<h3 id="2.3.8">2.3.8 寄存器8 - TLB操作寄存器</h3>
+
+寄存器8是一个只写寄存器，常常用来管理转译后备缓冲区（TLB），指令TLB和数据TLB。
+
+通过设置opcode_2和CRm字段的值，来定义TLB的操作，并选择其功能。
+
+表2-17 展示了使用寄存器8可以实施的TLB操作
+
+| 功能 | 数据 | 指令 |
+| ---------- | ------------- | ------------- |
+| 无效TLB                 | SBZ       | MCR p15,0,Rd,c8,c7,0 |
+| 无效I TLB               | SBZ       | MCR p15,0,Rd,c8,c5,0 |
+| 无效I TLB（单项，使用MVA） | MVA格式   | MCR p15,0,Rd,c8,c5,1 |
+| 无效D TLB               | SBZ       | MCR p15,0,Rd,c8,c6,0 |
+| 无效D TLB（单项，使用MVA） | MVA格式   | MCR p15,0,Rd,c8,c6,1 |
+
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
-
-
 
 <h1 id="3">3 内存管理单元-MMU</h1>
 
@@ -119,10 +256,10 @@ ARM920T处理器提供了一个增强型的ARMv4 MMU，用来对指令和数据�
 3. 提供对段访问的权限
 4. 大页面和小页面的访问权限可以分别为其子页面进行指定（这些子页面就是每个page的1/4）
 5. 16 domains implemented in hardware
-6. 64 entry instruction TLB and 64 entry data TLB
-7. hardware page table walks
-8. round-robin replacement algorithm (also called cyclic)
-9. invalidate whole TLB, using CP15 register 8
+6. 64项指令TLB和64项数据TLB
+7. 硬件页表遍历
+8. round-robin 替代算法(也称为cyclic算法)
+9. 使用CP15 寄存器8可以使整个TLB失效
 10. invalidate TLB entry, selected by MVA, using CP15 register 8
 11. independent lockdown of instruction TLB and data TLB, using CP15 register 10.
 
@@ -150,11 +287,114 @@ ARM920T处理器提供了一个增强型的ARMv4 MMU，用来对指令和数据�
 2. 如果允许访问，且不要求片外访问，则Cache响应此次访问
 3. 如果不允许访问，则MMU通知CPU放弃此次访问
 
-如果TLB未命中（也就是不包含VA中的项），则转换表
+如果TLB未命中（也就是不包含VA中的项），则硬件就会遍历物理内存中的转译表检索转译信息。当检索到时，这个转译信息就会被写入TLB中，可能会覆盖掉已经存在的值。
 
-<h2 id="3.2">3.2 MMU可编程寄存器</h2>
+当MMU被关闭，比如上电复位时，没有地址映射发生且所有的区域被标记为不可缓存的。具体的内容可以参考[《cache和write buffer》](#4.3)。
 
-<h2 id="3.3">3.3 地址转换</h2>
+<h2 id="3.2">3.2 MMU编程可访问的寄存器</h2>
+
+表3-1列出了对MMU操作有影响的CP15寄存器
+
+| 寄存器 | 编号 | 位 | 寄存器描述 |
+| --------------- | ------------- | ------------- | ------------- |
+| 控制寄存器       | 1      | M、A、S、R | 使能MMU（M）；使能数据地址排列检查（A位）；控制访问保护机制（S位和R位） |
+| 转译表基本寄存器 | 2      | 31:14 | 转译表的基地址对应的内存中维护的物理地址。该基地址必须位于16KB的边界上并且对于2个TLB都是通用的 |
+| Domain访问      | 3      | 31:0 | ------------- |
+| 错误状态寄存器   | 5（I/D） | 7:0 | ------------- |
+| 错误地址寄存器   | 6（D）   | 31:0 | ------------- |
+| TLB操作寄存器   | 8       | 31:0 | ------------- |
+| TLB锁定寄存器   | 10（I/D  | 31:20和0 | ------------- |
+
+<h2 id="3.3">3.3 地址转译</h2>
+
+MMU负责把虚拟地址转换成物理地址，用于访问外部的存储设备，这些虚拟地址是由CPU核或CP15寄存器13产生的。还可以使用TLB派生和检查访问权限。
+
+MMU页表遍历硬件被用来向TLB中追加项目。转译信息包含地址转移数据和访问权限数据，它们位于物理内存的一个转译表中。MMU提供了遍历转译表并将其加载到TLB中的逻辑单元。
+
+这个转换的过程，包括1~2级的硬件转译表遍历，权限检查以及处理。具体几级取决于地址被标记为段映射访问还是页映射访问。
+
+对于页映射访问，有3种大小：
+
+* 大页
+* 小页
+* 微页
+
+而对于段映射访问，只有1种大小。
+
+<h3 id="3.3.1">3.3.1 转译表基地址</h3>
+
+当TLB中不包含所请求的MVA的转译项时，就会启动硬件转译过程。转译表基地址（TTB）寄存器指向物理内存的基地址，其包含段或页的描述符。如图3-1所示， TTB寄存器的低14位都被设置为0，页表必须以16KB为边界。TTB寄存器的格式为：
+
+![图3-1 TTB寄存器格式](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-1.PNG)
+
+如图3-2所示，转译表包含多达4096个32位的项，每一项都描述了1MB的虚拟地址。这就允许虚拟地址的寻址范围达到4GB。
+
+
+![图3-2 页表转译过程](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-2.PNG)
+
+
+<h3 id="3.3.2">3.3.2 一级提取</h3>
+
+图3-3 访问转译表的1级描述符
+
+![图3-3 访问转译表的1级描述符](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-3.PNG)
+
+如图3-3所示，TTB寄存器的位\[31:14\]连接上MVA的位\[31:20\]组成了一个30位的地址。
+
+这个地址的每一项是4字节的内容。这既是段也是页表的一级描述符。
+
+<h3 id="3.3.3">3.3.3 一级描述符</h3>
+
+![图3-4 一级描述符](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-4.PNG)
+
+一级描述符可以是段描述符，粗页表描述符，细页表描述符或者是非法的。参考图3-4。
+
+由图可以看出，端描述符提供1MB内存块的基地址。
+
+页表描述符时分为2种：粗页表描述符和细页表描述符：
+
+* 粗页表把1MB的空间分成了256项，每一项4KB大小；
+* 细页表把1MB的空间分成了1024项，每一项1KB大小。
+
+表3-2 一级描述符各位的意义
+
+| 段 | 粗页表 | 细页表 | 描述 |
+| --------------- | ------------- | ------------- | ------------- |
+| 31:20 | 31:10 | 31:19 | 这些位都是直接跟物理地址相关的 |
+| 19:12 | - | - | 应该为0 |
+| 11:10 | - | - | 访问权限位。Domain访问控制和错误检查序列中已经解释了这些访问权限的解释 |
+| 9  | 9 | 11:9 | 应该是0 |
+| 8:5 | 8:5 | 8:5 | Domain控制位 |
+| 4 | 4 | 4 | 必须为1 |
+| 3:2 | - | - | 这些位，C和B表示时回写cache、直写cache、非cache的buffer和非cache非buffer |
+| - | 3:2 | 3:2 | 应该为0 |
+| 1:0 | 1:0 | 1:0 | 用来解释页的大小和合法性，如表3-3中所解释的 |
+
+<h3 id="3.3.4">3.3.4 段描述符</h3>
+
+![图3-5 段描述符地址格式](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-5.PNG)
+
+解释：
+
+表3-4 段描述符各位
+
+| 位 | 描述 |
+| --------------- | ------------- |
+| 31:20 | 物理地址相关位 |
+| 19:12 | 总是0 |
+| 11:10 | 指明该段的访问权限 |
+| 9 | 总是0 |
+| 8:5 | 指明16个domain中的一个 |
+| 4 | 应该是1，向后兼容 |
+| 3:2 | 这些位，C和B表示时回写cache、直写cache、非cache的buffer和非cache非buffer |
+| 1:0 | 必须是0b10 |
+
+
+<h3 id="3.3.7">3.3.7 转译段地址的过程</h3>
+
+![图3-6 转译段地址的过程](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-6.PNG)
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="4">4 Cache、写缓冲区、和PA TAG RAM</h1>
 
