@@ -4,18 +4,16 @@
     - [1.2 功能框图](#1.2)
 * [2 编程者模型](#2)
     - [2.1 关于编程者模型](#2.1)
-        + [2.1.1 访问权限和域](#2.1.1)
     - [2.2 关于ARM9TDMI编程者模型](#2.2)
     - [2.3 CP15寄存器映射](#2.3)
 * [3 内存管理单元-MMU](#3)
     - [3.1 关于MMU](#3.1)
-        + [3.1.1 访问权限和域](#3.1.1)
     - [3.2 MMU可编程寄存器](#3.2)
     - [3.3 地址变换](#3.3)
+    - [3.9 MMU和Cache的交互](#3.9)
 * [4 Cache、写缓冲区、和PA TAG RAM](#4)
+    - [4.1 关于Cache和write buffer](#4.1)
     - [4.2 ICache](#4.2)
-        + [4.2.1 ICache组织结构](#4.2.1)
-        + [4.2.2 使能和禁止ICache](#4.2.2)
     - [4.3 DCache & 写缓存](#4.3)
 
 
@@ -28,8 +26,8 @@
 ARM920T处理器是通用目的微处理器ARM9TDMI家族的一员，它包含：
 
 1. ARM9TDMI（核）
-2. ARM940T（core plus cache and protection unit）
-3. ARM920T（core plus cache and MMU）
+2. ARM940T（内核+Cache+保护单元）
+3. ARM920T（内核+Cache+MMU）
 
 ARM9TDMI处理器核是基于5级流水线的哈弗结构，包括取指、解码、执行、内存和写这5个步骤。它可以作为一个单独的核嵌入到其它更为复杂的系统中。独立的核提供一个总线接口，允许用户设计自己的cache和内存系统。
 
@@ -134,13 +132,17 @@ ARM920T系统中具有3种不同类型的地址：
 
 需要注意的是，对CP15读写任何数据，都不会对其造成永久的损害。
 
-除了寄存器1的V位之外，所有CP15寄存器的位都由BnRES设置为0，而V位取值为VINITHI。
+除了寄存器1的V位之外，所有CP15的寄存器包含状态位的都由BnRES设置为0，而V位取值为VINITHI。
 
 用户只能在特权模式下使用MRC和MCR指令访问CP15寄存器。这些指令的汇编格式如下所示
 
     MCR/MRC{cond} P15,opcode_1,Rd,CRn,CRm,opcode_2
 
-CRn指定要访问的协处理器。CRm字段和 opcode_2字段指定寻址寄存器时的特定操作。通过L位区分MRC（L=1）和MCR（L=0）。
+* cond 指令运行时的条件码，当cond忽略时，指令无条件运行。
+* opcode_1 协处理器将运行的操作的操作码。对于CP15协处理器，opcode_1永远为0，不为零时的操作不可预知。
+* Rd 作为目的寄存器的ARM寄存器。其值与对应的协处理器中的值进行交换。Rd不能为PC寄存器，如果为PC，指令操作结果不可预知。
+* CRn 指定要访问的协处理器。
+* CRm字段和 opcode_2字段指定寻址寄存器时的特定操作。通过L位区分MRC（L=1）和MCR（L=0）。如果不是特定操作，请将CRm指定为C0，opcode_2指定为0。
 
 <h3 id="2.3.3">2.3.3 寄存器 0- ID寄存器</h3>
 
@@ -224,7 +226,26 @@ Cache的大小由M位和size字段决定。M位表明是数据和指令Cache。
 | 0b110 | 32KB |
 | 0b111 | 64KB |
 
-<h3 id="2.3.8">2.3.8 寄存器8 - TLB操作寄存器</h3>
+<h3 id="2.3.11">2.3.11 寄存器7 - Cache操作寄存器</h3>
+
+寄存器7是一个只写寄存器，用来管理ICache和DCache。具体的功能参考下表2-15：
+
+| 指令 | 数据（Rd） | 功能 |
+| ------------- | ------------- | ------------- |
+| MCR p15,0,Rd,c7,c7,0  | 0 | 失效ICache和DCache |
+| MCR p15,0,Rd,c7,c5,0  | 0 | 失效ICache |
+| MCR p15,0,Rd,c7,c5,1  | MVA虚拟地址 | 失效ICache中的一项 |
+| MCR p15,0,Rd,c7,c13,1 | MVA虚拟地址 | 预取ICache的line |
+| MCR p15,0,Rd,c7,c6,0  | 0 | 失效DCache |
+| MCR p15,0,Rd,c7,c6,1  | MVA虚拟地址 | 失效DCache中的一项 |
+| MCR p15,0,Rd,c7,c10,1 | MVA虚拟地址 | 清空DCache的一项 |
+| MCR p15,0,Rd,c7,c14,1 | MVA虚拟地址 | 清空和失效DCache的一项 |
+| MCR p15,0,Rd,c7,c10,2 | 索引 | 清空DCache的一项 |
+| MCR p15,0,Rd,c7,c14,2 | 索引 | 清空和失效DCache的一项 |
+| MCR p15,0,Rd,c7,c10,4 | 0 | 耗尽write buffer |
+| MCR p15,0,Rd,c7,c0,4  | 0 | 等待中断发生 |
+
+<h3 id="2.3.12">2.3.12 寄存器8 - TLB操作寄存器</h3>
 
 寄存器8是一个只写寄存器，常常用来管理转译后备缓冲区（TLB），指令TLB和数据TLB。
 
@@ -241,6 +262,29 @@ Cache的大小由M位和size字段决定。M位表明是数据和指令Cache。
 | 无效D TLB（单项，使用MVA） | MVA格式   | MCR p15,0,Rd,c8,c6,1 |
 
 
+
+<h3 id="2.3.16">2.3.16 寄存器13 - FCSE PID寄存器</h3>
+
+寄存器13的英文全称是 *Fast Context Switch Extension(FCSE) Process Identifier(PID)* 寄存器。复位时，其值为0x0。
+
+读取该寄存器，返回的就是FCSE PID的值。写入该寄存器时，只修改位[31:25]。位[24:0]应该为0。具体的位定义如下：
+
+![图2-9 寄存器 13](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure2-9.PNG)
+
+可以使用下面的指令访问寄存器13：
+
+    MRC p15, 0, Rd, c13, c0, 0 ;read FCSE PID
+    MCR p15, 0, Rd, c13, c0, 0 ;write FCSE PID
+
+# 使用FCSE PID
+
+ARM9TDMI发出的范围在0~32MB的地址，由CP15的寄存器13-FCSE PID进行转译。Cache和MMU看到的地址就是地址A+（FCSE_PID x 32MB)的地址。具体的可以参考[处理器功能框图](#1.2)。
+
+![图2-10 使用寄存器 13的地址映射图](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure2-10.PNG)
+
+
+
+---
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="3">3 内存管理单元-MMU</h1>
@@ -255,17 +299,17 @@ ARM920T处理器提供了一个增强型的ARMv4 MMU，用来对指令和数据�
 2. 映射大小：段（1MB）、大页面（64KB）、小页面（4KB）和微小页面（1KB）
 3. 提供对段访问的权限
 4. 大页面和小页面的访问权限可以分别为其子页面进行指定（这些子页面就是每个page的1/4）
-5. 16 domains implemented in hardware
+5. 硬件实现的16种域，用于控制访问权相是否有效
 6. 64项指令TLB和64项数据TLB
 7. 硬件页表遍历
 8. round-robin 替代算法(也称为cyclic算法)
 9. 使用CP15 寄存器8可以使整个TLB失效
-10. invalidate TLB entry, selected by MVA, using CP15 register 8
-11. independent lockdown of instruction TLB and data TLB, using CP15 register 10.
+10. 使用CP15的寄存器8，通过MVA，可以有选择的失效某一个TLB项
+11. 使用CP15寄存器10独立锁定指令TLB和数据TLB
 
 <h3 id="3.1.1">3.1.1 访问权限和域</h3>
 
-对于大页面和小页面，可以为每一个子页面定义访问权限（对于小页面来说就是1KB，对于大页面来说就是16KB）。段和微小页面具有单独一组访问权限。
+对于大页面和小页面，可以为每一个子页面定义访问权限（对于小页面来说就是1KB，对于大页面来说就是16KB）。段和微页具有单独一组访问权限。
 
 所有的内存区域都有一个关联的域。域是内存访问的主要控制机制。它定义了访问能够进行的必要条件。域决定了是否：
 
@@ -384,7 +428,7 @@ MMU页表遍历硬件被用来向TLB中追加项目。转译信息包含地址�
 | 19:12 | 总是0 |
 | 11:10 | 指明该段的访问权限 |
 | 9 | 总是0 |
-| 8:5 | 指明16个domain中的一个 |
+| 8:5 | 指明16个域中的一个 |
 | 4 | 应该是1，向后兼容 |
 | 3:2 | 这些位，C和B表示时回写cache、直写cache、非cache的buffer和非cache非buffer |
 | 1:0 | 必须是0b10 |
@@ -394,9 +438,83 @@ MMU页表遍历硬件被用来向TLB中追加项目。转译信息包含地址�
 
 ![图3-6 转译段地址的过程](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-6.PNG)
 
+> 注意：
+> 必须在产生物理地址之前，检查一级描述符的访问权限
+
+<h3 id="3.3.8">3.3.8 二级描述符</h3>
+
+二级描述符的格式如下图3-9所示：
+
+![图3-9 二级描述符](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure3-9.PNG)
+
+二级描述符描述了微页、小页、大页或非法地址：
+
+* 大页描述符提供了64KB内存块的基地址
+* 小页描述符提供了4KB内存块的基地址
+* 微页描述符提供了1KB内存块的基地址
+
+粗页表提供的基地址既可以是小页、也可以是大页的基地址。大页描述符必须在16个连续的项中是重复的，这样才能保证64KB的内存块。小页描述符仅在每一项中使用一次即可。
+
+细页表可以提供大页、小页和微页的基地址。大页描述符必须在连续的64项中是重复的。小页描述符在连续的4项中是重复的。微页描述符仅在每一项中使用。
+
+二级描述符各位的赋值参考下表3-7所示：
+
+| 大页            | 小页           | 微页          | 描述          |
+| --------------- | ------------- | ------------- | ------------- |
+| 31:16           | 31:12         | 31:10         | 这些位都是直接跟物理地址相关的 |
+| 15:12           | -             | 9:6           | 应该为0 |
+| 11:4            | 11:4          | 5:4           | 访问权限位。[域访问控制]和[错误检查序列]都阐述了如何解释这些访问权限位 |
+| 3:2             | 3:2           | 3:2           | 这些位，C和B表示回写cache、直写cache、非cache的buffer和非cache非buffer |
+| 1:0             | 1:0           | 1:0           | 这些位反映了页的大小和合法性，比如大页、小页、微页、不合法等 |
+
+<h2 id="3.9">3.9 MMU和Cache的交互</h2>
+
+可以使用CP15的控制寄存器的位0，禁止和使能MMU。
+
+<h3 id="3.9.1">3.9.1 使能MMU</h3>
+
+为了使能MMU：
+
+1. 设置TTB和域访问控制寄存器
+2. 按需设置1级和2级页表
+3. 设置控制寄存器的位0使能MMU
+
+可以使用一条简单简单的MCR指令同时使能ICache和DCache。
+
+<h3 id="3.9.2">3.9.2 禁止MMU</h3>
+
+清除控制寄存器的位0，就可以禁止MMU了。
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
+---
+
 <h1 id="4">4 Cache、写缓冲区、和PA TAG RAM</h1>
+
+<h2 id="4.1">4.1 关于Cache和write buffer</h2>
+
+ARM920T一级内存系统包含一个ICache和一个DCache，一个write buffer，和一个物理地址TAG RAM，这些都是为了减少内存读写带宽和延时对性能的影响。
+
+ARM920T实现了一个独立的16KB的ICache和一个独立的16KB的DCache。
+
+这2个Cache具有下面的特色：
+
+1. 虚拟寻址的64路关联Cache
+2. 每个line具有8个word（32个字节），带有一个合法位和2个脏位，允许半line回写
+3. 直写和回写Cache操作（回写也称拷贝备份Cache），通过MMU转译表中的B位和C位进行选择
+4. 伪随机或round-robin替代算法，具体的算法可以使用CP15的寄存器1的RR位进行选择
+5. 低功耗的CAM-RAM实现
+6. Cache可以被锁定的最小粒度为Cache的1/64分之一，也就是64个字（256个字节）
+7. 为了避免在回写数据期间TLB未命中，且为了减少中断等待时间，除了存储在cache CAM中的VA TAG之外，还在PA TAG RAM中存储每个数据cache项对应的物理地址，以在进行cache line 回写时使用。这意味着MMU不参与cache回写操作， 消除了与回写地址相关的TLB未命中的可能性
+8. 为了提供整个数据cache清理工作和小块虚拟内存的清理和失效工作的高效率，进行Cache的维护。后者允许在发生小块代码更改时有效地维护ICache的一致性，比如，自修正代码和对异常向量的更改
+
+而write buffer具有下面的功能：
+
+1. 有一个16字的数据buffer
+2. 有一个4地址的地址buffer
+3. 可以通过软件控制清理buffer，使用CP15的MCR指令（参见[Drain write buffer](#4.8))
+
+
 
 <h2 id="4.2">4.2 ICache</h2>
 
@@ -457,6 +575,9 @@ MVA中的 *\[4:2\]*指定了line中要访问的word。对于半字操作，MVA�
 
 <h2 id="4.3">4.3 DCache&写缓冲区</h2>
 
+ARM920T包含一个16KB的DCache和一个write buffer，用以提高数据的访问性能。DCache拥有512个line，每个line拥有32字节（8个字），排列为64路关联缓存组，使用经过CP15的寄存器13转换后的MVA，其来源是ARM9TDMI CPU核请求的地址。
+
+
 <h3 id="4.3.2">4.3.2 DCache&写缓冲区的操作</h3>
 
 
@@ -464,3 +585,23 @@ MVA中的 *\[4:2\]*指定了line中要访问的word。对于半字操作，MVA�
 
 DCache的结构模型和ICache相同。可以参考[ICache组织结构](#4.2.1)。
 
+<h2 id="4.8">4.8 Drain write buffer</h2>
+
+用户可以通过软件控制，在write buffer耗尽之前不再执行后续的指令。具体的方法见下面：
+
+1. 存储不可缓存的内存
+2. 从不可缓存的内存中加载内容
+3. 耗尽write buffer的MCR指令：
+
+        MCR p15,0,Rd,c7,c10,4
+
+在执行不太可控的活动之前，write buffer也会耗尽，你必须将其视为实现定义的：
+
+* 从不可缓存的内存中提取内容
+* DCache linefill
+* ICache linefill
+
+
+
+---
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
