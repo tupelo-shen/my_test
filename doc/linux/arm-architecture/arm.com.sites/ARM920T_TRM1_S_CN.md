@@ -278,11 +278,26 @@ Cache的大小由M位和size字段决定。M位表明是数据和指令Cache。
 
 # 使用FCSE PID
 
-ARM9TDMI发出的范围在0~32MB的地址，由CP15的寄存器13-FCSE PID进行转译。Cache和MMU看到的地址就是地址A+（FCSE_PID x 32MB)的地址。具体的可以参考[处理器功能框图](#1.2)。
+ARM9TDMI请求的地址范围如果在0~32MB内，由CP15的寄存器13-FCSE PID进行转译。Cache和MMU看到的地址就是地址A+（FCSE_PID x 32MB)的地址。具体的可以参考[处理器功能框图](#1.2)。
 
 ![图2-10 使用寄存器 13的地址映射图](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/Figure2-10.PNG)
 
+如图2-10所示，FCSE_PID占用7位，能为128个进程提供地址映射，每个进程的寻址范围是32MB。
 
+> 注意：如果FCSE_PID是0，比如在复位的时候，ARM9TDMI与Cache和MMU之间是直接映射。
+
+# 改变FCSE PID，执行快速上下文切换
+
+为了快速实现上下文切换（比如说，我们的应用程序位于不同的进程中，它们的内存寻址空间都是0x0~0x01FFFFFF，每个进程的寻址空间就是32M），需要设置CP15的寄存器13。此时，cache和TLB中的内容不需要冲刷，因为它们持有合法的地址标签。需要注意的是，写FCSE PID寄存器的值后，执行的2条指令还是使用旧FCSE_PID值：
+
+    {FCSE_PID = 0}
+    MOV r0, #1:SHL:25           ; 取指令时，FCSE_PID = 0，立即数左移25位->寻址空间为0x02000000~0x3FFFFFFF
+    MCR p15,0,r0,c13,c0,0       ; 取指令时，FCSE_PID = 0，将C13的内容写为0x02000000
+    A1                          ; 取指令时，FCSE_PID = 0
+    A2                          ; 取指令时，FCSE_PID = 0
+    A3                          ; 取指令时，FCSE_PID = 1
+
+在这儿，A1、A2、A3是执行完上下文切换后执行的三条指令。
 
 ---
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
@@ -573,17 +588,100 @@ MVA中的 *\[4:2\]*指定了line中要访问的word。对于半字操作，MVA�
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h2 id="4.3">4.3 DCache&写缓冲区</h2>
+<h2 id="4.3">4.3 DCache & write buffer</h2>
 
-ARM920T包含一个16KB的DCache和一个write buffer，用以提高数据的访问性能。DCache拥有512个line，每个line拥有32字节（8个字），排列为64路关联缓存组，使用经过CP15的寄存器13转换后的MVA，其来源是ARM9TDMI CPU核请求的地址。
+ARM920T包含一个16KB的DCache和一个write buffer，用以提高数据的访问性能。DCache拥有512个line，每个line拥有32字节（8个字），排列为64路关联缓存组，使用经过CP15的寄存器13转换后的MVA，其来源是ARM9TDMI CPU核请求的地址。write buffer最多可容纳16个字的数据和4个独立的地址，DCache和write buffer的操作紧密相连。
+
+DCache支持直写和回写内存区，通过位于MMU转译表中的段和页描述符中的C和B位进行控制，为了更清楚，这些位我们在后面的文章中称为Ctt和Btt。详细的内容可以参考 [DCache & write buffer的操作](#4.3.2)
+
+每个Cache line有2个脏位，一个是该line的头4个字节，而另一个是后4个字节的标志。另外，一个Cache line还包括一个虚拟TAG地址和8个字的合法位。从每一个line中加载物理地址的时候，一并将这些物理地址存储到PA TAG RAM中，以便当将修改后的line写回到内存时使用。
+
+当一个存储操作要往DCache中写入，且对应的内存区域是回写（write-back），则相应的脏位被设置，标识哪个 "*half-line*"是被修改了的。而如果对某一个line执行linefill操作或DCache清理操作，则对应的脏位用来决定是整个，半个还是没有line被回写到内存中。line还是被写回到它们原来加载时的物理地址中，无论MMU转译表发生任何改变。
+
+可以设置CP15的寄存器1中的位14-RR位，选择使用随机算法还是round-robin替换算法。复位时，选择随机替代算法。linefill总是加载一个完整的8字line。
+
+DCache中的数据也可以被锁住，不允许linefill修改。这种操作的粒度是Cache的64分之1，也就是64个字（256个字节）。
+
+所有的数据访问都应接受MMU权限和转译检查。MMU抛弃的数据访问不会造成linefill或者出现在AMBA ASB总线接口上。
+
+为了更好理解，CP15寄存器1中的位2，也就是C位，在后面的文章中我们称之为Ccr位。
+
+<h3 id="4.3.1">4.3.1 使能和禁止DCache和write buffer</h3>
+
+复位时，DCache中的内容失效且DCache被禁止，write buffer的内容被抛弃。
+
+在ARM920T中没有显式的位去使能write buffer。write buffer使用下面的方法使用：
+
+* 你可以通过对Ccr位写1使能DCache，写0禁止DCache。
+* 使能DCache的时候也必须要使能MMU。这是因为MMU转译表定义了Cache和write buffer对各个内存区的配置。
+* 如果DCache被使能后又禁止，Cache的内容被忽略且所有出现在AMBA ASB总线接口上的数据访问都作为独立的非顺序访问，且不会更新Cache。如果随后Cache又被使能，而内容不会发生改变。依赖于具体的软件设计，你可能需要在禁止Cache后清理Cache，在你重新使能它之前失效它。具体的内容可以参考[《Cache的一致性》](#4.4).
+* 可以使用MCR指令同时使能或禁止MMU和DCache，设置CP15寄存器1（控制寄存器）的M位和C位。
+
+<h3 id="4.3.2">4.3.2 DCache & write buffer的操作</h3>
+
+The DCache and write buffer configuration of each memory region is controlled by the
+Ctt and Btt bits in each section and page descriptor in the MMU translation tables. You
+can modify the configuration using the DCache enable bit in the CP15 control register.
+This is called Ccr.
+
+If the DCache is enabled, a DCache lookup is performed for each data access initiated
+by the ARM9TDMI CPU core, regardless of the value of the Ctt bit in the relevant
+MMU translation table descriptor. If the required data is found, the lookup is called a
+cache hit. If the required data is not found, the lookup is called a cache miss. In this
+context a data access means any type of load (read), store (write), or swap instruction,
+including LDR, LDRB, LDRH, LDM, LDC, STR, STRB, STRH, STC, SWP, and SWPB.
+
+Accesses appear on the AMBA ASB interface in program order but the ARM9TDMI
+CPU core can continue executing at full speed, reading instructions and data from the
+caches, and writing to the DCache and write buffer, while buffered writes are being
+written to memory through the AMBA ASB interface.
+
+Table 4-1 describes the DCache and write buffer behavior for each type of memory
+configuration. Ctt AND Ccr means the bitwise Boolean AND of Ctt with Ccr.
 
 
-<h3 id="4.3.2">4.3.2 DCache&写缓冲区的操作</h3>
+表 4-1 DCache和write buffer配置
 
+| Ctt 和 Ccr  | Btt | DCache, write buffer,以及内存访问行为 |
+| ----------- | --- | ------------------------------------------------ |
+| 0           | 0   | 不被Cache，也不被buffer（NCNB）。读和写都不Cache，它们的执行都在AMBA ASB接口上。写不被buffer。CPU暂停，直到AMBA ASB总线上的写操作完成。读写都可以由外部中止。 |
+| 0           | 1   | 不被Cache，但是可以buffer（NCB）。读和写都不Cache，直接在AMBA ASB接口上执行。写操作被buffer到write buffer中，然后在AMBA ASB总线上执行。一旦写操作被放置到write buffer中，CPU就可以继续执行指令了。读可以被外部中断。 |
+| 1           | 0   | Cache的直写模式（WT）。在Cache中命中的读操作从Cache中读取数据，而这个操作不会出现在AMBA ASB接口上执行。在Cache中未命中的读操作，会造成一个linefill操作。命中的write操作更新Cache。所有的写操作被放置到write buffer中且出现在AMBA ASB总线接口上。一旦写操作被放置到write buffer中，CPU就继续执行指令了。读和写都不能外部中断。 |
+| 1           | 1   | Cache的回写模式（WB）。命中的read操作，从cache中读取数据且不会执行AMBA ASB接口上的访问。未命中的读操作，会造成一个linefill操作。命中的写操作更新cache，标记相应的脏位，不会造成AMBA ASB接口上的访问。未命中的write操作，被放置到write buffer中，并出现在AMBA ASB接口上。写操作放置到write buffer中后就可以继续执行CPU指令了。Cache 回写操作被缓存了。因此，这种模式CPU不需要过多等待，效率更高。但是缺点就是在Cache中的内容如果发生掉电或者其它操作会丢失。|
+
+A linefill performs an 8-word burst read from the AMBA ASB interface and places it
+as a new entry in the cache, possibly replacing another line at the same location within
+the cache. The location that is replaced, called the victim, is chosen from the entries that
+are not locked using either a random or round-robin replacement policy. If the cache line
+being replaced is marked as dirty, indicating that it has been modified and that main
+memory has not been updated to reflect the change, a cache writeback occurs.
+
+Depending on whether one or both halves of the cache line are dirty, the write-back
+performs a 4 or 8-word sequential burst write access on the AMBA ASB interface. The
+write-back data is placed in the write buffer, and then the linefill data is read from the
+AMBA ASB interface. The CPU can then continue while the write-back data is written
+to memory over the AMBA ASB interface.
+
+Load multiple (LDM) instructions accessing NCNB or NCB regions perform sequential
+bursts on the AMBA ASB interface. Store multiple (STM) instructions accessing NCNB
+regions also perform sequential bursts on the AMBA ASB interface.
+
+The sequential burst is split into two bursts if it crosses a 1KB boundary. This is because
+the smallest MMU protection and mapping size is 1KB, so the memory regions on each
+side of the 1KB boundary can have different properties.
+
+This means that sequential accesses generated by ARM920T do not cross a 1KB
+boundary. This can be exploited to simplify memory interface design. For example, a
+simple page-mode DRAM controller can perform a page-mode access for each
+sequential access, provided the DRAM page size is 1KB or larger.
+
+也可以参考[《Cache的一致性》](#4.4)。
 
 <h3 id="4.3.3">4.3.3 DCache组织结构</h3>
 
 DCache的结构模型和ICache相同。可以参考[ICache组织结构](#4.2.1)。
+
+<h2 id="4.4">4.4 Cache的一致性</h2>
 
 <h2 id="4.8">4.8 Drain write buffer</h2>
 
