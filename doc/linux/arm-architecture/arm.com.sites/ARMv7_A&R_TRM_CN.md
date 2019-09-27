@@ -106,6 +106,8 @@
 
 <h1 id="1">1 ARM体系结构简介</h1>
 
+本章主要介绍ARM架构。
+
 <h2 id="1.1">1.1 关于ARM架构</h2>
 
 The ARM architecture supports implementations across a wide range of performance points. The architectural simplicity of ARM processors leads to very small implementations, and small implementations mean devices can have very low power consumption. Implementation size, performance, and very low power consumption are key attributes of the ARM architecture.
@@ -162,25 +164,27 @@ Two additional instruction sets support execution environments:
 
 The ARM architecture has evolved significantly since its introduction, and ARM continues to develop it. Seven　major versions of the architecture have been defined to date, denoted by the version numbers 1 to 7. Of these, the　first three versions are now obsolete.
 
-ARMv7 provides three profiles:
+ARMv7 提供了3个配置文件：
 
-* **ARMv7-A**   Application profile, described in this manual:
-    - Implements a traditional ARM architecture with multiple modes.
-    - Supports a Virtual Memory System Architecture (VMSA) based on a Memory Management Unit (MMU). An ARMv7-A implementation can be called a VMSAv7 implementation.
-    - Supports the ARM and Thumb instruction sets.
-* **ARMv7-R** Real-time profile, described in this manual:
-    - Implements a traditional ARM architecture with multiple modes.
-    - Supports a Protected Memory System Architecture (PMSA) based on a Memory Protection Unit (MPU). An ARMv7-R implementation can be called a PMSAv7 implementation.
-    - Supports the ARM and Thumb instruction sets.
-* **ARMv7-M** Microcontroller profile, described in the ARMv7-M Architecture Reference Manual:
-    - Implements a programmers' model designed for low-latency interrupt processing, with hardware stacking of registers and support for writing interrupt handlers in high-level languages.
-    - Implements a variant of the ARMv7 PMSA.
-    - Supports a variant of the Thumb instruction set.
+* **ARMv7-A**   面向应用的配置文件:
+    - 实现了具有多个工作模式的传统ARM架构。
+    - 具有MMU内存管理单元，支持虚拟内存系统架构（VMSA）。因此，ARMv7-A的实现又可以称为VMSAv7实现。
+    - 支持ARM和Thumb指令集。
 
-Parts A, B, and C of this Architecture Reference Manual describe the ARMv7-A and ARMv7-R profiles:
+* **ARMv7-R** 面向实时应用的配置文件:
+    - 实现了具有多个工作模式的传统ARM架构。
+    - 具有MPU-内存管理单元，支持受保护的内存系统架构（PMSA）。因此，ARMv7-R的实现又可以称为PMSAv7实现。
+    - 支持ARM和Thumb指令集。
 
-* Appendixes describe how the ARMv4-ARMv6 architecture versions differ from ARMv7.
-* Separate Architecture Reference Manuals define the M-profile architectures, see Additional reading on page xxiii.
+* **ARMv7-M** 面向微控制器的配置文件，在[ARMv7-M Architecture Reference Manual]()手册中进行描述:
+    - 使用寄存器的硬件堆栈，为低延迟的中断处理提供编程模型，同时，支持使用高级语言编写中断处理程序。
+    - 实现ARMv7 PMSA的变体。
+    - 支持Thumb指令集的变体。
+
+本参考手册只描述了ARMv7-A和ARMv7-R配置：
+
+* 附录描述了ARMv4-ARMv6架构与ARMv7的不同。
+* 对于使用M-架构的技术参考手册，请参考其独立手册。
 
 <h3 id="1.3.1">1.3.1 Debug架构版本</h3>
 
@@ -239,9 +243,24 @@ This manual describes the following extensions to the ISA:
     From publication of issue C.a of this manual, ARM deprecates any use of ThumbEE instructions. However, ARMv7-A implementations must continue to include ThumbEE
 support, for backwards compatibility.
 
+<h2 id="1.5">1.5 ARM内存模型</h2>
+
+ARM指令集能够访问的地址空间是2^32 (4G)字节大小。
+
+该架构提供以下功能：
+
+* 发生未对齐内存访问时报异常
+* 限制应用程序对指定内存区域的访问
+* 将指令传递的虚拟地址转换成物理地址
+* 在大小端之间进行切换
+* 控制对内存的访问顺序
+* 控制Cache
+* 同步多个处理器对共享内存的访问
 
 
 <h1 id="2">2 编程者模型</h1>
+
+
 
 <h2 id="2.1">2.1 关于编程者模型</h2>
 
@@ -255,6 +274,31 @@ support, for backwards compatibility.
 
 
 <h2 id="2.11">2.11 处理器的地址</h2>
+
+
+<h1 id="3">3 内存模型</h1>
+
+本章从应用的角度讲述如何理解内存模型。
+
+<h2 id="3.1">3.1 地址空间</h2>
+
+<h2 id="3.2">3.2 排列支持</h2>
+
+<h2 id="3.3">3.3 大小端支持</h2>
+
+<h2 id="3.4">3.4 同步和信号量</h2>
+
+<h2 id="3.5">3.5 内存类型和属性以及内存顺序模型</h2>
+
+<h2 id="3.6">3.6 访问权限</h2>
+
+<h2 id="3.7">3.7 虚拟和物理地址</h2>
+
+<h2 id="3.8">3.8 内存访问顺序</h2>
+
+<h2 id="3.9">3.9 Cache和内存体系结构</h2>
+
+
 
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
