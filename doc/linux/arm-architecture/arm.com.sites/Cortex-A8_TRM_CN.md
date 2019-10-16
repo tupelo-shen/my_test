@@ -3,13 +3,6 @@
     - [1.1 关于Cortex-A8](#1.1)
     - [1.2 ARMv7-A架构](#1.2)
     - [1.3 处理器的组成](#1.3)
-        + [1.3.1 指令获取](#1.3.1)
-        + [1.3.2 指令解码](#1.3.2)
-        + [1.3.3 指令执行](#1.3.3)
-        + [1.3.4 Load/Store](#1.3.4)
-        + [1.3.5 L2 Cache](#1.3.5)
-        + [1.3.6 NEON](#1.3.6)
-        + [1.3.7 ETM](#1.3.7)
 * [2 编程者模型](#2)
     - [2.1 关于编程者模型](#2.1)
     - [2.2 Thumb-2架构](#2.2)
@@ -71,9 +64,9 @@
 * [13 交叉触发接口](#13)
     - [4.1 aaa](#4.1)
     - [4.2 bbb](#4.2)
-* [14 指令周期采样](#14)
-    - [4.1 aaa](#4.1)
-    - [4.2 bbb](#4.2)
+* [16 指令采样周期](#16)
+    - [16.1 关于指令采样周期](#16.1)
+    - [16.2 Instruction-specific scheduling for ARM instructions](#16.2)
 
 ---
 
@@ -568,6 +561,111 @@ L1级内存系统由遵循哈弗结构的独立指令和数据cache组成。主�
 
 <h2 id="7.2">7.2 Cache组织架构</h2>
 
+<h1 id="16">16 指令采样周期</h1>
+
+本章描述了Cortex-A8处理器的指令周期。
+
+<h2 id="16.1">16.1 关于指令采样周期</h2>
+
+This chapter provides the information to estimate how much execution time particular code sequences require. The complexity of the processor makes it impossible to guarantee precise timing information with hand calculations. The timing of an instruction is often affected by other concurrent instructions, memory system activity, and additional events outside the instruction flow. Detailed descriptions of all possible instruction interactions and all possible events taking place in the processor is beyond the scope of this document. Only a cycle-accurate model of the processor can produce precise timings for a particular instruction sequence.
+
+This chapter provides a framework for doing basic timing estimations for instruction sequences. The framework requires three main information components:
+
+* **Instruction-specific scheduling information**
+
+    This includes the number of micro-operations for each main instruction and the source and destination requirements for each micro-operation. The processor can issue a series of micro-operations to the execution pipeline for each ARM instruction executed. Most ARM instructions execute only one micro-operation. More complex ARM instructions such as load multiples can consist of several micro-operations.
+
+* **Dual issue restriction criteria**
+
+    This is the set of rules used to govern which instruction types can dual issue and under what conditions. This information is provided for dual issue of ARM instructions and NEON instructions.
+
+* **Other pipeline-dependent latencies**
+
+    In addition to the time taken for the scheduling and issuing of instructions, there are other sources of latencies that effect the time of a program sequence. The two most common examples are a branch mispredict and a memory system stall such as a data cache miss of a load instruction. These cases are the most difficult to predict and often must be ignored or estimated using statistical analysis techniques. Fortunately, you can ignore most of these additional latencies when creating an optimal hand scheduling for a code sequence. Hand scheduling is the most useful application of this cycle timing information.
+
+<h2 id="16.2">16.2 Instruction-specific scheduling for ARM instructions</h2>
+
+The tables in this section provide information for determining the best-case instruction scheduling for a sequence of instructions. The information includes:
+
+* when source registers are required
+* when destination registers are available
+* which register, such as Rn or Rm, is meant for each source or destination
+* the minimum number of cycles required for each instruction
+* any additional instruction issue requirements or restrictions.
+
+When a source register is required or a destination register is available depends on the availability of forwarding paths to route the required data from the correct source to the correct destination.
+
+关于表的特殊注意事项如下所示：
+
+* \[Rd\]作为源寄存器时，表示如果是条件指令，目的寄存器应该作为一个源寄存器。
+
+* {} 大括号作用于源寄存器上，表示只有包含累加器操作数的指令才会要求该寄存器。
+
+* source requirements are always given for the first cycle in a multi-cycle instruction
+
+* destination available is always given with respect to the last cycle in a multi-cycle instruction
+
+* multiply instructions issue to pipeline 0 only
+
+* flags from the CPSR Register are updated internally in the E2 stage
+
+* () (parentheses) on a destination register indicate the destination is required only if writeback is enabled.
+
+<h2 id="16.2.1">16.2.1 Example of how to read ARM instruction tables</h2>
+
+This section provides examples of how to read ARM instruction tables described in the chapter. See the [ARM Architecture Reference Manual]() for assembly syntax of instructions.
+
+示例16-1 展示了如何从表16-1读取ADDEQ数据处理指令
+
+    ADDEQ R0, R1, R2 LSL#10
+
+This is a conditional general data-processing instruction of type shift by immediate. Source1, in this case R1, is required in E2 and Source2, in this case R2, is required in E1. Because the instruction is conditional, the destination register R0 is also required as a source register and must be available in E2. The result, stored in R0 for this case, is available in E2 for the next subsequent instruction that requires this register as a source operand. Assuming no data hazards, the instruction takes a minimum of one cycle to execute as indicated by the value in the Cycles column.
+
+这是一个通用的条件执行指令，R1和R2是源寄存器，RO是目的寄存器。首先，将寄存器R2中的数据左移#10（立即数）位，然后与R1寄存器中的值相加，将其值存入R0。又因为该指令是条件指令，所以R0还是源寄存器，这样又可以作为下一条指令的源操作数。假设数据正常，该指令至少执行一个周期。
+
+Example 16-2 shows how to read an SMLAL multiply instruction from Table 16-4 on page 16-8.
+
+    SMLAL R0, R1, R2, R3
+
+This is a multiply accumulate instruction. Source1, in this case R2, and Source2, in this case R3, are both required in E1. Because this is an accumulate multiply instruction, the result registers, R0 and R1, in this case are both required as source registers in E1. The result, stored in R0 and R1, for this case is available in E5 for the next subsequent instruction that requires one or both of these registers as a source operand. Assuming no data hazards, the instruction takes a minimum of three cycles to execute as indicated by the value in the Cycles column.
+
+Example 16-3 shows how to read an LDR PC load instruction from Table 16-9 on page 16-11.
+
+    LDR PC, [R13,#4]
+
+This is a load instruction of type immediate offset. However, it is also a branch instruction because the PC is the destination. Source1, in this case R13, is required in E1. Because writeback is enabled on this load instruction, Source1, in this case R13, is also required as a result destination register for writing back the new address. This result is available in E2 for the next subsequent instruction that requires this register as a source operand. Assuming no data hazards, the instruction takes a minimum of one cycle to execute as indicated by the value in the Cycles column. To complete the timing calculation for this instruction, we use information for the branch instructions as shown in Table 16-11 on page 16-13. In this table, we can see that the instruction is unconditional, therefore no flags are required as a source in E3 for branch resolution. The Cycles column of Table 16-11 on page 16-13 indicates to add one cycle to the total execution time for all load instructions that are branches. Assuming no data hazards, the instruction takes a minimum of two cycles instead of one cycle.
+
+<h2 id="16.2.2">16.2.2 Data-processing instructions</h2>
+
+Data-processing instructions are divided into the following subcatagories:
+
+* Data-processing instructions with a destination
+
+        AND, EOR, SUB, RSB, ADD, ADC, SBC, RCSC, ORR, BIC
+
+* Data-processing without a destination
+
+        TST, TEQ, CMP, CMN
+
+* Move instructions
+
+        MOV, MVN
+
+The data-processing instruction tables exclude cases where the PC is the destination. Branch instructions on page 16-12 describes these cases.
+
+表16-1 显示了使用目的寄存器的数据处理指令的操作
+
+| Shift type | Cycles | Source1 | Source2 | Source3 | Source4 | Result1 | Result2 |
+| ---------- | ------ | ------- | ------- | ------- | ------- | ------- | ------- |
+| Immediate  | 1      | Rn:E2   | [Rd:E2] | -       | -       | Rd:E2   | - |
+| Register   | 1      | Rn:E2   | Rm:E2   | [Rd:E2] | -       | Rd:E2   | - |
+| Shift by immediate, non-RRX   | 1 | Rn:E2 | Rm:E1 | [Rd:E2] | -       | Rd:E2 | - |
+| Shift by immediate, RRX       | 1 | Rn:E2 | Rm:E1 | [Rd:E2] | -       | Rd:E2 | - |
+| Shift by register             | 1 | Rn:E2 | Rm:E1 | Rs:E1   | [Rd:E2] | Rd:E2 | - |
+
+Table 16-9 shows the operation of load instructions.
+
+| 地址模式 | 周期 | 源寄存器1 |
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
