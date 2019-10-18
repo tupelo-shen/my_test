@@ -9,7 +9,7 @@
     - [2.3 链接文件语法](#2.3)
 * [3 uboot启动流程第一阶段](#3)
     - [3.1 start.S文件分析](#3.1)
-    - [3.2 ARM汇编指令](#3.2)
+    - [3.2 lowlevel_init.S文件分析](#3.2)
         + [3.2.1 常用命令](#3.2.1)
         + [3.2.2 协处理器相关](#3.2.2)
 * [4 uboot启动流程第二阶段](#4)
@@ -229,9 +229,8 @@
 
 第一阶段主要用到的文件是：
 
-* start.S文件
-* lowlevel_init.S文件，位于 *u-boot/cpu/arm920t/start.S*
-
+* start.S文件，位于 *u-boot/cpu/arm920t/start.S*
+* lowlevel_init.S文件，位于 *u-boot/board/smdk2410/lowlevel_init.S*
 
 <h2 id="3.1">3.1 start.S文件分析</h2>
 
@@ -367,27 +366,50 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
 
 
 
-<h2 id="3.2">3.2 ARM汇编指令</h2>
+<h2 id="3.2">3.2 lowlevel_init.S文件分析</h2>
 
-<h3 id="3.2.1">3.2.1 常用命令</h3>
 
-1. bl - 跳转指令
+`lowlevel_init.S`文件内容如下：
 
-    除了包含b指令单纯的跳转功能，还执行，在跳转之前，把r15寄存器=PC=CPU地址；把下一条要执行的指令赋值给r14，也就是r14=lr。然后跳转到对应的位置，开始执行。执行完毕后，再用 *mov pc, lr* 再跳转到调用之前的地址。 所以，就是调用子程序的过程。
+    lowlevel_init:
+        /* memory control configuration */
+        /* make r0 relative the current location so that it */
+        /* reads SMRDATA out of FLASH rather than memory ! */
+        ldr r0, =SMRDATA                    // 读取下面标号为SMRDATA处的地址到R0中
+        ldr r1, _TEXT_BASE                  // 程序的加载地址 TEXT_BASE = 0x33F80000 到 R1中
+        sub r0, r0, r1                      // 计算SMRDATA的相对地址保存到R0中，
+                                            /* SMRDATA为虚拟地址,而TEXT_BASE为虚拟地址的起始地址
+                                             * TEXT_BASE为0x33F8 0000,SMRDATA为0x33F8 06C8
+                                             * 而现在程序运行在起始地址为0x0000 0000的地方
+                                             * 所以需要计算以0x0000 0000为标准的相对地址 */
+        ldr r1, =BWSCON                     // 取得带宽与等待状态控制寄存器地址到R1中，也就是控制内存的寄存器的首地址
+        add r2, r0, #13*4                   // R2保存要操作的寄存器的个数，在这儿是13
+    0:
+        ldr     r3, [r0], #4                // 数据处理后R0自加4，[R0]->R3，R0+4->R0
+        str     r3, [r1], #4                // 将这些数据写入到控制内存的寄存器中。
+        cmp     r2, r0                      // 循环从Flash中读取13个Word大小的值到内存中
+        bne     0b
 
-<h3 id="3.2.2">3.2.2 协处理器相关</h3>
+        mov pc, lr                          // 返回函数lowlevel_init()的调用地方
 
-1. MCR - ARM寄存器数据传到协处理器寄存器
+        .ltorg
+    /* the literal pools origin */
 
-    协处理器的格式为：
-
-        MCR [协处理器编号]，[协处理器操作码1]，[源寄存器]，[目的寄存器1]，[目的寄存器2]，[协处理器操作码2]
-
-            其中协处理器操作码1 和协处理器操作码2 为协处理器将要执行的操作，
-
-            源寄存器为ARM 处理器的寄存器，目的寄存器1 和目的寄存器2 均为协处理器的寄存器。
-
-lowlevel_init
+    SMRDATA:
+        .word (0+(B1_BWSCON<<4)+(B2_BWSCON<<8)+(B3_BWSCON<<12)+(B4_BWSCON<<16)+(B5_BWSCON<<20)+(B6_BWSCON<<24)+(B7_BWSCON<<28))
+        .word ((B0_Tacs<<13)+(B0_Tcos<<11)+(B0_Tacc<<8)+(B0_Tcoh<<6)+(B0_Tah<<4)+(B0_Tacp<<2)+(B0_PMC))
+        .word ((B1_Tacs<<13)+(B1_Tcos<<11)+(B1_Tacc<<8)+(B1_Tcoh<<6)+(B1_Tah<<4)+(B1_Tacp<<2)+(B1_PMC))
+        .word ((B2_Tacs<<13)+(B2_Tcos<<11)+(B2_Tacc<<8)+(B2_Tcoh<<6)+(B2_Tah<<4)+(B2_Tacp<<2)+(B2_PMC))
+        .word ((B3_Tacs<<13)+(B3_Tcos<<11)+(B3_Tacc<<8)+(B3_Tcoh<<6)+(B3_Tah<<4)+(B3_Tacp<<2)+(B3_PMC))
+        .word ((B4_Tacs<<13)+(B4_Tcos<<11)+(B4_Tacc<<8)+(B4_Tcoh<<6)+(B4_Tah<<4)+(B4_Tacp<<2)+(B4_PMC))
+        .word ((B5_Tacs<<13)+(B5_Tcos<<11)+(B5_Tacc<<8)+(B5_Tcoh<<6)+(B5_Tah<<4)+(B5_Tacp<<2)+(B5_PMC))
+        .word ((B6_MT<<15)+(B6_Trcd<<2)+(B6_SCAN))
+        .word ((B7_MT<<15)+(B7_Trcd<<2)+(B7_SCAN))
+        //设置REFRESH,在S3C2440中11～17位是保留的，也即(Tchr<<16)无意义
+        .word ((REFEN<<23)+(TREFMD<<22)+(Trp<<20)+(Trc<<18)+(Tchr<<16)+REFCNT)
+        .word 0x32      // 设置BANKSIZE,对于容量可以设置大写，多出来的空内存会被自动检测出来
+        .word 0x30      // 设置MRSRB6
+        .word 0x30      // 设置MRSRB7
 
 <h1 id="4">4 uboot启动流程第二阶段</h1>
 
