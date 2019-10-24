@@ -7,12 +7,10 @@
     - [2.1 u-boot.lds文件分析](#2.1)
     - [2.2 System.map文件](#2.2)
     - [2.3 链接文件语法](#2.3)
-* [3 uboot启动流程第一阶段](#3)
+* [3 uboot启动流程第1阶段](#3)
     - [3.1 start.S文件分析](#3.1)
     - [3.2 lowlevel_init.S文件分析](#3.2)
-        + [3.2.1 常用命令](#3.2.1)
-        + [3.2.2 协处理器相关](#3.2.2)
-* [4 uboot启动流程第二阶段](#4)
+* [4 uboot启动流程第2阶段](#4)
     - [4.1 uboot是什么？](#4.1)
     - [4.2 存储器](#4.2)
 * [A 参考资料](#A)
@@ -223,11 +221,11 @@
 
     对于跨模块的数据访问也是如此，不做细致分析了。
 
-<h1 id="3">3 uboot启动流程第一阶段</h1>
+<h1 id="3">3 uboot启动流程第1阶段</h1>
 
-主要脉络： *部分硬件初始化 -> 加载完整的uboot到RAM -> 跳转到第二阶段入口开始执行*
+主要脉络： *部分硬件初始化 -> 加载完整的uboot到RAM -> 跳转到第2阶段入口开始执行*
 
-第一阶段主要用到的文件是：
+第1阶段主要用到的文件是：
 
 * start.S文件，位于 *u-boot/cpu/arm920t/start.S*
 * lowlevel_init.S文件，位于 *u-boot/board/smdk2410/lowlevel_init.S*
@@ -368,6 +366,9 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
 
 <h2 id="3.2">3.2 lowlevel_init.S文件分析</h2>
 
+<h3 id="3.2.1">3.2.1 RAM初始化</h3>
+
+这一步主要完成RAM的初始化，也就是通过写控制RAM的寄存器，对寄存器的存取方式进行控制。主要代码位于文件`lowlevel_init.S`中。
 
 `lowlevel_init.S`文件内容如下：
 
@@ -411,8 +412,298 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
         .word 0x30      // 设置MRSRB6
         .word 0x30      // 设置MRSRB7
 
-<h1 id="4">4 uboot启动流程第二阶段</h1>
+<h3 id="3.2.2">3.2.2 Uboot代码加载</h3>
 
+    #ifndef CONFIG_SKIP_RELOCATE_UBOOT
+        adr r0, _start          /* r0保存当前程序的位置 */
+    relocate:                   /* 将uboot代码重定位到RAM中 */
+        teq r0, #0              /* 测试是否从地址0开始运行 */
+        bleq    may_resume      /* yes -> do low-level setup */
+
+        adr r0, _start          /* 上面的代码有可能会破会r0中的值 */
+        ldr r1, _TEXT_BASE      /* 测试从Flash还是RAM中运行程序，它们的地址是不一样的 */
+        cmp r0, r1              /* 在debug期间不需要重定位，直接在Flash中运行代码 */
+        beq     done_relocate
+
+        ldr r2, _armboot_start
+        ldr r3, _bss_start
+        sub r2, r3, r2          /* 根据前面分析的uboot.lds文件可知，r3-r2就是uboot代码的大小，将其存入寄存器r2中 */
+        add r2, r0, r2          /* r0是程序的起始地址，加上uboot代码的大小就是uboot代码的结束地址 */
+
+    copy_loop:
+        ldmia   r0!, {r3-r10}   /* 从源地址[r0]处开始拷贝 */
+        stmia   r1!, {r3-r10}   /* 拷贝到目标地址[r1]处 */
+        cmp r0, r2              /* 直到源代码结束地址[r2] */
+        ble copy_loop
+
+<h3 id="3.2.3">3.2.3 建立堆栈</h3>
+
+设置堆栈，其中，`_TEXT_BASE=0x33F80000`，而 `CFG_MALLOC_LEN`， `CFG_GBL_DATA_SIZE`， `CONFIG_STACKSIZE_IRQ`， `CONFIG_STACKSIZE_FIQ`在文件`uboot/include/configs/mini2440.h`文件中定义。
+
+    /* 建立堆栈 */
+    stack_setup:
+        ldr r0, _TEXT_BASE                                          /* upper 128 KiB: relocated uboot   */
+        sub r0, r0, #CFG_MALLOC_LEN                                 /* malloc area */
+        sub r0, r0, #CFG_GBL_DATA_SIZE                              /* bdinfo */
+    #ifdef CONFIG_USE_IRQ
+        sub r0, r0, #(CONFIG_STACKSIZE_IRQ+CONFIG_STACKSIZE_FIQ)
+    #endif
+        sub sp, r0, #12                                             /* leave 3 words for abort-stack    */
+
+<h3 id="3.2.4">3.2.4 清除bss段</h3>
+
+    clear_bss:
+        ldr r0, _bss_start                                          /* find start of bss segment        */
+        ldr r1, _bss_end                                            /* stop here                        */
+        mov     r2, #0x00000000                                     /* clear                            */
+
+    clbss_l:str r2, [r0]                                            /* clear loop...                    */
+        add r0, r0, #4
+        cmp r0, r1
+        ble clbss_l
+
+<h3 id="3.2.5">3.2.5 跳转到uboot第2阶段</h3>
+
+        ldr pc, _start_armboot
+
+    _start_armboot: .word start_armboot
+
+ 初始化外设完成之后，程序跳转到u-boot第2阶段的入口函数 `start_armboot` 。 `ldr pc，_start_armboot` 为绝对跳转命令，pc值等于`_start_armboot`的连接地址，程序跳到SDRAM中执行。在此之前程序都是在flash中运行的，绝对跳转必须在初始SDRAM，执行代码重定位之后才能进行。
+
+<h1 id="4">4 uboot启动流程第2阶段</h1>
+
+第2阶段，uboot完成进一步的硬件初始化，并设置了uboot下的命令行、环境变量、并跳转到内核中。其主要用到的文件是：
+
+* board.c文件，位于 *u-boot/lib_arm/board.c*
+
+<h2 id="4.1">4.1 硬件初始化</h2>
+
+    void start_armboot (void)
+    {
+        init_fnc_t **init_fnc_ptr;
+        char *s;
+    #ifndef CFG_NO_FLASH
+        ulong size;
+    #endif
+    #if defined(CONFIG_VFD) || defined(CONFIG_LCD)
+        unsigned long addr;
+    #endif
+
+        /* 在上面的代码中gd的值绑定到寄存器r8中了 */
+        gd = (gd_t*)(_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t));
+        /* 为GCC >= 3.4以上的编译进行代码优化，而插入内存barrier */
+        __asm__ __volatile__("": : :"memory");
+
+        memset ((void*)gd, 0, sizeof (gd_t));
+        gd->bd = (bd_t*)((char*)gd - sizeof(bd_t));
+        memset (gd->bd, 0, sizeof (bd_t));
+
+        monitor_flash_len = _bss_start - _armboot_start;
+
+        for (init_fnc_ptr = init_sequence; *init_fnc_ptr; ++init_fnc_ptr) {
+            if ((*init_fnc_ptr)() != 0) {
+                hang ();
+            }
+        }
+
+首先，我们先来分析`init_fnc_t **init_fnc_ptr;`这行代码。
+
+要分析这行代码，首先看指针数组`init_fnc_t *init_sequence[]`
+
+    typedef int (init_fnc_t) (void);
+
+    init_fnc_t *init_sequence[] = {
+        cpu_init,               /* 与CPU相关的初始化 */
+        board_init,             /* 与板子初始化相关的初始化 */
+        interrupt_init,         /* 中断初始化 */
+        env_init,               /* 初始化环境变量 */
+        init_baudrate,          /* 初始化波特率设置 */
+        serial_init,            /* serial通信相关初始化 */
+        console_init_f,         /* console初始化的第一部分 */
+        display_banner,         /* say that we are here */
+        // ...根据配置，还有一些其它的初始化
+        dram_init,              /* 配置可用的RAM块 */
+        display_dram_config,
+        NULL,
+    };
+
+根据这儿的分析，我们就可以知道`init_fnc_ptr`就是一个函数指针。在后面的for循环中，将函数指针数组的首地址`init_sequence`赋值给`init_fnc_ptr`，然后循环，对所有的硬件进行初始化。
+
+而对于代码`gd = (gd_t*)(_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t));`确实有些抽象。而要分析它，必须看一下下面这个宏定义：
+
+    DECLARE_GLOBAL_DATA_PTR;        //在board.c最上面
+
+而它的定义如下：
+
+    #define DECLARE_GLOBAL_DATA_PTR     register volatile gd_t *gd asm ("r8")
+
+这个声明，告诉编译器使用寄存器r8来存储gd_t类型的指针gd，即这个定义声明了一个指针，并且指明了它的存储位置。也就是说，我们声明了一个寄存器变量，它的初始值为`_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t)`，也就是`0x33F80000-(0x20000+2048*1024)-0x24`
+
+    #ifndef CFG_NO_FLASH
+        /* configure available FLASH banks */
+        size = flash_init ();
+        display_flash_config (size);
+    #endif /* CFG_NO_FLASH */
+
+    #ifdef CONFIG_VFD
+    #   ifndef PAGE_SIZE
+    #     define PAGE_SIZE 4096
+    #   endif
+        /*
+         * reserve memory for VFD display (always full pages)
+         */
+        /* bss_end is defined in the board-specific linker script */
+        addr = (_bss_end + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1);
+        size = vfd_setmem (addr);
+        gd->fb_base = addr;
+    #endif /* CONFIG_VFD */
+
+    #ifdef CONFIG_LCD
+    #   ifndef PAGE_SIZE
+    #     define PAGE_SIZE 4096
+    #   endif
+        /*
+         * reserve memory for LCD display (always full pages)
+         */
+        /* bss_end is defined in the board-specific linker script */
+        addr = (_bss_end + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1);
+        size = lcd_setmem (addr);
+        gd->fb_base = addr;
+    #endif /* CONFIG_LCD */
+
+        /* armboot_start is defined in the board-specific linker script */
+        mem_malloc_init (_armboot_start - CFG_MALLOC_LEN);
+
+    #if defined(CONFIG_CMD_NAND)
+        puts ("NAND:  ");
+        nand_init();        /* go init the NAND */
+    #endif
+
+    #if defined(CONFIG_CMD_ONENAND)
+        onenand_init();
+    #endif
+
+    #ifdef CONFIG_HAS_DATAFLASH
+        AT91F_DataflashInit();
+        dataflash_print_info();
+    #endif
+
+        /* initialize environment */
+        env_relocate ();
+
+    #ifdef CONFIG_VFD
+        /* must do this after the framebuffer is allocated */
+        drv_vfd_init();
+    #endif /* CONFIG_VFD */
+
+    #ifdef CONFIG_SERIAL_MULTI
+        serial_initialize();
+    #endif
+
+        /* IP Address */
+        gd->bd->bi_ip_addr = getenv_IPaddr ("ipaddr");
+
+        /* MAC Address */
+        {
+            int i;
+            ulong reg;
+            char *s, *e;
+            char tmp[64];
+
+            i = getenv_r ("ethaddr", tmp, sizeof (tmp));
+            s = (i > 0) ? tmp : NULL;
+
+            for (reg = 0; reg < 6; ++reg) {
+                gd->bd->bi_enetaddr[reg] = s ? simple_strtoul (s, &e, 16) : 0;
+                if (s)
+                    s = (*e) ? e + 1 : e;
+            }
+
+    #ifdef CONFIG_HAS_ETH1
+            i = getenv_r ("eth1addr", tmp, sizeof (tmp));
+            s = (i > 0) ? tmp : NULL;
+
+            for (reg = 0; reg < 6; ++reg) {
+                gd->bd->bi_enet1addr[reg] = s ? simple_strtoul (s, &e, 16) : 0;
+                if (s)
+                    s = (*e) ? e + 1 : e;
+            }
+    #endif
+        }
+
+        devices_init ();    /* get the devices list going. */
+
+    #ifdef CONFIG_CMC_PU2
+        load_sernum_ethaddr ();
+    #endif /* CONFIG_CMC_PU2 */
+
+        jumptable_init ();
+
+        console_init_r ();  /* fully init console as a device */
+
+    #if defined(CONFIG_MISC_INIT_R)
+        /* miscellaneous platform dependent initialisations */
+        misc_init_r ();
+    #endif
+
+        /* enable exceptions */
+        enable_interrupts ();
+
+        /* Perform network card initialisation if necessary */
+    #ifdef CONFIG_DRIVER_TI_EMAC
+    extern void dm644x_eth_set_mac_addr (const u_int8_t *addr);
+        if (getenv ("ethaddr")) {
+            dm644x_eth_set_mac_addr(gd->bd->bi_enetaddr);
+        }
+    #endif
+
+    #if defined(CONFIG_DRIVER_DM9000) && defined(CONFIG_DRIVER_DM9000_NO_EEPROM)
+    extern int eth_set_mac(bd_t * bd);
+        if (getenv ("ethaddr")) {
+            eth_set_mac(gd->bd);
+        }
+    #endif
+
+    #ifdef CONFIG_DRIVER_CS8900
+        cs8900_get_enetaddr (gd->bd->bi_enetaddr);
+    #endif
+
+    #if defined(CONFIG_DRIVER_SMC91111) || defined (CONFIG_DRIVER_LAN91C96)
+        if (getenv ("ethaddr")) {
+            smc_set_mac_addr(gd->bd->bi_enetaddr);
+        }
+    #endif /* CONFIG_DRIVER_SMC91111 || CONFIG_DRIVER_LAN91C96 */
+
+        /* Initialize from environment */
+        if ((s = getenv ("loadaddr")) != NULL) {
+            load_addr = simple_strtoul (s, NULL, 16);
+        }
+    #if defined(CONFIG_CMD_NET)
+        if ((s = getenv ("bootfile")) != NULL) {
+            copy_filename (BootFile, s, sizeof (BootFile));
+        }
+    #endif
+
+    #ifdef BOARD_LATE_INIT
+        board_late_init ();
+    #endif
+    #if defined(CONFIG_CMD_NET)
+    #if defined(CONFIG_NET_MULTI)
+        puts ("Net:   ");
+    #endif
+        eth_initialize(gd->bd);
+    #if defined(CONFIG_RESET_PHY_R)
+        debug ("Reset Ethernet PHY\n");
+        reset_phy();
+    #endif
+    #endif
+        /* main_loop() can return to retry autoboot, if so just run it again. */
+        for (;;) {
+            main_loop ();
+        }
+
+        /* NOTREACHED - no way out of command loop except booting */
+    }
 
 ---
 
