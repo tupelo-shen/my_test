@@ -11,8 +11,8 @@
     - [3.1 start.S文件分析](#3.1)
     - [3.2 lowlevel_init.S文件分析](#3.2)
 * [4 uboot启动流程第2阶段](#4)
-    - [4.1 uboot是什么？](#4.1)
-    - [4.2 存储器](#4.2)
+    - [4.1 初始化](#4.1)
+    - [4.2 加载内核](#4.2)
 * [A 参考资料](#A)
     - [A.1 arm公司官方提供的ARMv7-A体系结构文档](#A.1)
     - [A.2 Uboot中start.S源码的指令级的详尽解析_v1.6.pdf](#A.2)
@@ -26,7 +26,7 @@
 
 <h2 id="1.1">1.1 uboot是什么？</h2>
 
-当我们厌倦了裸机程序，而想要采用操作系统的时候，uboot就是不得不引入的一段程序。所以，uboot就是一段引导程序，在加载系统内核之前，完成硬件初始化，内存映射，为后续内核的引导提供一个良好的环境。uboot是bootloader的一种，全称为universal boot loader。
+当我们厌倦了裸机程序，而想要采用操作系统的时候，`uboot`就是不得不引入的一段程序。所以，`uboot`就是一段引导程序，在加载系统内核之前，完成硬件初始化，内存映射，为后续内核的引导提供一个良好的环境。`uboot`是`bootloader`的一种，全称为`universal boot loader`。
 
 <h2 id="1.2">1.2 存储器</h2>
 
@@ -38,7 +38,7 @@
 
         NOR flash带有SRAM接口，有足够的的地址引脚进行寻址，可以很容易地读取其内部的每一个字节（
         注意是 *Read* ！因为flash不是任意写入，而是遵循 *disable write protect -> erase -> write* 。这是flash的特性决定的，
-        其电路只能从 *1->0*，而不能 *0->1*翻转。擦除过程就是将flash中的某一个扇区恢复为 *0xFFFFFFFF*，然后再写入数据。另外，代码
+        其电路只能从 *1->0*，而不能 *0->1*翻转。擦除过程就是将flash中的某一个扇区恢复为 `0xFFFFFFFF`，然后再写入数据。另外，代码
         指令可以直接在norflash上运行。
 
         （**重要！！！上电后可以读取norflash中的数据但是不可以进行写操作**）
@@ -475,8 +475,9 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
 第2阶段，uboot完成进一步的硬件初始化，并设置了uboot下的命令行、环境变量、并跳转到内核中。其主要用到的文件是：
 
 * board.c文件，位于 *u-boot/lib_arm/board.c*
+* main.c文件，位于 *u-boot/common/main.c*
 
-<h2 id="4.1">4.1 硬件初始化</h2>
+<h2 id="4.1">4.1 初始化</h2>
 
     void start_armboot (void)
     {
@@ -537,73 +538,57 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
 
     #define DECLARE_GLOBAL_DATA_PTR     register volatile gd_t *gd asm ("r8")
 
-这个声明，告诉编译器使用寄存器r8来存储gd_t类型的指针gd，即这个定义声明了一个指针，并且指明了它的存储位置。也就是说，我们声明了一个寄存器变量，它的初始值为`_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t)`，也就是`0x33F80000-(0x20000+2048*1024)-0x24`
+这个声明，告诉编译器使用寄存器r8来存储gd_t类型的指针gd，即这个定义声明了一个指针，并且指明了它的存储位置。也就是说，我们声明了一个寄存器变量，它的初始值为`_armboot_start - CFG_MALLOC_LEN - sizeof(gd_t)`，也就是`0x33F80000-(0x20000+2048*1024)-0x24`。也就是说，gd指向了一段可用的内存区域，而这段内存区域相当于u-boot的全局变量。
 
-    #ifndef CFG_NO_FLASH
-        /* configure available FLASH banks */
-        size = flash_init ();
-        display_flash_config (size);
-    #endif /* CFG_NO_FLASH */
+那指针gd指向的数据结构到底是什么呢？为什么要设置这个数据结构呢？那么接下来让我们看一下这个数据结构吧。
 
+    typedef struct  global_data {
+        bd_t            *bd;
+        unsigned long   flags;
+        unsigned long   baudrate;
+        unsigned long   have_console;   /* serial_init() 函数被调用 */
+        unsigned long   reloc_off;      /* Relocation Offset */
+        unsigned long   env_addr;       /* Address  of Environment struct */
+        unsigned long   env_valid;      /* Checksum of Environment valid? */
+        unsigned long   fb_base;        /* base address of frame buffer */
     #ifdef CONFIG_VFD
-    #   ifndef PAGE_SIZE
-    #     define PAGE_SIZE 4096
-    #   endif
-        /*
-         * reserve memory for VFD display (always full pages)
-         */
-        /* bss_end is defined in the board-specific linker script */
-        addr = (_bss_end + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1);
-        size = vfd_setmem (addr);
-        gd->fb_base = addr;
-    #endif /* CONFIG_VFD */
+        unsigned char   vfd_type;       /* display type */
+    #endif
+        void            **jt;           /* jump table */
+    } gd_t;
 
-    #ifdef CONFIG_LCD
-    #   ifndef PAGE_SIZE
-    #     define PAGE_SIZE 4096
-    #   endif
-        /*
-         * reserve memory for LCD display (always full pages)
-         */
-        /* bss_end is defined in the board-specific linker script */
-        addr = (_bss_end + (PAGE_SIZE - 1)) & ~(PAGE_SIZE - 1);
-        size = lcd_setmem (addr);
-        gd->fb_base = addr;
-    #endif /* CONFIG_LCD */
+这个数据结构是系统初始化的最小全局变量值，主要在boot引导的早期使用，直到我们设置好内存控制器并能够访问RAM。注意，保证`CFG_GBL_DATA_SIZE`大于`sizeof（gd_t）`。
 
-        /* armboot_start is defined in the board-specific linker script */
+对于其中的变量，我们进行重点分析。`bd_t *bd;`这句话中，结构体`bd_t`的内容如下：
+
+    typedef struct bd_info {
+        int             bi_baudrate;    /* 串口控制台波特率 */
+        unsigned long   bi_ip_addr;     /* IP 地址 */
+        unsigned char   bi_enetaddr[6]; /* Ethernet adress */
+        struct environment_s *bi_env;
+        ulong           bi_arch_number; /* 该板唯一的ID */
+        ulong           bi_boot_params; /* 存放参数的地方 */
+        struct                          /* RAM配置 */
+        {
+            ulong start;
+            ulong size;
+        }               bi_dram[CONFIG_NR_DRAM_BANKS];
+        // ......
+    } bd_t;
+
+从上面的代码中，可以看出，在该结构体内，存放着boot引导前期，系统初始化的最小集合。要么通过串口打印，要么通过网络打印进行人机交互。
+
+        // ...... 此处，如果有LCD等设备，为其准备内存空间
+        /* armboot_start在与板子相关的链接脚本文件中定义，初始化动态内存 */
         mem_malloc_init (_armboot_start - CFG_MALLOC_LEN);
 
-    #if defined(CONFIG_CMD_NAND)
-        puts ("NAND:  ");
-        nand_init();        /* go init the NAND */
-    #endif
+        // 其他存储空间的初始化
 
-    #if defined(CONFIG_CMD_ONENAND)
-        onenand_init();
-    #endif
+        env_relocate ();        /* 初始化环境变量 */
 
-    #ifdef CONFIG_HAS_DATAFLASH
-        AT91F_DataflashInit();
-        dataflash_print_info();
-    #endif
+        gd->bd->bi_ip_addr = getenv_IPaddr ("ipaddr");  /* 得到IP地址 */
 
-        /* initialize environment */
-        env_relocate ();
-
-    #ifdef CONFIG_VFD
-        /* must do this after the framebuffer is allocated */
-        drv_vfd_init();
-    #endif /* CONFIG_VFD */
-
-    #ifdef CONFIG_SERIAL_MULTI
-        serial_initialize();
-    #endif
-
-        /* IP Address */
-        gd->bd->bi_ip_addr = getenv_IPaddr ("ipaddr");
-
-        /* MAC Address */
+        /* 获取MAC地址 */
         {
             int i;
             ulong reg;
@@ -618,92 +603,122 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
                 if (s)
                     s = (*e) ? e + 1 : e;
             }
-
-    #ifdef CONFIG_HAS_ETH1
-            i = getenv_r ("eth1addr", tmp, sizeof (tmp));
-            s = (i > 0) ? tmp : NULL;
-
-            for (reg = 0; reg < 6; ++reg) {
-                gd->bd->bi_enet1addr[reg] = s ? simple_strtoul (s, &e, 16) : 0;
-                if (s)
-                    s = (*e) ? e + 1 : e;
-            }
-    #endif
+            // ...
         }
 
-        devices_init ();    /* get the devices list going. */
-
-    #ifdef CONFIG_CMC_PU2
-        load_sernum_ethaddr ();
-    #endif /* CONFIG_CMC_PU2 */
+        devices_init ();        /* 获取设备列表 */
 
         jumptable_init ();
 
-        console_init_r ();  /* fully init console as a device */
+        console_init_r ();      /* 将完全初始化的控制台作为一个设备 */
 
-    #if defined(CONFIG_MISC_INIT_R)
-        /* miscellaneous platform dependent initialisations */
-        misc_init_r ();
-    #endif
+        enable_interrupts ();   /* 使能异常中断 */
 
-        /* enable exceptions */
-        enable_interrupts ();
+        /* 如果有必要，执行网卡的初始化工作 */
 
-        /* Perform network card initialisation if necessary */
-    #ifdef CONFIG_DRIVER_TI_EMAC
-    extern void dm644x_eth_set_mac_addr (const u_int8_t *addr);
-        if (getenv ("ethaddr")) {
-            dm644x_eth_set_mac_addr(gd->bd->bi_enetaddr);
-        }
-    #endif
-
-    #if defined(CONFIG_DRIVER_DM9000) && defined(CONFIG_DRIVER_DM9000_NO_EEPROM)
-    extern int eth_set_mac(bd_t * bd);
-        if (getenv ("ethaddr")) {
-            eth_set_mac(gd->bd);
-        }
-    #endif
-
-    #ifdef CONFIG_DRIVER_CS8900
-        cs8900_get_enetaddr (gd->bd->bi_enetaddr);
-    #endif
-
-    #if defined(CONFIG_DRIVER_SMC91111) || defined (CONFIG_DRIVER_LAN91C96)
-        if (getenv ("ethaddr")) {
-            smc_set_mac_addr(gd->bd->bi_enetaddr);
-        }
-    #endif /* CONFIG_DRIVER_SMC91111 || CONFIG_DRIVER_LAN91C96 */
-
-        /* Initialize from environment */
-        if ((s = getenv ("loadaddr")) != NULL) {
-            load_addr = simple_strtoul (s, NULL, 16);
-        }
-    #if defined(CONFIG_CMD_NET)
-        if ((s = getenv ("bootfile")) != NULL) {
-            copy_filename (BootFile, s, sizeof (BootFile));
-        }
-    #endif
-
-    #ifdef BOARD_LATE_INIT
-        board_late_init ();
-    #endif
-    #if defined(CONFIG_CMD_NET)
-    #if defined(CONFIG_NET_MULTI)
-        puts ("Net:   ");
-    #endif
-        eth_initialize(gd->bd);
-    #if defined(CONFIG_RESET_PHY_R)
-        debug ("Reset Ethernet PHY\n");
-        reset_phy();
-    #endif
-    #endif
         /* main_loop() can return to retry autoboot, if so just run it again. */
         for (;;) {
             main_loop ();
         }
 
-        /* NOTREACHED - no way out of command loop except booting */
+        /* 不可到达 */
     }
+
+<h2 id="4.2">4.2 加载内核</h2>
+
+首先，我们将`main_loop`函数进行简化，如下图所示。这个流程非常简单明了了。
+
+    void main_loop (void)
+    {
+        static char lastcommand[CFG_CBSIZE] = { 0, };
+        int len;
+        int rc = 1;
+        int flag;
+
+        char *s;
+        int bootdelay;
+
+        s = getenv ("bootdelay");               // 获取延时时间
+        bootdelay = s ? (int)simple_strtol(s, NULL, 10) : CONFIG_BOOTDELAY;
+
+        s = getenv ("bootcmd");                 // 获取引导命令
+
+        // 判断延时时间是否到，到了的话直接执行引导命令；如果在此期间有按键按下，则进入For循环
+        if (!nobootdelay && bootdelay >= 0 && s && !abortboot (bootdelay)) {
+            run_command (s, 0);
+        }
+
+        // 主循环，监控命令，并根据命令作出相应的处理
+        for (;;) {
+            len = readline (CFG_PROMPT);
+            flag = 0;                                       /* assume no special flags for now */
+            if (len > 0)
+                strcpy (lastcommand, console_buffer);
+            else if (len == 0)
+                flag |= CMD_FLAG_REPEAT;
+            // ......其它代码
+            if (len == -1)
+                puts ("<INTERRUPT>\n");
+            else
+                rc = run_command (lastcommand, flag);       /* 执行命令 */
+
+            if (rc <= 0) {
+                lastcommand[0] = 0;                         /* 非法的或不可重复的命令 */
+            }
+        }
+    }
+
+下面我们来看`run_command`函数的内容，看看到底在执行什么。经简化可得，这个函数有2种流程，一种是按照hush表查找命令，另一种就是下面这个，简单粗暴：
+
+    int run_command(const char *cmd, int flag)
+    {
+        if (builtin_run_command(cmd, flag) == -1)
+            return 1;
+        return 0;
+    }
+
+那么，我们再来看函数`builtin_run_command`：
+
+    static int builtin_run_command(const char *cmd, int flag)
+    {
+        //合法性校验
+        while (*str) {
+            //特殊字符解析
+            }
+        process_macros (token, finaltoken); //宏展开，即完全解析命令
+
+        //命令执行过程
+        if (cmd_process(flag, argc, argv, &repeatable))
+            rc = -1;
+        return rc ? rc : repeatable;
+    }
+
+最后，我们再来看一下函数`cmd_process`:
+
+    cmd_process(int flag, int argc, char * const argv[],
+                       int *repeatable)
+    {
+        cmd_tbl_t *cmdtp;
+
+        cmdtp = find_cmd(argv[0]); //查找命令
+        if (cmdtp == NULL) {
+            printf("Unknown command '%s' - try 'help'\n", argv[0]);
+            return 1;
+        }
+
+        if (argc > cmdtp->maxargs)
+            rc = CMD_RET_USAGE;
+
+        /* If OK so far, then do the command */
+        if (!rc) {
+            rc = cmd_call(cmdtp, flag, argc, argv); //真正的执行命令
+            *repeatable &= cmdtp->repeatable;
+        }
+        return rc;
+    }
+
+至此，uboot的使命便完成了，将执行的权利交给linux内核。
+
 
 ---
 
