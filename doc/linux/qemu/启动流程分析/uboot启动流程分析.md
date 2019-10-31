@@ -310,47 +310,33 @@ cpsr 是ARM体系结构中的程序状态寄存器，其结构如下：
 
     #ifndef CONFIG_SKIP_LOWLEVEL_INIT
     cpu_init_crit:
-        /*
-         * flush v4 I/D caches
-         */
+        // 使I/D cache失效： 协处理寄存器操作，将r0中的数据写入到协处理器p15的c7中，c7对应cp15的cache控制寄存器
         mov r0, #0
         mcr p15, 0, r0, c7, c7, 0   /* flush v3/v4 cache */
-        mcr p15, 0, r0, c8, c7, 0   /* flush v4 TLB */
+        mcr p15, 0, r0, c8, c7, 0   /* flush v4 TLB */ 使TLB操作寄存器失效：将r0数据送到cp15的c8、c7中。C8对应TLB操作寄存器
 
         /*
          * 禁用MMU和缓存
          */
-        mrc p15, 0, r0, c1, c0, 0
+        mrc p15, 0, r0, c1, c0, 0   // 将c1、c0的值写入到r0中
         bic r0, r0, #0x00002300 @ clear bits 13, 9:8 (--V- --RS)
         bic r0, r0, #0x00000087 @ clear bits 7, 2:0 (B--- -CAM)
         orr r0, r0, #0x00000002 @ set bit 2 (A) Align
         orr r0, r0, #0x00001000 @ set bit 12 (I) I-Cache
-        mcr p15, 0, r0, c1, c0, 0
+        mcr p15, 0, r0, c1, c0, 0   // 将设置好的r0值写入到协处理器p15的c1、c0中，关闭MMU
 
         /*
          * 在重加载之前，我们必须设置RAM的时序，因为内存的时序依赖于板子，
          * 在board目录下可以发现lowlevel_init.S文件
          */
-        mov ip, lr
+        mov ip, lr                  // 将lr寄存器内容保存到ip寄存器中，用于子程序调用返回
     #if defined(CONFIG_AT91RM9200DK) || defined(CONFIG_AT91RM9200EK) || defined(CONFIG_AT91RM9200DF)
     #else
-        bl  lowlevel_init
+        bl  lowlevel_init           // 跳转到`lowlevel_init`地址执行
     #endif
         mov lr, ip
         mov pc, lr
     #endif /* CONFIG_SKIP_LOWLEVEL_INIT */
-
-第242~246行，使I/D cache失效： 协处理寄存器操作，将r0中的数据写入到协处理器p15的c7中，c7对应cp15的cache控制寄存器
-
-第247行，使TLB操作寄存器失效：将r0数据送到cp15的c8、c7中。C8对应TLB操作寄存器
-
-第252行，将c1、c0的值写入到r0中
-
-第257行，将设置好的r0值写入到协处理器p15的c1、c0中，关闭MMU
-
-第264行，将lr寄存器内容保存到ip寄存器中，用于子程序调用返回
-
-第265行，跳转到`lowlevel_init`入口地址执行，`lowlevel_init`在`lowlevel_init.S`文件中，代码如下：
 
 #### 1. Cache是什么呢？
 
@@ -362,6 +348,7 @@ Cache是处理器内部的一个高速缓存单元，为了应对处理器和外
 
 #### 3. 怎样使Cache中的数据无效？
 
+见上面的代码。
 
 
 <h2 id="3.2">3.2 lowlevel_init.S文件分析</h2>
