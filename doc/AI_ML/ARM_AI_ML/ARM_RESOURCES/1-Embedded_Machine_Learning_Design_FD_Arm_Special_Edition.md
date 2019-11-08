@@ -112,4 +112,200 @@ For some use cases, higher performance requirements may demand a dedicated ML pr
 
 A heterogeneous compute platform allows application developers to write ML applications using their favorite NN frameworks — such as Google's TensorFlow or Facebook's Caffe and Caffe2 — and target a variety of processor types from multiple vendors. As shown in Figure 2-1, the software layer between the application and the hardware handles the translation of the workload to target the applicable and available core types automatically.
 
-![]()
+![Figure 2-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/AI_ML/ARM_AI_ML/ARM_RESOURCES/images/1-2-1.PNG)
+
+FIGTURE 2-1: An example of a heterogeneous ML compute platform with a variety of core types and open-source software.
+
+Open standards can help to reduce complexity and assure future compatibility with solutions from a variety of vendors. One example of this is the Open Neural Network Exchange Format (ONNX), supported by Arm, Microsoft, Facebook, Amazon, and others to provide a common format between training frameworks and runtime engines.
+
+You have many options for running an ML model:
+
+* Low-power/always-on microcontroller CPUs:
+
+    Small models can be run on these cores with a very low power budget. Example: detecting activity or behavior that wakes up the rest of the system to perform more detailed analysis.
+
+> Sometimes microcontroller CPUs have DSP extensions, known as Digital Signal Controllers, which allow for faster processing, thus providing clean signals for ML without the need for a separate DSP. This feature saves cost, area, and development time, especially for those without a DSP software development background.
+
+* High-efficiency, general-purpose CPUs:
+
+    Depending on the configuration and number of cores, these can comfortably run entire workloads. Example: real-time speech recognition for closed-caption generation.
+
+* Multimedia and GPU cores:
+
+    These often run the same models as a mobile-class core with increased performance or efficiency. If a design already requires a GPU, offloading the ML workload may allow you to reuse this silicon for maximum cost-benefit.
+
+* Dedicated NPUs:
+
+    Dedicated silicon offers the highest efficiency for running general-purpose ML models in a low-power environment. Example: determining which pixels of a real-time HD video feed correspond to a person.
+
+Knowing exactly which components are required in your device demands careful consideration of multiple factors, which the next section discusses.
+
+<h2 id="2.2">2.2 Making Choices for Your ML Environment</h2>
+
+The right hardware for your application, what you need from a dedicated NPU, and how you integrate it into systems and tools varies from case to case. However, the following capabilities are important to consider as part of your architectural design for a constrained environment:
+
+1. Processing:
+
+    What type of data ingestion and processing does your edge solution require? This may depend on the type of models you run and the number of models running at the same time. How complex are these models? Are they compute- or bandwidth-constrained?
+
+2. Connectivity:
+
+    What can be done locally on the device? What requires a connection to the cloud? What must stay in the cloud?
+
+3. Integration:
+
+    Are there any integrations or dependencies that must be managed? What NN frameworks will the developer community be using? How will the models developed in a variety of different frameworks be supported on the system?
+
+4. Power, size, and heat:
+
+    Does your edge device have power, size, and thermal constraints?
+
+5. Accuracy:
+
+    What is the desired accuracy? Although you might initially think that the higher the accuracy, the better, that isn’t always true. After a certain level, you hit a point of diminishing returns. In certain scenarios, a 2 ercent increase in accuracy may require a 10x increase in compute and memory requirements, for example. You should clearly understand what level of accuracy is required for any particular use case.
+
+6. Privacy:
+
+    What are the privacy and security concerns around your edge solution?
+
+7. Workload:
+
+    Will an NPU be mostly idle and only used for work that an otherwise idle CPU or GPU can accomplish? On the other hand, if a CPU or GPU is capable of running a model, might an NPU be a better solution if those resources are already heavily loaded?
+
+Taking these points into consideration, you can look at the different components that are required. Is a CPU or GPU sufficient? Do you need to add an NPU? How big must that NPU be to service your requirements within the cost constraints? Look at the different core types available in the market and match them to your area and power budgets, as well as your compute requirements.
+
+The following case study offers an example of the complexity that can be managed on an embedded device at the edge.
+
+<h2 id="2.3">2.3 Case Study: An Edge ML Solution for Asthma Patients</h2>
+
+The Amiko Respiro provides smart inhaler technology that helps asthma sufferers breathe more easily. The solution includes ML-powered sensors as add-ons to standard inhalers to improve asthma treatment. These smart sensors must be low-powered, scalable, and cost-efficient enough to work with a patient-facing app on a connected platform.
+
+At the center of Respiro’s sensor module is an ultra-lowpower Arm Cortex-M processor, enabling:
+
+* Processing that takes place securely on the device with no need to connect to the cloud
+* Bluetooth low-power (BTLE) connectivity to a smartphone app
+* An efficiency profile that extends device battery life
+
+The solution uses ML to interpret vibration data from the
+inhaler. The sensor is trained to recognize the patient’s
+breathing pattern and inhalation time and can calculate
+important parameters such as lung capacity and
+inhalation
+technique.
+
+
+The processor allows the Respiro to run real-time ML
+algorithms that recognize behavior patterns and interpret
+data within the sensor module itself. The user doesn’t
+need to wait for back-end infrastructure to process
+detailed sensor data. When the user presses the trigger,
+the module instantly recognizes the breath data pattern
+and provides low-latency, private user feedback.
+
+The Respiro sensor is bundled with an app that the
+patient installs on a smartphone. The sensor collects
+inhaler use data without disrupting the medication delivery
+pathway and sends data and feedback to the app. The
+sensor also has the flexibility to add new features and
+easily scale up to deliver further innovative connected
+healthcare solutions going forward.
+
+<h1 id="3">3 Why Software Really Matters</h1>
+
+本章重点：
+
+1. Reducing time to market with off-the-shelf hardware, tools, and simulators
+2. Differentiating through software
+3. Training and deploying ML models
+
+According to the famous quote by the prominent
+technologist Mark Andressen, “software is eating
+the world.” It’s certainly capable of eating development
+budgets and delaying product schedules if you
+get it wrong. However, because software innovation and
+ML functionality are increasingly becoming key differentiators
+for many device-makers, if you’re building ML
+into your product, you need a strong grasp on your
+specific
+software needs.
+
+
+<h2 id="3.1">3.1 Reducing Time to Market with Off-The-Shelf Hardware, Tools, and Simulators</h2>
+
+The quickest way to de-risk software and ML model
+development is to do your prototyping with off-the-shelf
+hardware that has functionality as close to your final
+product as possible. That can be through the use of
+industry-standard CPUs and GPUs or a previous iteration
+of the product itself.
+
+To achieve what you need, it’s advisable to choose
+components
+sourced from a large-scale provider —
+preferably from an ecosystem with a wide range of possible
+prototype platforms. This means you’ll be able to
+select technology similar to your final design in the areas
+that matter — such as performance and power or with
+specific hardware connectivity.
+
+Once a prototype platform is in the hands of the software
+team, the next step is to create a useful development environment.
+Depending on your device, this might include:
+
+* An operating system
+* Compilers
+* Performance libraries
+* Debugging and profiling tools
+* ML frameworks
+
+Development teams take time to build expertise in these
+tools and libraries. Building on a platform that’s already
+familiar to your team increases productivity and the
+capacity for innovation, greatly reducing the risk to your
+software development.
+
+> Ideally, the tools and the software your team
+develops should be portable to your final
+platform. Common standards and architectures
+pave the way for a smooth and
+painless integration when early hardware
+becomes ready for testing, minimizing the
+chance of last-minute delays and performance
+surprises.
+
+If your chosen architecture provides simulators and fast
+modeling tools, this risk is minimized even further.
+Today’s fast models and simulators are capable of bringing
+up an entire operating system in simulation and running
+the final application code even before silicon is
+ready, with cycle simulators providing further correctness
+and performance predictions. Projects that use simulation
+effectively can often successfully deploy the same
+software directly onto the first silicon.
+
+In short, to effectively de-risk software development,
+select an architecture and off-the-shelf prototyping
+platform that
+
+* Closely reflects the functionality required in the final product
+* Supports a common set of tools, libraries, and frameworks that is familiar to your team
+* Provides robust simulation solutions that minimize time spent integrating software and hardware
+
+
+<h2 id="3.2">3.2 Differentiating Through Software</h2>
+
+A decision for hardware architecture is also a decision for
+its software stack and the ecosystem supporting it. Large
+ecosystems frequently have dedicated teams continuously
+optimizing and improving their software stacks.
+For example, Arm provides Arm NN, Compute Library,
+and CMSIS-NN. Over a four-month period, the performance
+of NNs such as AlexNet, Inception, SqueezeNet,
+and VGG-16 improved 1.6x to 2.6x on Cortex-A series
+CPUs and the Mali GPU, as shown in Figure 3-1.
+
+Developing on top of an actively developed and maintained
+stack ensures you benefit from future performance
+and security improvements without taking time away
+from your own development efforts.
+
