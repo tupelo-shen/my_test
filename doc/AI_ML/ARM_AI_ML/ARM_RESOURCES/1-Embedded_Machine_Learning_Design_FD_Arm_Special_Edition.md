@@ -1,311 +1,385 @@
 # 目录
 
-* [0 Introduction](#0)
-    - [0.1 About This Book](#0.1)
-* [1 Introduction](#1)
-    - [1.1 Grasping the Basics of ML](#1.1)
-    - [1.2 Differentiation and Cost Reduction](#1.2)
-    - [1.3 Exploring ML Opportunities](#1.3)
+* [0 引言](#0)
+    - [0.1 关于本书](#0.1)
+* [1 为什么ML正在向边缘迁移？](#1)
+    - [1.1 掌握ML的基本概念](#1.1)
+    - [1.2 差异化和降低成本](#1.2)
+    - [1.3 探索机器学习的机会](#1.3)
+* [2 配置ML环境](#2)
+    - [2.1 理解ML平台的组件](#2.1)
+    - [2.2 选择ML开发环境](#2.2)
+    - [2.3 案例研究：用于哮喘病人的边缘机器学习的实例](#2.3)
+* [3 为什么软件真正重要？](#3)
+    - [3.1 利用现成的硬件、工具和模拟器缩短上市时间](#3.1)
+    - [3.2 通过软件实现差异化](#3.2)
+    - [3.3 训练和部署ML模型](#3.3)
+* [4 为什么生态系统很重要？](#4)
+    - [4.1 重用已存在的资源](#4.1)
+    - [4.2 寻找更好的产品和市场组合](#4.2)
+    - [4.3 站在巨人的肩膀上](#4.3)
+* [5 边缘机器学习的10个例子](#5)
+* [6 参考网站](#6)
 
 ---
 
-<h1 id="0"> Introduction</h1>
+<h1 id="0"> 引言</h1>
 
-From Alan Turing’s 1950 prediction that "machines will eventually compete with men," through decades of research in labs and think tanks, machine learning (ML) has finally reached its viability point, exploding into the domain of engineering and into people’s daily lives.
+根据艾伦·图灵在1950的语言，“机器终将和人类竞争”，经过数十年的实验室和智囊团的研究，机器学习终于到达了这个可行点，在工程领域和人们的日常生活中爆发。
 
-The technology is now moving quickly. ML is no longer the preserve of distant, cloud-based data centers. A dramatic shift in the capabilities of compute processing power and ML algorithms is driving applications, training, and inference back to the edge of the network — to the smart devices that are already an intrinsic part of everyday life.
+现在，技术日新月异。机器学习不再是远端的基于云的数据中心的保留地。计算处理能力和ML算法的改进，正在推动着应用、训练和推理回归到网络的边缘-智能设备已经成为日常生活的一部分。
 
-<h2 id="0.1">0.1 About This Book</h2>
+<h2 id="0.1">0.1 关于本书</h2>
 
-`Embedded Machine Learning Design For Dummies`, Arm Special Edition, shows you that adding machine learning to any device is not only possible but relatively easy to do. This book highlights key challenges and explains why it is vital to address them at the earliest stages of planning. The book addresses how to approach your platform configuration and explains why software matters. Finally, the book explores the importance of an ecosystem perspective in ML development and gives examples of interesting ML solutions at the edge.
+傻瓜式嵌入式机器学习设计-ARM特别版，展示了往任何设备添加机器学习不仅是可能的而且非常简单。本书重点关注关键实现点并解释为什么在计划的早期这些点非常重要。这本书解释了怎样实现平台配置并解释了为什么软件重要。最后，阐述了生态系统在机器学习中的重要性，且给出了在网络边缘使用机器学习的有趣例子。
 
-<h1 id="1">1 Realizing Why ML Is Moving to the Edge</h1>
+<h1 id="1">1 为什么ML正在向边缘迁移？</h1>
 
 本章重点：
 
-* Grasping the basics of ML
-* Understanding differentiation and cost reduction
+* 掌握ML的基本概念
+* 理解差异化和降低成本
 
-Machine learning (ML) represents the greatest inflection point in computing for more than a generation — and it’s already having a significant impact across virtually every market. It’s leading to dramatic advances in connected car technologies, changing the face of healthcare, and influencing how city infrastructure is controlled. It’s also affecting less obvious sectors such as farming, where device-born intelligence is enabling super-efficient watering practices, precisely targeted pest and disease control, and the optimization of crop harvesting.
+机器学习代表了超过了一代计算能力的最大拐点，事实上已经在各个市场上产生了重大影响。它导致了车联技术的巨大进步，改变了医疗保健事业的面貌，并影响了城市基础设施的控制方式。它也影响着不太明显的部门，比如农业，产生于设备的信息正在实现更有效的灌溉，更精确滴病虫和疾病控制，以及总作物收获的优化。
 
-The potential for ML is so far-reaching, it’s hard to imagine a sector that won’t be affected. For users, ML promises new levels of insight and convenience — at home, at work, and at leisure. For manufacturers, it offers the chance to make processes far more efficient and to create new business models and services.
+机器学习的潜力非常深远，很难想象哪一个部门不被影响。对于用户而言，不管是在家中、工作中还是休闲娱乐中，机器学习带来了新的认知和便利。对于制造商而言，它使流程更加高效并产生了新的业务模型和服务。
 
-<h2 id="1.1">1.1 Grasping the Basics of ML</h2>
+<h2 id="1.1">1.1 掌握ML的基本概念</h2>
 
-The terms artificial intelligence (AI) and ML are often used interchangeably. However, in data science, the terms are distinct. This book uses the following definitions:
+术语-人工智能（AI）和机器学习（ML）经常可以互换使用。但是，在数据科学领域，这两个术语是不同的。本书对其定义如下：
 
-* AI is an umbrella term relating to hardware or software that enables a machine to mimic human intelligence. A range of techniques are used to deliver that “intelligence” including ML, computer vision, and natural language processing.
-* ML is a subset of AI, as shown in Figure 1-1. ML uses statistical techniques to enable programs to “learn” through training, rather than being programmed with rules.
+* AI-是使机器能够模拟人类智能的硬件和软件的总称。要想实现这个智能，设计一些列技术，包括ML、机器视觉、和自然语言处理。
 
-ML systems process training data to progressively improve performance on a task, providing results that improve with experience. Data is taken from the edge — be that an IoT device, edge server, or edge device — and sent to the cloud to be used for training.
+* ML是AI的子集。ML使用统计学的技术是程序通过训练而学习，而不是通过规则进行编程。
 
-Machine learning is a subset of artificial intelligence.
+ML系统处理训练数据已逐步提高性能，提供伴随经验而提高的结果。数据来源于网络边缘-可以时IoT设备、边缘服务器或边缘设备-发送到cloud端进行训练。
 
-    ALgorithms < Deep learning < Machine Learning < Artificial intelligence
+机器学习是人工智能的一个子集，对于几个关键概念，有如下关系：
 
-Once an ML system is trained, it can analyze new data and categorize it in the context of the training data. This is known as inference.
+    算法 < 深度学习 < 机器学习 < 人工智能
 
-ML is performed in one of two locations:
+一旦机器学习系统被训练完成，它就能分析新的数据并在训练数据的上下文中对其进行分类，这被成为推理。
+
+机器学习执行的2个地方：
 
 * Cloud
 
-    ML training is typically performed on remote, power-intensive, and compute-intensive server systems.
+    机器学习通常在远端、功耗和计算密集的服务器端进行。
 
 * Edge
 
-    ML inference is usually done locally, on the device that will deliver the outputs. The term edge may refer to an IoT device, edge server, or edge device.
+    ML推理通常在本地进行，将在提供输出的设备上进行。术语-`edge`，可能是指IoT设备，边缘服务器或边缘设备。
 
-<h2 id="1.2">1.2 Differentiation and Cost Reduction</h2>
+<h2 id="1.2">1.2 差异化和降低成本</h2>
 
-While the first wave of ML focused on cloud computing, the combination of improved techniques for shrinking models to run on low-power hardware and increased compute capabilities on edge devices is opening possibilities for dramatic advantages in differentiation and unit cost reduction:
+尽管机器学习的第一波浪潮专注于云计算，将为简化模型而使其能够运行在低功耗硬件上的改进技术和在边缘设备上提高的计算能力结合起来，使差异化和降低单位成本成为可能：
 
-* Reduced latency; increased reliability and safety
+* 减少延迟；提高可靠性和安全性
 
-    Latency in the form of an unresponsive app or a page that won’t load is an annoyance for the user, but many time-critical applications — such as automotive systems — simply cannot rely on connectivity to the cloud because a delay in response might have serious safety implications and seriously affect vehicle performance.
+    对于用户而言，无法响应的APP或无法加载页面的延迟都是一件烦人的事，但是，许多对时间要求苛刻的应用-比如自动驾驶系统-不能简单地依赖于云系统，因为响应延迟可能会产生严重的安全隐患并严重影响车辆性能。
 
-* Power and cost
+* 功耗
 
-    Transmitting data from a device to a cloud server increases the power cost of performing ML because moving data around a system takes power. Cloud- or network-performed ML also adds a bandwidth tax, which can be significant because ML tends to be data-intensive. By performing as much ML as possible on-device, the cost and complexity burden on the network and cloud infrastructure is reduced.
+    将数据从设备传输到云端服务器增加了机器学习系统的电力成本，因为在系统中迁移数据毕竟会消耗电力。基于云端或网络执行的机器学习也会增加带宽负担，这可能很重要。因为机器学习往往需要大量的数据。通过尽可能多地在设备上执行机器学习，网络上和云基础设备的功耗和复杂性就会降低。
 
-* Privacy and security
+* 隐私和安全
 
-    Consumers and corporations are increasingly becoming aware of data security. No one wants their privacy breached, but the risks are amplified when data is constantly shifted to the cloud and back. When processing is done on-device, legislative issues around the storing or transmission of data — and compliance with privacy regulations, such as the European Union’s recent General Data Protection Regulation (GDPR) — are minimized.
+    消费者和公司越来越重视数据的安全性。没有人希望自己的隐私遭到破坏，但是不断地在云和设备间迁移数据，这种风险正在增加。当在设备上进行处理时，有关数据存储和传输的法律问题以及隐私法规（例如，欧盟最近的通用数据保护法规（GDPR））的合规性将被降到最低。
 
-* Personalization
+* 个性化
 
-    In addition to privacy and security, performing ML on-device can lead to a more personalized compute experience. As more devices become “intelligent,” they will need to adapt and provide a contextualized response to their immediate environment — instantaneously. When these devices connect users to the things they care about, AI becomes accessible and personal. Maintaining unique, customized models for every user in the cloud is a significant ongoing expense, so edge devices that can run their own customized models will provide a competitive advantage.
+    除了隐私和安全性，在设备上执行机器学习还将导致更多的个性化的计算经验。随着更多设备变得智能，它们将需要适应自身的即时环境，并根据周围环境的场景作出即时响应。当这些设备将用户和他们关心的事物连接起来时，人工智能就成为可能，且因人而异。在云端为每个用户提供唯一的维护、定制化的模型是一项巨大的持续开销，因此，可以运行自己定制化模型的边缘设备将提供竞争优势。
 
-Ultimately, ML at the edge delivers a more reliable, responsive, and secure user experience that reduces perunit cost, personal data risk, and power requirements — and isn’t dependent on network connections.
+最后，边缘设备上的机器学习将实现一个更可靠、更快响应和更安全的用户体验，还能降低单位成本、个人数据风险和功耗，并且也无需网络连接。
 
-<h2 id="1.3">1.3 Exploring ML Opportunities</h2>
+<h2 id="1.3">1.3 探索机器学习的机会</h2>
 
-ML is not about a new type of device; it’s about every device. ML enables devices to contextualize their immediate environments far better — using data such as vision, sound, heat, and vibration. This innovation is driving new business models, reducing costs, and optimizing performance across a range of parameters.
+机器学习与新设备无关，而是可以利用所有的设备。机器学习使设备能够更好地利用视觉、声音、热量和振动，从而关联其及时环境。这项革新将会创造新的商业模型、降低成本并优化一些列参数的性能。
 
-Although the benefits of ML are exciting, taking the first steps to add ML capability to your product may seem
-daunting. ML processing requirements vary significantly according to the model and workload; no “one-sizefits-
-all” solution exists. Almost all models allow accuracy and performance to be traded freely. This flexibility
-allows a perfect fit between device hardware and the model capability, but it raises additional questions:
+尽管机器学习的好处令人兴奋，但是往产品中添加机器学习的第一步就往往令人生畏。机器学习的要求因模型和工作负荷差异很大；没有一劳永逸的方案。几乎所有的模型都允许精度和性能自由可调。这种灵活性允许在设备硬件和模型能力之间寻求一个平衡点，但是，这却带来了额外的问题：
 
-1. What are the use cases?
-2. Which neural network (NN) model provides the best performance/accuracy trade-off?
-3. Which hardware should you choose to complement it? Can lower-capability hardware be used with a reduced-accuracy model? Can the model be tuned to make use of all the available RAM?
-4. Which tools are available to help a team answer these questions?
-5. Most importantly: How can these issues be balanced to deliver the best performance at the best unit cost?
+1. 使用场景是什么?
+2. 哪种神经网络（NN）模型提供了最佳的性能/精度平衡?
+3. 应该选择哪种硬件补偿算法? 性能很低的硬件可以和精度较低的模型一起使用吗? 可以根据RAM调整模型吗?
+4. 选择哪些工具可以解决这些问题?
+5. 更重要的是：如何平衡这些问题，以最佳的单位成本提供最佳的性能?
 
-<h1 id="2">2 Configuring Your ML Environment</h1>
+<h1 id="2">2 配置ML环境</h1>
 
 本章重点：
 
-1. Understanding the components of an ML platform.
-2. Making choices for your ML environment.
-3. Learning from a case study.
+1. 理解ML平台的组件
+2. 选择ML开发环境
+3. 案例研究
 
-Selecting the right solution for your application entails a series of trade-offs: from small, lowpower microcontroller units (MCUs) for cost- and power-constrained systems to central processors (CPUs) for greater performance and general-purpose programmability; graphics processors (GPUs) for faster performance with graphics-intensive applications; and neural processors (NPUs) for the most intensive and efficient ML processing. This chapter leads you through the process.
+选择一个合适的解决方案需要做许多平衡：从小的、低功耗的微控制器单元（MPU）-对成本和功耗有限制的系统，到中央处理器（CPU）-更高性能和通用目的，再到图形处理器（GPU）-提高图像处理应用的性能，还有专用的神经网络处理器（NPU）-更高密集和更高效的机器学习处理。本章将梳理这些内容。
 
-<h2 id="2.1">2.1 Understanding the Components of an ML Platform</h2>
+<h2 id="2.1">2.1 理解ML平台的组件</h2>
 
-What does your platform need to run ML workloads? Perhaps surprisingly, in hardware terms it may need nothing more than you already have. Many platforms are already efficiently running ML applications on CPUs and GPUs alone. (You can see some examples in Chapter 5.)
+选择什么样的平台运行机器学习？令人惊讶的是，就硬件而言，它可能需要的就是你身边现有的东西。许多平台已经能够单独在CPU和GPU上运行ML应用了。（在[第5章](#5)将会看到这样的示例）
 
-For some use cases, higher performance requirements may demand a dedicated ML processor, such as a neural processing unit (NPU). However, adding an NPU to an already crowded mix of CPUs and GPUs running ML applications can create complexity if the software stack for each processor type is different. This issue creates a need for a software layer that hides hardware complexity from the software applications.
+对于某些应用，更高的性能要求可能需要专用ML处理器，比如，神经处理单元（NPU）。但是，如果每个处理器上运行的软件栈不同，而将NPU和CPU及GPU混合在一起运行ML，无疑将会增加复杂性。这个问题催生了一个软件层，负责对软件应用程序隐藏底层硬件的复杂性。
 
-> Heterogeneous computing [异构计算]() refers to systems that use more than one kind of processor or core to achieve better performance and greater efficiency.
+> 异构计算是指使用不止一种处理器或硬核以实现更好的性能和更高的效率的系统
 
-A heterogeneous compute platform allows application developers to write ML applications using their favorite NN frameworks — such as Google's TensorFlow or Facebook's Caffe and Caffe2 — and target a variety of processor types from multiple vendors. As shown in Figure 2-1, the software layer between the application and the hardware handles the translation of the workload to target the applicable and available core types automatically.
+异构计算平台允许应用开发人员可以选择自己喜欢的NN框架去写应用，比如'Google'的'TensorFlow'、'Facebook'的'Caffe'和'Caffe2'，而不必关心来自不同供应商的处理器类型。如图2-1所示，软件层负责隐藏硬件并适配不同的应用程序。
 
-![Figure 2-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/AI_ML/ARM_AI_ML/ARM_RESOURCES/images/1-2-1.PNG)
+![图 2-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/AI_ML/ARM_AI_ML/ARM_RESOURCES/images/1-2-1.PNG)
 
-FIGTURE 2-1: An example of a heterogeneous ML compute platform with a variety of core types and open-source software.
+图 2-1: 一个异构计算平台的示例，含有多个硬核，以及开源代码
 
-Open standards can help to reduce complexity and assure future compatibility with solutions from a variety of vendors. One example of this is the Open Neural Network Exchange Format (ONNX), supported by Arm, Microsoft, Facebook, Amazon, and others to provide a common format between training frameworks and runtime engines.
+开源标准有助于降低复杂性，保证不同供应商方案的兼容性。这方面，一个显著的例子就是开源神经网络交换格式（ONNX），目前由ARM、Microsoft、Facebook、Amazon和其他的一些公司支持，提供了训练框架和运行时引擎的通用格式。
 
-You have many options for running an ML model:
+你有许多运行ML模型的选择：
 
-* Low-power/always-on microcontroller CPUs:
+* 长时间运行的低功耗微处理器CPU：
 
-    Small models can be run on these cores with a very low power budget. Example: detecting activity or behavior that wakes up the rest of the system to perform more detailed analysis.
+    小型模型可以在这些低功耗芯片上运行，降低成本。比如，检测唤醒系统其它部分的动作和行为，以便实施更详细的分析。
 
-> Sometimes microcontroller CPUs have DSP extensions, known as Digital Signal Controllers, which allow for faster processing, thus providing clean signals for ML without the need for a separate DSP. This feature saves cost, area, and development time, especially for those without a DSP software development background.
+> 有时候，微处理器带有DSP，数字信号处理器，它可以加快处理，而不需专用的DSP即可为ML提供干净的信号。这可以节省成本、面积和开发时间，尤其是在没有DSP软件开发背景的前提下。
 
-* High-efficiency, general-purpose CPUs:
+* 高效、通用CPU：
 
-    Depending on the configuration and number of cores, these can comfortably run entire workloads. Example: real-time speech recognition for closed-caption generation.
+    依赖内核的配置和数量，可以很好地运行完整的ML。例如：用于隐藏字幕生成的实时语音识别。
 
-* Multimedia and GPU cores:
+* 多媒体和CPU内核：
 
-    These often run the same models as a mobile-class core with increased performance or efficiency. If a design already requires a GPU, offloading the ML workload may allow you to reuse this silicon for maximum cost-benefit.
+    通常运行和移动设备内核运行相同的模型，从而提高性能和效率。如果设计中已经考虑使用GPU，则可以把CPU用于其它任务，以最大化效率。
 
-* Dedicated NPUs:
+* 专用NPU:
 
-    Dedicated silicon offers the highest efficiency for running general-purpose ML models in a low-power environment. Example: determining which pixels of a real-time HD video feed correspond to a person.
+    专用芯片以较低的功耗提供了运行通用ML模型的最高性能。比如，确定实时高清视频源中的那些像素对应一个人。
 
-Knowing exactly which components are required in your device demands careful consideration of multiple factors, which the next section discusses.
+要想准确地知道你的设备中需要哪些组件，需要多方面的仔细考虑，是我们接下来要讨论的内容。
 
-<h2 id="2.2">2.2 Making Choices for Your ML Environment</h2>
+<h2 id="2.2">2.2 选择ML开发环境</h2>
 
-The right hardware for your application, what you need from a dedicated NPU, and how you integrate it into systems and tools varies from case to case. However, the following capabilities are important to consider as part of your architectural design for a constrained environment:
+选择合适的硬件，是否需要专用NPU，以及怎样把它集成到系统和工具中，这些都因情况而定。但是，对于受限的环境，以下几个功能必须在架构设计中考虑进去：
 
-1. Processing:
+1. 数据处理:
 
-    What type of data ingestion and processing does your edge solution require? This may depend on the type of models you run and the number of models running at the same time. How complex are these models? Are they compute- or bandwidth-constrained?
+    你的边缘解决方案需要哪种数据提取和处理？这可能依赖于你要运行的模型类型和同时运行的模型数量。这些模型有多复杂？它们是否有计算能力和带宽限制？
 
-2. Connectivity:
+2. 连接:
 
-    What can be done locally on the device? What requires a connection to the cloud? What must stay in the cloud?
+    设备上可以做什么？什么需要连接到云端？什么必须要留在云端？
 
-3. Integration:
+3. 集成:
 
-    Are there any integrations or dependencies that must be managed? What NN frameworks will the developer community be using? How will the models developed in a variety of different frameworks be supported on the system?
+    是否有集成或者依赖管理？开发者社区将使用哪些框架？不同框架开发的模型，系统如何支持？
 
-4. Power, size, and heat:
+4. 功率、尺寸和热量等:
 
-    Does your edge device have power, size, and thermal constraints?
+    你的边缘设备是否有功率、尺寸和热量等方面的限制?
 
-5. Accuracy:
+5. 精确度:
 
-    What is the desired accuracy? Although you might initially think that the higher the accuracy, the better, that isn’t always true. After a certain level, you hit a point of diminishing returns. In certain scenarios, a 2 ercent increase in accuracy may require a 10x increase in compute and memory requirements, for example. You should clearly understand what level of accuracy is required for any particular use case.
+    想要的精度是多少？尽管你首先会想，精度越高越好，但并不总是这样。到一定水平后，就会达到一个收益递减点。在某些场景下，提高2个百分点的精度可能需要在计算能力和内存方面要求10倍的增加。所以，应该非常清晰地知道特定情况下的精度水平。
 
-6. Privacy:
+6. 隐私和安全:
 
-    What are the privacy and security concerns around your edge solution?
+    你的边缘解决方案对隐私和安全有哪些考虑？
 
-7. Workload:
+7. 工作负载:
 
-    Will an NPU be mostly idle and only used for work that an otherwise idle CPU or GPU can accomplish? On the other hand, if a CPU or GPU is capable of running a model, might an NPU be a better solution if those resources are already heavily loaded?
+    NPU是否大部分空闲，用其它也空闲的CPU或GPU是否可以完成？另一方面，虽然CPU或GPU能够运行模型，但是如果这些资源的负载已经很重，使用NPU是否是一个更好的方案？
 
-Taking these points into consideration, you can look at the different components that are required. Is a CPU or GPU sufficient? Do you need to add an NPU? How big must that NPU be to service your requirements within the cost constraints? Look at the different core types available in the market and match them to your area and power budgets, as well as your compute requirements.
+综上考虑，所需的组件是不同的。一个CPU或GPU是否已经足够？是否需要添加一个NPU？在成本限制内，满足需求的NPU的大小？综合市场上已有的不同处理核的能力，匹配你的需求。
 
-The following case study offers an example of the complexity that can be managed on an embedded device at the edge.
+下面的案例研究，提供了一个可以在边缘嵌入式设备上运行的实例。
 
-<h2 id="2.3">2.3 Case Study: An Edge ML Solution for Asthma Patients</h2>
+<h2 id="2.3">2.3 案例研究：用于哮喘病人的边缘机器学习的实例</h2>
 
-The Amiko Respiro provides smart inhaler technology that helps asthma sufferers breathe more easily. The solution includes ML-powered sensors as add-ons to standard inhalers to improve asthma treatment. These smart sensors must be low-powered, scalable, and cost-efficient enough to work with a patient-facing app on a connected platform.
+例如， [Amiko Respiro](https://www.amikohome.com/)提供了更智能的呼吸技术，帮助哮喘病人更轻松的呼吸。该方案包含基于ML的传感器，作为标准呼吸器的附件，以提高哮喘病的治疗。这些智能传感器必须是低功耗的，可扩展的，能够有效地控制成本，并且可以和一个基于可连接的平台上的面向病人的APP配合使用。
 
-At the center of Respiro’s sensor module is an ultra-lowpower Arm Cortex-M processor, enabling:
+`Respiro`传感器模块的核心是一个超低功耗的ARM Cortex-M处理器，能够：
 
-* Processing that takes place securely on the device with no need to connect to the cloud
-* Bluetooth low-power (BTLE) connectivity to a smartphone app
-* An efficiency profile that extends device battery life
+* 在设备上实现数据处理，无需连接到云端
 
-The solution uses ML to interpret vibration data from the
-inhaler. The sensor is trained to recognize the patient’s
-breathing pattern and inhalation time and can calculate
-important parameters such as lung capacity and
-inhalation
-technique.
+* 使用低功耗蓝牙(BTLE)连接到智能手机
 
+* 效率曲线可延长设备电池寿命
 
-The processor allows the Respiro to run real-time ML
-algorithms that recognize behavior patterns and interpret
-data within the sensor module itself. The user doesn’t
-need to wait for back-end infrastructure to process
-detailed sensor data. When the user presses the trigger,
-the module instantly recognizes the breath data pattern
-and provides low-latency, private user feedback.
+该解决方案使用机器学习解释呼吸器的振动数据。传感器被训练，识别病人的呼吸形态和吸入时间，计算出重要的参数，诸如肺活量和呼吸技术。
 
-The Respiro sensor is bundled with an app that the
-patient installs on a smartphone. The sensor collects
-inhaler use data without disrupting the medication delivery
-pathway and sends data and feedback to the app. The
-sensor also has the flexibility to add new features and
-easily scale up to deliver further innovative connected
-healthcare solutions going forward.
+处理器允许`Respiro`运行实时ML算法，以识别行为模式并解释传感器模块本身内的数据。用户无需等待后台处理详细的传感器数据。当用户按下触发键，传感器模块立即识别用户的呼吸方式数据并提供低延时的、用户私有的数据反馈。
 
-<h1 id="3">3 Why Software Really Matters</h1>
+`Respiro`传感器和病人安装在手机上的APP绑定在一起。传感器收集呼吸器的使用数据，而不会中断药物输送方式，并发送数据和反馈给APP。该传感器模块也很方便的添加新功能，扩展更进一步的创新互联医疗解决方案。
+
+<h1 id="3">3 为什么软件真正重要？</h1>
 
 本章重点：
 
-1. Reducing time to market with off-the-shelf hardware, tools, and simulators
-2. Differentiating through software
-3. Training and deploying ML models
+1. 利用现成的硬件、工具和模拟器缩短上市时间
+2. 通过软件实现差异化
+3. 训练和部署ML模型
 
-According to the famous quote by the prominent
-technologist Mark Andressen, “software is eating
-the world.” It’s certainly capable of eating development
-budgets and delaying product schedules if you
-get it wrong. However, because software innovation and
-ML functionality are increasingly becoming key differentiators
-for many device-makers, if you’re building ML
-into your product, you need a strong grasp on your
-specific
-software needs.
+根据著名的技术专家`Mark Andressen`的名言，"Software is eating the world."。稍有不慎，软件就会占用大量的开发预算，并推迟产品的开发计划。但是，软件创新和ML功能也日益成为设备供应商差异化的关键因素，如果你想再产品中加入ML功能，就必须对你的具体软件需求有一个深刻的理解。
 
+<h2 id="3.1">3.1 利用现成的硬件、工具和模拟器缩短上市时间</h2>
 
-<h2 id="3.1">3.1 Reducing Time to Market with Off-The-Shelf Hardware, Tools, and Simulators</h2>
+降低软件和ML模型开发风险的最快方法就是，使用与最终产品功能尽可能接近的硬件进行原型设计。这可以通过使用行业标准的CPU和CPU实现，或者对之前的产品进行迭代实现。
 
-The quickest way to de-risk software and ML model
-development is to do your prototyping with off-the-shelf
-hardware that has functionality as close to your final
-product as possible. That can be through the use of
-industry-standard CPUs and GPUs or a previous iteration
-of the product itself.
+为了满足你的需求，建议选择大型供应商提供的组件-最好是具有丰富的原型设计平台的生态系统。这意味着你可以在重要的领域，比如性能、功率或者硬件的连接性上，选择与你的最终设计比较接近的技术。
 
-To achieve what you need, it’s advisable to choose
-components
-sourced from a large-scale provider —
-preferably from an ecosystem with a wide range of possible
-prototype platforms. This means you’ll be able to
-select technology similar to your final design in the areas
-that matter — such as performance and power or with
-specific hardware connectivity.
+一旦原型平台定下来，下一步就是搭建有效的开发环境。根据你的设备，这可能包括：
 
-Once a prototype platform is in the hands of the software
-team, the next step is to create a useful development environment.
-Depending on your device, this might include:
+* 操作系统
+* 编译器
+* 高性能库
+* 调试和性能分析工具
+* ML框架
 
-* An operating system
-* Compilers
-* Performance libraries
-* Debugging and profiling tools
-* ML frameworks
+因为开发团队需要时间来建立这些工具和库的专业知识。那么在已经熟悉的平台上构建，可以提高生产效率和创新能力，从而大大减低软件开发的风险。
 
-Development teams take time to build expertise in these
-tools and libraries. Building on a platform that’s already
-familiar to your team increases productivity and the
-capacity for innovation, greatly reducing the risk to your
-software development.
+> 理想情况下，团队开发的工具和软件应可移植到最终的平台上。当早期的硬件为测试并降低紧要关头的延时和性能意外而做好准备的时候，通用的标准和架构可以使集成变得更为顺利。
 
-> Ideally, the tools and the software your team
-develops should be portable to your final
-platform. Common standards and architectures
-pave the way for a smooth and
-painless integration when early hardware
-becomes ready for testing, minimizing the
-chance of last-minute delays and performance
-surprises.
+如果选择的架构提供模拟器和快速建模工具，开发风险就会进一步降低。当今的快速模型和模拟器完全有能力在硬件准备好之前，在模拟器上运行完整操作系统并运行最终的应用程序。使用可重复的模拟器，提供了更进一步的容错和性能预测。模拟器上有效运行的项目通常都能成功地部署到真正的硬件上。
 
-If your chosen architecture provides simulators and fast
-modeling tools, this risk is minimized even further.
-Today’s fast models and simulators are capable of bringing
-up an entire operating system in simulation and running
-the final application code even before silicon is
-ready, with cycle simulators providing further correctness
-and performance predictions. Projects that use simulation
-effectively can often successfully deploy the same
-software directly onto the first silicon.
+简而言之，为了有效降低软件开发的风险，请选择一个架构和现成的原型平台：
 
-In short, to effectively de-risk software development,
-select an architecture and off-the-shelf prototyping
-platform that
+* 最终产品所需的功能相近
 
-* Closely reflects the functionality required in the final product
-* Supports a common set of tools, libraries, and frameworks that is familiar to your team
-* Provides robust simulation solutions that minimize time spent integrating software and hardware
+* 团队熟悉的一组通用工具、库和框架
+
+* 提供强大的仿真解决方案，可最大程度减少集成软件和硬件的时间
 
 
-<h2 id="3.2">3.2 Differentiating Through Software</h2>
+<h2 id="3.2">3.2 通过软件实现差异化</h2>
 
-A decision for hardware architecture is also a decision for
-its software stack and the ecosystem supporting it. Large
-ecosystems frequently have dedicated teams continuously
-optimizing and improving their software stacks.
-For example, Arm provides Arm NN, Compute Library,
-and CMSIS-NN. Over a four-month period, the performance
-of NNs such as AlexNet, Inception, SqueezeNet,
-and VGG-16 improved 1.6x to 2.6x on Cortex-A series
-CPUs and the Mali GPU, as shown in Figure 3-1.
+选择了硬件体系架构，也就等于选择了软件栈和生态系统。大的生态系统具有专业的团队，能够持续地优化和改进它们的软件栈。例如，`ARM`提供了`Arm NN`，计算库，和`CMSIS-NN`。如图3-1所示，在4个月的时间里，在`Cortex-A系列CPU`和`Mali GPU`上的`AlexNet`，`Inception`，`SqueezeNet`和`VGG-16`提高了1.6倍~2.6倍，
 
-Developing on top of an actively developed and maintained
-stack ensures you benefit from future performance
-and security improvements without taking time away
-from your own development efforts.
+在开发和维护都很活跃的软件栈基础上开发，可确保在未来的性能和安全改进中受益，无需自己再开发维护。
 
+![Figure 3-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/AI_ML/ARM_AI_ML/ARM_RESOURCES/images/1-3-1.PNG)
+
+图3-1 软件性能提升
+
+所有设计都有针对硬件的软件平衡选择。通常，软件解决方案可以使团队在发布之前持续创新软件功能，优化机器学习的模型架构和性能训练，直到最合适。
+
+在某些情况下，生态系统和ML研究团队提高的性能，使你之后的产品版本具有显著的差异化性能和功能，而无需大的硬件变动-只要这些功能与原始设计的硬件紧密相关就可以。
+
+选择硬件方案的时候，请密切注意一下方面的软件性能：
+
+* 优化的软件协议栈:
+
+    这是实现硬件性能最大化的关键指标。
+
+* 生态软件:
+
+    必须能够提供持续的性能和安全更新。
+
+* 自己的解决方案:
+
+    考虑哪一部分硬件实现，哪一部分软件实现更为灵活方便。
+
+<h2 id="3.3">3.3 训练和部署ML模型</h2>
+
+神经网络的优点是其灵活性，其缺点也是灵活性。可以通过权衡精确度，性能，内存要求和硬件兼容性，适应你想要的性能参数-但是为了最佳部署，而寻求某种平衡和训练神经网络并不是一件容易的事。正如软件部署一样，同样需要花费精力在这些工具的使用上。为了最小化风险，请寻找基于或者兼容`TensorFlow`和`ONNX`的开源代码的方案。
+
+随着模型训练和优化技术的提高，曾经局限于数据中心的人工智能（例如语音和图像识别，推荐和预测），应用在手机和嵌入式设备上的情况越来越多了。当然了高性能的NPU除外。
+
+当今世界，最流行的AI平台无疑是智能手机，其中包括的ML功能有，文本预测，语音识别和计算摄影。但是，随着人们越来越了解嵌入式ML开发的好处，这些功能正在扩展，并在越来越多的嵌入式设备上可用。比如，有效的语音关键词搜索（例如，听一个唤醒词或简单的命令），已经在微控制器上得到了充分证明。
+
+> ML分为2个阶段：训练阶段-负责学习；推理阶段-将学习应用。今天，训练通常发生在服务器或相似的设备上，但是推理已经越来越多地迁移到边缘设备上了，比如家庭、工厂、和工作场所的消费级和工业级设备。
+
+ML工作负载的特点是，对计算和内存带宽有着苛刻的要求。但是，诸如量化、修剪和模型压缩之类的最新优化技术将使先前仅限于数据中心的解决方案部署到移动和嵌入式设备上成为可能。
+
+> 充分利用可用的计算资源变得越来越复杂。尽管，在专用的ML芯片上，ML模型可以高效的运行；但是，在许多情况下，在一个或者多个CPU或GPU内核上运行某些神经网络（或者部分神经网络），可能会更加节能、低延迟和节能，当然，这完全取决于设备、其工作状态和工作负载。
+
+> 寻找一个平台，使开发人员和数据科学家可以在跨CPU、GPU和NPU的高效节能的环境中轻松构建和运行ML应用，并在现在和未来的设计中保留最大灵活性。该软件应该提供与现有ML框架（例如`TensorFlow`和`PyTorch`）的桥梁，同时隐藏硬件的实现细节。这可以允许开发者继续使用他们喜欢的框架和工具，同时异构平台将结果无缝转换在底层硬件上运行。
+
+
+<h1 id="4">4 为什么生态系统很重要？</h1>
+
+* 重用已存在的资源
+* 寻找更好的产品和市场的锲合度
+
+有句老话："当你嫁给某人，你就嫁给了他的家庭。"当你选择架构时，或多或少，把自己置于了一个大的生态系统中，它包括芯片供应商、OEM厂商、软件供应商和咨询顾问；各种培训和教育材料；尤其重要的是，其经验丰富的工程师人才库。
+
+如本章所述，充分利用生态系统是最小化成本和缩短上市时间的重要手段。
+
+<h2 id="4.1">4.1 重用已存在的资源</h2>
+
+企业成功最重要的资产之一就是建立和利用内部专业知识的能力。建立在可互操作标准之上的生态系统允许解决方案和技能可以跨项目迁移，减少上市的风险和时间。
+
+基于标准的设计可以确保软件和对ML投资的未来发展：能够以对软件栈最小的破坏切换到硬件，可以给你迁移到更好解决方案的灵活和自由。
+
+为此，用途单一的硬件堪称一把双刃剑：虽然最初软件开发很快，但是如果平台不能提供源源不断的具有各种性能和功耗特性的新产品，在未来的设计中，你可能不得不转向别的未结盟的供应商。这种技术断层意味着，在原先的设计中积累的专业知识不能传到下一代产品中-甚至不能迭代到当前的产品中。最终，最初的速度可能让位于项目最终的停滞。
+
+ML的发展也带来了一些列的挑战：研究社区发展迅速，几乎每天都会发布新的、更好的运算符，激活功能和NN架构。无论你选择在CPU、GPU还是NPU上运行模型，都应该避免，当未来的研究或者竞争对手的开发，在软件中支持新的、定制化的操作符时，你的模型都不应该受到硬件的影响
+
+<h2 id="4.2">4.2 寻找更好的产品和市场组合</h2>
+
+很少有公司全面定制设备，即使最大的公司，也需要重用他们自己的“轮子”或者外部可用的“轮子”。
+
+当你选择一个大的、充满活力的生态系统，也就意味着你选择了潜在的功能模块和供应商，它们将会给你最完美的产品/市场组合。
+
+此外，选择一个大生态系统，更容易发现满足你大部分需求的现成解决方案。这可以减少你自己实现功能的数量，进一步减少成本。
+
+<h2 id="4.3">4.3 站在巨人的肩膀上</h2>
+
+上市速度和差异化是任何产品设计的关键因素。投入到一个基于标准的生态系统中，意味着公司可以依靠合作伙伴社区，而不是从头开始"造轮子"。
+
+这一点在ML中最为重要。随着新的商业机会和创造性的现实世界中的解决方案的增加，新的模型和算法必须被适应。开源计划允许公司扩展其专有框架和工具以更快地将创新产品推向市场方面发挥了重要作用。
+
+ML标准化是一项重要但极具挑战的工作，因为一切东西都在快速变化，从使用场景到软件栈和硬件处理器。甚至，数据也会带来问题。但是，从系统架构的角度来看，一些厂商建立了跨越生态系统的标准化。
+
+机器学习需要2种框架才能协同工作：
+
+* 训练框架，比如`TensorFlow`， 数据科学家和ML工程师使用它来训练数据中的新模型。
+
+* 推理框架，比如`Arm NN`，基于上面训练出来的模型，在底层的CPU、GPU和ML专用IP核上有效地运行。
+
+当ARM将其开源推理引擎-`Arm NN`-捐献给`Linaro Machine Intelligence`计划时，就是号召整个生态系统贡献和开发一个简单的优化后的推理引擎。这样，就会使生态中的每一个人都可以从别人的专业知识和优化中受益。
+
+<h1 id="5">5 边缘机器学习的10个例子</h1>
+
+* 在边缘应用机器学习
+* 在边缘解决问题
+
+在边缘引用ML的潜力是无限的，以下是10个启发性的解决方案：
+
+* 安全、智能的低功耗智能家居安全领域:
+
+    使用基于设备的、始终在线的、动作、人和声音的检测来识别家庭成员和入侵者。只有当检测到动作或声音的时候才开始记录，并给用户的智能手机发送一个通知。
+
+* 医院工作人员和访客跟踪:
+
+    提醒接待人员未知人员和未授权人员访问。边缘识别意味着永远不会存储或传输访客和患者的图像。
+
+* 植物病害检测:
+
+    使用图像识别智能手机应用APP可以以几乎100%的精确度检测到病变-甚至在离线状态下。
+
+* 快速选择产品:
+
+    通过摄像头对水果和蔬菜进行分类，自动识别不同的类别并提高生产线效率。
+
+* 无人机应用:
+
+    通过基于相机的视觉和运动预测，识别并跟随目标，同时避开障碍物。
+
+* 辅助驾驶系统:
+
+    通过相机、运动传感器、和GPS实时理解和指导司机的驾驶行为，减少碰撞。
+
+* 增强的人机交互:
+
+    简化交互、提高生产效率，并在设备间创造更流畅的用户体验。
+
+* 设备翻译机:
+
+    使交流成为可能-无论位置多么遥远-避免了昂贵的漫游费用。
+
+* 设备优化:
+
+    通过优化操作系统对各个应用程序的调度来显著延长电池寿命。
+
+* 计算摄影:
+
+    解决棘手的问题，比如远处的物体和弱光条件，以或得接近完美的图像。
+
+<h1 id="6">6 参考网站</h1>
+
+[ARM官网](https://developer.arm.com/solutions/machine-learning-on-arm)
