@@ -11,15 +11,28 @@
     - [5.2 寻址模式2-load/store](#5.2)
 ---
 
-* [B1 介绍内存和系统架构](#B1)
+* [B1 内存和系统架构简介](#B1)
+    - [B1.1 关于内存](#B1.1)
+    - [B1.2 内存架构体系](#B1.2)
+    - [B1.3 L1 Cache](#B1.3)
+    - [B1.4 L2 Cache](#B1.4)
+    - [B1.5 Write buffer](#B1.5)
+    - [B1.6 紧耦合内存-TCM](#B1.6)
+    - [B1.7 内存架构体系](#B1.7)
+* [B2 介绍内存和系统架构](#B2)
+* [B3 介绍内存和系统架构](#B3)
+* [B4 介绍内存和系统架构](#B4)
+* [B5 介绍内存和系统架构](#B5)
+* [B6 Cache和Write buffer](#B6)
+* [B7 紧耦合内存-TCM](#B7)
 
 ---
 
-<h1 id="1">1 前言</h1>
+<h1 id="0">0 前言</h1>
 
 This preface describes the versions of the ARM® architecture and the contents of this manual, then lists the conventions and terminology it uses.
 
-<h2 id="1.1">1.1 关于本手册</h2>
+<h2 id="0.1">0.1 关于本手册</h2>
 
 The purpose of this manual is to describe the ARM instruction set architecture, including its high code density Thumb® subset, and three of its standard coprocessor extensions:
 
@@ -37,7 +50,7 @@ However, this manual is not intended as tutorial material for ARM assembler lang
 
 The memory and system architecture definition is significantly improved in ARM architecture version 6 (the latest version). Prior to this, it usually needs to be supplemented by detailed implementation-specific information from the technical reference manual of the device being used.
 
-<h2 id="1.2">1.2 架构版本以及变体</h2>
+<h2 id="0.2">0.2 架构版本以及变体</h2>
 
 The ARM instruction set architecture has evolved significantly since it was first developed, and will continue to be developed in the future. Six major versions of the instruction set have been defined to date, denoted by the version numbers 1 to 6. Of these, the first three versions including the original 26-bit architecture (the 32-bit architecture was introduced at ARMv3) are now OBSOLETE. All bits and encodings that were used for 26-bit features become RESERVED for future expansion by ARM Ltd. Versions can be qualified with variant letters to specify collections of additional instructions that are included as an architecture extension. Extensions are typically included in the base architecture of the next version number, ARMv5T being the notable exception. Provision is also made to exclude variants by prefixing the variant letter with x, for example the xP variant described below in the summary of version 5
 features.
@@ -54,9 +67,9 @@ Details on OBSOLETE versions are available on request from ARM.
 
 The ARM and Thumb instruction sets are summarized by architecture variant in ARM instructions and architecture versions on page A4-286 and Thumb instructions and architecture versions on page A7-125 respectively. The key differences introduced since ARMv4 are listed below.
 
-<h2 id="1.3">1.3 约定</h2>
+<h2 id="0.3">0.3 约定</h2>
 
-<h3 id="1.3.1">1.3.1 指令的伪码描述</h3>
+<h3 id="0.3.1">0.3.1 指令的伪码描述</h3>
 
 A form of pseudo-code is used to provide precise descriptions of what instructions do. This pseudo-code is written in a *typewriter* font, and uses the following conventions for clarity and brevity:
 
@@ -586,23 +599,114 @@ conditions that are detectable at the time the data is placed in the write buffe
 detected when the data is later written to main memory, such as an ECC error from main memory, must be
 handled by other methods, by raising an interrupt or an imprecise abort.
 
+B1.6 Tightly Coupled Memory
 
+<h2 id="B1.6">B1.6 紧耦合内存-TCM</h2>
 
+The Tightly Coupled Memory (TCM) is an area of memory that can be implemented alongside the L1 cache,as part of the level 1 memory subsystem. The TCM is physically addressed, with each bank occupying a unique part of the physical memory map. See SmartCache Behavior on page B7-6 for an optional, smartcache, ARMv6 usage model. In keeping with the L1 cache, the TCM may be structured as a Harvard architecture with separate instruction and data TCM, or as a Von Neumann architecture with a unified TCM.
 
+The TCM is designed to provide low latency memory that can be used by the processor without the unpredictability that is a feature of caches. Such memory can be used to hold critical routines, such as interrupt handling routines or real-time tasks, where the indeterminacy of a cache would be highly undesirable. Other example uses are:
 
+* scratchpad data
+* data types whose locality properties are not well suited to caching
+* critical data structures such as Interrupt stacks.
 
+关于TCM的更多详细内容，请参考[第B7章 紧耦合内存-TCM](#B7)。
 
+<h3 id="B1.6.1">B1.6.1 紧耦合内存和Cache的对比</h3>
 
+The TCM is designed to be used as part of the physical memory map of the system, and is not expected to be backed by a level of external memory with the same physical addresses. For this reason, the TCM behaves differently from the caches for regions of memory which are marked as being Write-Through cacheable. In such regions, no external writes occur in the event of a write to memory locations contained in the TCM.
 
+TCM被设计称为系统物理内存映射的一部分，且它并不期望通过具有相同物理地址的外部内存来支持。因为这个原因，TCM的行为与被标记为Write-through的内存区域的Cache不同。在这些区域，当写入到TCM中包含的内存位置时，不会发生外部写操作。
 
+It is an architectural requirement that memory locations are contained either in the TCM or the cache, not in both. In particular, no coherency mechanisms are supported between the TCM and the cache. This means that it is important when allocating the base address of the TCM to ensure that the TCM address range does not overlap with any valid cache entries.
 
+根据体系结构的要求，内存区域要么包含在TCM中，要么包含在缓存中，但不能同时包含在两者中。特别是，在TCM和Cache之间没有一致性支持。这意味着在分配TCM的基地址时，确保TCM地址范围不与任何有效的Cache所包含的区域重叠，这非常重要。
 
+<h3 id="B1.6.2">B1.6.2 紧耦合内存的DMA支持</h3>
 
+ARMv6 includes a DMA model with register support for its configuration. This is the only mechanism other than the associated processor core that can read and write the TCM. Up to two DMA channels are provided for. This allows chained operations, see Level 1 (L1) DMA model on page B7-8 for architectural details.
 
+<h2 id="B1.7">B1.7 Asynchronous exceptions</h2>
+
+Many exceptions are synchronous events related to instruction execution in the core. However, the following exceptions cause asynchronous events to occur:
+
+1. Reset on page A2-18
+2. Interrupts
+3. Imprecise aborts on page B1-11.
+
+<h2 id="B1.8">B1.8 Semaphores</h2>
+
+The Swap (SWP) and Swap Byte (SWPB) instructions need to be used with care to ensure that expected behavior is observed. Two examples are as follows:
+
+* Systems with multiple bus masters that use the Swap instructions to implement semaphores to control interaction between different bus masters.
+
+    In this case, the semaphores must be placed in an uncached region of memory, where any buffering of writes occurs at a point common to all bus masters using the mechanism. The Swap instruction then causes a locked read-write bus transaction.
+
+    This type of semaphore can be externally aborted.
+
+* Systems with multiple threads running on a uniprocessor that use the Swap instructions to implement semaphores to control interaction of the threads.
+
+    In this case, the semaphores can be placed in a cached region of memory, and a locked read-write bus transaction might or might not occur. The Swap and Swap Byte instructions are likely to have better performance on such a system than they do on a system with multiple bus masters (as described above).
+
+    This type of semaphore has UNPREDICTABLE behavior if it is externally aborted.
+
+From ARMv6, load and store exclusive instructions (LDREX and STREX) are the preferred method of implementing semaphores for system performance reasons. The new mechanism is referred to as synchronization primitives, and requires data monitor logic within the memory system that monitors access to the requested location from all sources in the shared memory model case. The instructions provide a degree of decoupling between the load and store elements, with the store only being successful if no other resource has written to the location since its associated load. See Synchronization primitives on page A2-44 for more details.
+
+<h1 id="B2">B2 内存序模型</h1>
+
+<h1 id="B4">B4 内存序模型</h1>
+
+This chapter describes the Virtual Memory System Architecture (VMSA) based on a Memory ManagementUnit (MMU). It contains the following sections:
+
+<h2 id="B4.1">B4.1 关于VMSA</h2>
+
+Complex operating systems typically use a virtual memory system to provide separate, protected address spaces for different processes. Processes are dynamically allocated memory and other memory mapped system resources under the control of a Memory Management Unit (MMU). The MMU allows fine-grained control of a memory system through a set of virtual to physical address mappings and associated memory properties held within one or more structures known as `Translation Lookaside Buffers` (TLBs) within the MMU. The contents of the TLBs are managed through hardware translation lookups from a set of translation tables maintained in memory.
+
+The process of doing a full translation table lookup is called a `translation table walk`. It is performed automatically by hardware, and has a significant cost in execution time, at least one main memory access, and often two. TLBs reduce the average cost of a memory access by caching the results of translation table walks. Implementations can have a unified TLB (von Neumann architecture) or separate Instruction and Data TLBs (Harvard architecture).
+
+The VMSA has been significantly enhanced in ARMv6. This is referred to as VMSAv6. To prevent the need for a TLB invalidation on a context switch, each virtual to physical address mapping can be marked as being associated with a particular application space, or as global for all application spaces. Only global mappings and those for the current application space are enabled at any time. By changing the `Application Space IDentifier` (ASID), the enabled set of virtual to physical address mappings can be altered. VMSAv6 has added definitions for different memory types (see `ARMv6 memory attributes - introduction` on page B2-8),and other attributes (see `Memory access control` on page B4-8). For backwards compatibility there is an XP control bit in the System Control Coprocessor, CP15 register 1, as defined in Register 1: Control register on page B4-40.
+
+The set of memory properties associated with each TLB entry includes:
+
+* Memory access permission control
+
+    This controls whether a program has no-access, read-only access, or read/write access to the memory area. When an access is not permitted, a memory abort is signaled to the processor. The level of access allowed can be affected by whether the program is running in User mode, or a privileged mode, and by the use of domains.
+
+* Memory region attributes
+
+    These describe properties of a memory region. Examples include device (VMSAv6), non-cacheable, write-through, and write-back.
+
+* Virtual-to-physical address mapping
+
+    An address generated by the ARM® processor is called a virtual address. The MMU allows this address to be mapped to a different physical address. This physical address identifies which main memory location is being accessed.
+
+    This can be used to manage the allocation of physical memory in many ways. For example, it can be used to allocate memory to different processes with potentially conflicting address maps, or to allow an application with a sparse address map to use a contiguous region of physical memory.
+
+> Because of the Fast Context Switch Extension (FCSE, see Chapter B8), all references to virtual address in this chapter are made to the modified virtual address that it generates, except where explicitly stated otherwise. The virtual address and modified virtual address are equal when the FCSE mechanism is disabled (PID == zero). The FCSE is only present in ARMv6 for backwards compatibility. Its use in new systems is deprecated.
+
+B4.2.1 TLB match process
+
+Each TLB entry contains a modified virtual address, a page size, a physical address, and a set of memory properties. It is marked as being associated with a particular application space, or as global for all application spaces. Where an ASID is used, register 13 in CP15 determines the currently selected application space.
+
+A TLB entry matches if bits 31-N of the modified virtual address match, and it is either marked as global, or the ASID matches the current ASID, where N is log2 of the page size for the TLB entry.
+
+If two or more entries match at any time (including global and ASID specific entries), the behavior of a TLB is UNPREDICTABLE. The operating system must ensure that no more than one TLB entry can match at any time, typically by flushing its TLBs when global page mappings are changed.
+
+A TLB can store entries based on the following block sizes:
+
+* Supersections consist of 16MB blocks of memory
+* Sections consist of 1MB blocks of memory
+* Large pages consist of 64KB blocks of memory
+* Small pages consist of 4KB blocks of memory.
+
+> The use of Tiny (1KB) pages is not supported in VMSAv6.
 
 
 <h1 id="B6">B6 Cache和Write buffer</h1>
 
+<h1 id="B7">B7 紧耦合内存-TCM</h1>
 
+<h2 id="B7.6">B7.6 SmartCache Behavior</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
