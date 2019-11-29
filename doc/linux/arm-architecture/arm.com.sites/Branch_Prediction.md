@@ -1,4 +1,4 @@
-# What is Branch Prediction?
+# 什么是分支预测?
 
 The pipeline in a modern microprocessor contains many stages, including instruction fetch, decoding, register allocation and renaming, µop reordering, execution, and retirement. Handling instructions in a pipelined manner allows the microprocessor to do many things at the same time. While one instruction is being executed, the next instructions are being fetched and decoded. The biggest problem with pipelining is branches in the code. For example, a conditional jump allows the instruction flow to go in any of two directions. If there is only one pipeline, then the microprocessor doesn’t know which of the two branches to feed into the pipeline until the branch instruction has been executed. The longer the pipeline, the more time does the microprocessor waste if it has fed the wrong branch into the pipeline. Branches are predicted before they are actually executed. It is used to improve the performance. For every pipeline flush, a penalty of 13 cycles is incurred otherwise in Cortex-A8. Beneficial in cores with long pipelines, as in case of Cortex-A8.
 

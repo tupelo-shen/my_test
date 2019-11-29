@@ -28,12 +28,12 @@
 * [4 非对齐数据和混合字节序数据的支持](#4)
     - [4.1 aaa](#4.1)
     - [4.2 bbb](#4.2)
-* [5 程序流预测](#5)
-    - [5.1 关于程序流预测](#5.1)
+* [5 分支预测](#5)
+    - [5.1 关于分支预测](#5.1)
     - [5.2 预测指令](#5.2)
     - [5.3 非预测指令](#5.3)
     - [5.4 最优性能](#5.4)
-    - [5.5 使能程序流预测](#5.5)
+    - [5.5 使能分支预测](#5.5)
     - [5.6 操作系统和预测器上下文](#5.6)
 * [6 内存管理单元](#6)
     - [6.1 关于MMU](#6.1)
@@ -337,15 +337,15 @@ Monitor,Supervisor,Abort,IRQ和Undifined模式具有映射到r13和r14的与模�
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="5">5 程序流预测</h1>
+<h1 id="5">5 分支预测</h1>
 
-This chapter describes how the processor performs branch prediction.
+本章描述了ARM处理器如何执行分支预测。
 
-<h2 id="5.1">5.1 关于程序流预测</h2>
+<h2 id="5.1">5.1 关于分支预测</h2>
 
 The processor contains program flow prediction hardware, also known as **branch prediction**. With program flow prediction disabled, all taken branches incur a 13-cycle penalty. With program flow prediction enabled, all mispredicted branches incur a 13-cycle penalty.
 
-To avoid this penalty, the branch prediction hardware operates at the front of the instruction pipeline. The branch prediction hardware consists of:
+为了避免这种损失，分支预测的硬件在指令流水线的前端运行。分支预测硬件包括：
 
 * a 512-entry 2-way set associative Branch Target Buffer (BTB)
 * a 4096-entry Global History Buffer (GHB)

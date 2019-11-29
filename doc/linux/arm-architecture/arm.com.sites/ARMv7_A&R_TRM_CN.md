@@ -70,7 +70,7 @@
     - [10.12 Thumb执行环境](#10.12)
     - [10.13 Jazelle直接字节码执行](#10.13)
     - [10.14 Traps to the hypervisor](#10.14)
-* [B11 通用内存系统架构特点](#11)
+* [B11 通用内存架构](#11)
     - [11.1 关于内存系统架构](#11.1)
     - [11.2 缓存和分支预测期](#11.2)
     - [11.3 IMPLEMENTION DEFINED memory system features](#11.3)

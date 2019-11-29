@@ -1,13 +1,18 @@
-<h1 id="0">0 目录</h1>
-* [1 前言](#1)
-    - [1.1 关于Cortex-A8](#1.1)
-    - [1.2 ARMv7-A架构](#1.2)
-    - [1.3 处理器的组成](#1.3)
+# 目录
+
+* [0 前言](#1)
+    - [0.1 关于本手册](#1.1)
+    - [0.2 架构版本以及变体](#1.2)
+    - [0.3 约定](#1.3)
 * [4 ARM指令集](#4)
     - [4.1 指令集编码](#4.1)
 * [5 ARM寻址模式](#5)
     - [5.1 寻址模式1-数据处理操作数](#5.1)
     - [5.2 寻址模式2-load/store](#5.2)
+---
+
+* [B1 介绍内存和系统架构](#B1)
+
 ---
 
 <h1 id="1">1 前言</h1>
@@ -415,5 +420,189 @@ Table A3-2 Data-processing instructions
 <h1 id="7">7 TCM</h1>
 
 紧密耦合内存（Tightly Coupled Memory）。
+
+
+
+<h1 id="B1">B1 内存和系统架构简介</h1>
+
+<h2 id="B1.1">B1.1 关于内存</h2>
+
+多年来，ARM架构已经在演进。在此期间，有超过10亿ARM芯片发售，其中大多数是基于ARMv4或者ARMv5。内存系统的要求也发生了相当大的变化，从简单的直接内存映射，到系统使用多种手段去优化它们的内存资源的使用，比如：
+
+1. 多种类型的内存
+2. cache
+3. write buffer
+4. 虚拟内存和其它的内存映射技术
+
+说起内存系统，应该首先描述它的2个属性，cacheable和bufferable。它们的名称就是底层硬件的原理的反应，没有任何其它意思。In addition, the order model of the memory accesses made was not defined. An implicit model evolved from early implementations, which were much simpler systems than those being developed today.
+
+To meet the demands of higher performance systems and their associated implementations, ARMv6 introduces new disciplines for virtual memory systems and a weakly-ordered memory model including an additional memory barrier command.
+
+Memory behavior is now classified by type:
+
+* strongly ordered
+* device
+* normal.
+
+These basic types can be further qualified by cacheable and shared attributes as well as access mechanisms. As in the second edition of the *ARM Architecture Reference Manual*, general requirements are described in keeping with the diversity of needs, however, emphasis is given to the ARMv6 virtual memory model and its absolute requirements. The virtual memory support mechanisms associated with earlier variants are described in the backwards compatibility model. Some earlier features are deprecated, and therefore not recommended for use in new designs.
+
+Coprocessor 15 (CP15) remains the primary control mechanism for virtual memory systems, as well as identification, configuration and control of other memory configurations and system features. CP15 provision is a requirement of ARMv6.
+
+内存系统和内存序模型，分别在以下几个章节进行描述：
+
+1. 介绍
+
+    本章
+
+2. 内存架构体系
+
+    An overview including basic cache theory and the concept of tightly coupled memory.
+
+3. 内存序模型
+
+    Memory attributes and order rules introduced with ARMv6.
+
+4. The System Control coprocessor
+
+    An overview of the features and support provided.
+
+5. Virtual Memory System Architecture (VMSA)
+
+    A sophisticated system to control virtual-to-physical address mapping, access permissions to memory, and other memory attributes, based on the use of a Memory Management Unit (MMU). The revised ARMv6 model, and the model used by earlier architecture variants, are described.
+
+6. Protected Memory System Architecture (PMSA)
+
+    An alternative, simpler protection mechanism suitable for many applications that do not require the full facilities provided by the MMU memory system. The revised ARMv6 and earlier architecture variant models are described.
+
+7. Caches and Write buffers
+
+    Mechanisms provided to control cache and write buffer functionality in a memory hierarchy.
+
+8. L1 Tightly Coupled Memory Support
+
+    ARMv6 provision including the associated DMA and Smartcache models.
+
+9. Fast Context Switch Extension
+
+    Describes the Fast Context Switch Extension. This facilitated fast switching between up to 128 processes executing in separate process blocks, each of size up to 32 MB. This is supported in ARMv6 only for backwards compatibility, and its use is deprecated.
+
+<h2 id="B1.2">B1.2 内存架构体系</h2>
+
+Good system design is a balance of many trade-offs to achieve the overall system performance and cost goals. An important part of this decision process is the memory provision:
+
+* types of memory, for example ROM, Flash, DRAM, SRAM, disk based storage
+
+* size - capacity and silicon area
+
+* access speed - core clock cycles required to read or write a location
+
+* architecture - Harvard (separate instruction and data memories) or Von Neumann (unified memory).
+
+As a general rule, the faster the memory access time, the more constrained the amount of resource available, because it needs to be closely coupled to the processor core, that is, on the same die. Even on-chip memory may have different timing requirements because of its type or size, power constraints, and the associated critical path lengths to access it in the physical layout. Caches provide a means to share the fastest, most expensive system memory resources between the currently active process threads in an application.
+
+Where a system is designed with different types of memory in a layered model, this is referred to as a memory hierarchy. Systems can employ caches at multiple levels. The outer layers trade increased latency for increasing size. All the caches in the system must adhere to a memory coherency policy, which is part of the system architecture. Such layered systems usually number the layers - level 1, level 2 ... level n- with the increasing numbers representing increased access times for layers further from the core.
+
+IO can also be provided at the different layers, that is, some no-wait-state register-based peripherals at level 1, out to memory mapped peripherals on remote system buses.
+
+Figure B1-1 shows an example memory hierarchy.
+
+![ARM_ARM_B_1_1.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_B_1_1.PNG)
+
+The ARMv6 specifies the Level 1 (L1) subsystem, providing cache, Tightly-Coupled Memory (TCM), and an associated TCM-L1 DMA system. The architecture permits a range of implementations, with software visible configuration registers to allow identification of the resources that exist. Options are provided to support the L1 subsystem with a Memory Management Unit (VMSAv6) or a simpler Memory Protection Unit (PMSAv6).
+
+Some provision is also made for multiprocessor implementations and Level 2 (L2) caches. However, these are not fully specified in this document. To ensure future compatibility, it is recommended that Implementors of L2 caches and closely-coupled multiprocessing systems work closely with ARM.
+
+VMSAv6 describes Inner and Outer attributes which are defined for each page-by-page. These attributes are used to control the caching policy at different cache levels for different regions of memory. Implementations can use the Inner and Outer attributes to describe caching policy at other levels in an IMPLEMENTATION DEFINED manner. See sections Memory region attributes on page B4-11 for the architecture details. All levels of cache need appropriate cache management and must support:
+
+* cache cleaning (write-back caches only)
+* cache invalidation (all caches).
+
+ARM processors and software are designed to be connected to a byte-addressed memory. Prior to ARMv6, addressing was defined as word invariant. Word and halfword accesses to the memory ignored the byte alignment of the address, and accessed the naturally-aligned value that was addressed, that is, a memory access ignored address bits 0 and 1 for word access, and ignored bit 0 for halfword accesses. The endianness of the ARM processor normally matched that of the memory system, or was configured to match it before any non-word accesses occurred.
+
+ARM处理器和软件被设计能够按字节访问内存。ARMv6之前，寻址方式被定义为按word访问内存。
+
+ARMv6引入了：
+
+* a byte-invariant address model
+* 支持未对齐 word 和 half-word 访问
+* additional control features for loading and storing data in a little or big endian manner.
+
+See Endian support on page A2-30 for details.
+
+<h2 id="B1.3">B1.3 L1 Cache</h2>
+
+Before ARMv6, ARM caches were normally implemented as virtually addressed caches, with virtual indexing and virtual address tags. With this model, physical pages were only mapped into a single virtual page, otherwise the result was UNPREDICTABLE. These implementations did not provide coherence between multiple virtual copies of a single physical page.
+
+ARMv6 specifies a cache architecture where the expected behavior is that normally associated with physically tagged caches. The ARMv6 L1 cache architecture is designed to reduce the requirement for cache clean and/or invalidation on a context switch, and to support multiple virtual address aliases to a particular memory location. Flexibility on the size, associativity or organization of the caches within this subsystem is provided in the Coprocessor System Control Register (CP15). The cache organization may be a Harvard architecture with separate instruction and data caches, or a von Neumann architecture with a single, unified cache.
+
+cache的组织架构可以是具有独立指令和数据cache的哈佛结构，也可以是使用一个缓存的冯诺依曼结构。
+
+In a Harvard architecture, an implementation does not need to include hardware support for coherency between the Instruction and Data caches. Where such support would be required, for example, in the case of self-modifying code, the software must make use of the cache cleaning instructions to avoid such problems.
+
+An ARMv6 L1 cache must appear to software to behave as follows:
+对于软件来说，ARMv6 L1 cache必须具备以下功能：
+
+* the entries in the cache do not need to be cleaned and/or invalidated by software for different virtual to physical mappings
+* 对于不同的虚拟地址到物理地址的映射，缓存中的条目不需要由软件进行清理和/或失效。
+
+* aliases to the same physical address may exist in memory regions that are described in the page tables as being cacheable, subject to the restrictions for 4KB small pages outlined in Restrictions on Page Table Mappings on page B6-11.
+
+Caches can be implemented with virtual or physical addressing (including indexing) provided these behavior requirements are met. ARMv6 L1 cache management uses virtual addresses, which is consistent with earlier architecture guidelines and implementations.
+
+For architecture details on the L1 cache see [Chapter B6 Caches and Write Buffers](#B6).
+
+
+<h2 id="B1.4">B1.4 L2 Cache</h2>
+
+L1 caches are always tightly coupled to the core, but L2 caches can be either:
+
+* tightly coupled to the core
+* implemented as memory mapped peripherals on the system bus.
+
+A recommended minimum set of L2 cache commands is defined for configuration and control. Closely-coupled L2 caches must be managed through the System Control Coprocessor. It is IMPLEMENTATION DEFINED whether they use virtual or physical addresses for control functions. Memory mapped L2 caches must use physical address based control.
+
+Further levels of cache are possible, but their control is not mandated within ARMv6 except that they must comply with:
+
+* the inner and outer attribute model described in Memory region attributes on page B4-11.
+* coherency needs associated with managing multi-level caches through the System Control Coprocessor interface, see Considerations for additional levels of cache on page B6-12.
+
+For architecture details on the L2 cache see section L2 cache.
+
+<h2 id="B1.5">B1.5 Write buffer</h2>
+
+The term write buffer can cover a number of different behaviors. The effects of these behaviors on different uses of memory mapped space needs to be understood by the programmer to avoid unexpected results. For this reason, the term bufferable is no longer used as an attribute to describe the required behavior of a memory system.
+
+A write buffer exists to decouple a write transaction from the execution of subsequent memory transactions.
+In addition, particular buffer implementations may perform additional tasks such as the re-ordering of
+memory transfers, the merging of multiple writes into proximate locations, or the forwarding of write data
+to subsequent reads. These buffering behaviors are becoming more cache-like in nature. The memory
+attributes Strongly Ordered, Device, and Normal described in Strongly Ordered memory attribute on
+page B2-12 are designed to allow the programmer to describe the required behavior, leaving the
+Implementor free to choose whatever structures are optimal for a given system, provided that the behavior
+for each memory attribute is correctly fulfilled.
+
+For writes to buffered areas of memory, precise aborts can only be signaled to the processor as a result of
+conditions that are detectable at the time the data is placed in the write buffer. Conditions that can only be
+detected when the data is later written to main memory, such as an ECC error from main memory, must be
+handled by other methods, by raising an interrupt or an imprecise abort.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h1 id="B6">B6 Cache和Write buffer</h1>
+
+
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
