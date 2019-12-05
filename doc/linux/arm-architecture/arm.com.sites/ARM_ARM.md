@@ -19,10 +19,12 @@
     - [B1.5 Write buffer](#B1.5)
     - [B1.6 紧耦合内存-TCM](#B1.6)
     - [B1.7 内存架构体系](#B1.7)
-* [B2 介绍内存和系统架构](#B2)
-* [B3 介绍内存和系统架构](#B3)
-* [B4 介绍内存和系统架构](#B4)
-* [B5 介绍内存和系统架构](#B5)
+* [B2 内存序模型](#B2)
+    - [B2.1 关于内存序模型](#B2.1)
+    - [B2.4 ARMv6内存属性](#B2.4)
+* [B3 系统控制协处理器](#B3)
+* [B4 虚拟内存系统架构](#B4)
+* [B5 受保护内存系统架构](#B5)
 * [B6 Cache和Write buffer](#B6)
 * [B7 紧耦合内存-TCM](#B7)
 
@@ -447,19 +449,20 @@ Table A3-2 Data-processing instructions
 3. write buffer
 4. 虚拟内存和其它的内存映射技术
 
-说起内存系统，应该首先描述它的2个属性，cacheable和bufferable。它们的名称就是底层硬件的原理的反应，没有任何其它意思。In addition, the order model of the memory accesses made was not defined. An implicit model evolved from early implementations, which were much simpler systems than those being developed today.
+说起内存系统，首先，应该提及它的2个属性，可缓存的（cacheable）和可缓冲的（bufferable）。从字面上，就可以理解它的底层硬件原理。在ARMv6架构版本之前，内存访问顺序模型（在后面的文章中统称为内存序模型）没有定义。对此，为了更高性能及其相关实现的需求，ARMv6架构新引入了虚拟内存系统和弱序内存模型，其中弱序模型包含一个附加的内存屏障（memory barrier）命令。
 
-To meet the demands of higher performance systems and their associated implementations, ARMv6 introduces new disciplines for virtual memory systems and a weakly-ordered memory model including an additional memory barrier command.
+内存可以按照下面3种基本类型进行划分：
 
-Memory behavior is now classified by type:
+* 强序（strongly ordered），比如，Cache、Write buffer。
 
-* strongly ordered
-* device
-* normal.
+* 设备序（device），比如，非Cache、Write Buffer。
 
-These basic types can be further qualified by cacheable and shared attributes as well as access mechanisms. As in the second edition of the *ARM Architecture Reference Manual*, general requirements are described in keeping with the diversity of needs, however, emphasis is given to the ARMv6 virtual memory model and its absolute requirements. The virtual memory support mechanisms associated with earlier variants are described in the backwards compatibility model. Some earlier features are deprecated, and therefore not recommended for use in new designs.
+* 正常序（normal），比如，Cache、Write buffer。
 
-Coprocessor 15 (CP15) remains the primary control mechanism for virtual memory systems, as well as identification, configuration and control of other memory configurations and system features. CP15 provision is a requirement of ARMv6.
+对于这些基本类型的内存，可以通过可缓存性、共享属性及访问机制进行进一步划分。虚拟内存实现机理向前兼容的，关于这一点，在后面的兼容模型中会描述。一些早期的功能会被抛弃，因此，在新的设计中不推荐使用了。
+
+
+协处理器15，后面统一使用CP15代替，仍然是虚拟内存系统控制，识别配置和其它内存配置控制的控制方式。CP15是ARMv6的一个规定。
 
 内存系统和内存序模型，分别在以下几个章节进行描述：
 
@@ -469,55 +472,52 @@ Coprocessor 15 (CP15) remains the primary control mechanism for virtual memory s
 
 2. 内存架构体系
 
-    An overview including basic cache theory and the concept of tightly coupled memory.
+    对于Cache理论和紧耦合内存的概念作一概述。
 
 3. 内存序模型
 
-    Memory attributes and order rules introduced with ARMv6.
+    ARMv6架构的内存属性和内存序规则。
 
-4. The System Control coprocessor
+4. 系统控制协处理器
 
-    An overview of the features and support provided.
+    对协处理器的功能作一概述。
 
-5. Virtual Memory System Architecture (VMSA)
+5. 虚拟内存系统架构(VMSA)
 
     A sophisticated system to control virtual-to-physical address mapping, access permissions to memory, and other memory attributes, based on the use of a Memory Management Unit (MMU). The revised ARMv6 model, and the model used by earlier architecture variants, are described.
 
-6. Protected Memory System Architecture (PMSA)
+6. 受保护的内存系统架构(PMSA)
 
     An alternative, simpler protection mechanism suitable for many applications that do not require the full facilities provided by the MMU memory system. The revised ARMv6 and earlier architecture variant models are described.
 
-7. Caches and Write buffers
+7. Cache和Write Buffer
 
     Mechanisms provided to control cache and write buffer functionality in a memory hierarchy.
 
-8. L1 Tightly Coupled Memory Support
+8. L1 紧耦合内存
 
     ARMv6 provision including the associated DMA and Smartcache models.
 
-9. Fast Context Switch Extension
+9. 快速上下文切换扩展
 
     Describes the Fast Context Switch Extension. This facilitated fast switching between up to 128 processes executing in separate process blocks, each of size up to 32 MB. This is supported in ARMv6 only for backwards compatibility, and its use is deprecated.
 
 <h2 id="B1.2">B1.2 内存架构体系</h2>
 
-Good system design is a balance of many trade-offs to achieve the overall system performance and cost goals. An important part of this decision process is the memory provision:
+好的设计肯定是多方面的平衡，以达到系统的最佳性能和损耗。对于内存也是如此：
 
-* types of memory, for example ROM, Flash, DRAM, SRAM, disk based storage
+* 内存类型，比如ROM、Flash、DRAM、SRAM、基于硬盘的存储介质
+* 大小 - 容量和芯片的体积大小
+* 访问速度 - 内核读写某个区域的时钟周期
+* 架构 - Harvard(独立的指令和数据存储)或冯·诺依曼(统一的内存)
 
-* size - capacity and silicon area
-
-* access speed - core clock cycles required to read or write a location
-
-* architecture - Harvard (separate instruction and data memories) or Von Neumann (unified memory).
-
-As a general rule, the faster the memory access time, the more constrained the amount of resource available, because it needs to be closely coupled to the processor core, that is, on the same die. Even on-chip memory may have different timing requirements because of its type or size, power constraints, and the associated critical path lengths to access it in the physical layout. Caches provide a means to share the fastest, most expensive system memory resources between the currently active process threads in an application.
+通常，内存访问时间越短，对于可以使用的内存种类越受限制，因为，它需要与处理器内核紧密耦合。甚至片上系统内存，由于它的类型和大小，功率限制，及物理布局的走线长度等的影响，可能有不同的时序要求。Cache提供了一种手段，使得应用程序中的各个线程可以共享这个快速而又昂贵的系统内存资源。
 
 Where a system is designed with different types of memory in a layered model, this is referred to as a memory hierarchy. Systems can employ caches at multiple levels. The outer layers trade increased latency for increasing size. All the caches in the system must adhere to a memory coherency policy, which is part of the system architecture. Such layered systems usually number the layers - level 1, level 2 ... level n- with the increasing numbers representing increased access times for layers further from the core.
 
 IO can also be provided at the different layers, that is, some no-wait-state register-based peripherals at level 1, out to memory mapped peripherals on remote system buses.
 
-Figure B1-1 shows an example memory hierarchy.
+图B1-1展示了一个内存架构体系的例子
 
 ![ARM_ARM_B_1_1.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_B_1_1.PNG)
 
@@ -567,10 +567,8 @@ For architecture details on the L1 cache see [Chapter B6 Caches and Write Buffer
 
 <h2 id="B1.4">B1.4 L2 Cache</h2>
 
-L1 caches are always tightly coupled to the core, but L2 caches can be either:
+L1 缓存总是和内核紧密相关，但是L2缓存既可以与内核紧密相关也可以实现为系统总线上的外设映射的内存:
 
-* tightly coupled to the core
-* implemented as memory mapped peripherals on the system bus.
 
 A recommended minimum set of L2 cache commands is defined for configuration and control. Closely-coupled L2 caches must be managed through the System Control Coprocessor. It is IMPLEMENTATION DEFINED whether they use virtual or physical addresses for control functions. Memory mapped L2 caches must use physical address based control.
 
@@ -655,55 +653,386 @@ From ARMv6, load and store exclusive instructions (LDREX and STREX) are the pref
 
 <h1 id="B2">B2 内存序模型</h1>
 
-<h1 id="B4">B4 内存序模型</h1>
+<h2 id="B2.1">B2.1 关于内存序模型</h2>
 
-This chapter describes the Virtual Memory System Architecture (VMSA) based on a Memory ManagementUnit (MMU). It contains the following sections:
+The architecture prior to ARMv6 did not attempt to define the acceptable memory ordering of explicit memory transactions, describing the regions of memory according to the hardware approaches that had previously been used to implement such memory systems. Thus regions of memory had been termed as being one of Write-Through Cacheable, Write-Back Cacheable, Non-Cacheable Bufferable or Non-Cacheable, Non-Bufferable. These terms are based on the previous hardware implementations of cores and the exact properties of the memory transactions could not be rigorously inferred from the memory names. Implementations have chosen to interpret these names in different ways, leading to potentially incompatible uses.
+
+ARMv6之前的架构没有定义显式内存事务可接受的内存序，而是根据之前被用来实现此类内存系统的硬件方法描述内存区域。因而，内存区域可以分为Write-Through可缓存的，Write-Back可缓存的，非缓存非缓冲的，非缓存的，或非缓冲的。这些术语是基于以前内核硬件实现的，
+
+In a similar manner, the order in which memory accesses could be presented to memory was not defined,and in particular there was no definition of what order could be relied upon by an observer of the memory transactions generated by a processor. As implementations and systems become more complicated, these undefined areas of the architecture move from being simply based on a standard default to having the potential of presenting significant incompatibilities between different implementations; at processor core and system level.
+
+ARMv6 introduces a set of memory types - Normal, Device, and Strongly Ordered - with memory access properties defined to fit in a largely backwards compatible manner to the defacto meanings of the original memory regions. A potential incompatibility has been introduced with the need for a software polling policy when it is necessary for the program to be aware that memory accesses to I/O space have completed, and all side effects are visible across the whole system. This reflects the increasing difficulty of ensuring linkage between the completion of memory accesses and the execution of instructions within a complex high-performance system.
+
+A shared memory attribute to indicate whether a region of memory is shared between multiple processors (and therefore requires an appearance of cache transparency in an ordering model) is also introduced. Implementations remain free to choose the mechanisms to implement this functionality.
+
+The key issues with the memory order model are slightly different depending on the target audience:
+
+* for software programmers, the key factor is that side effects are only architecturally visible after software polling of a location that indicates that it is safe to proceed。
+
+* for silicon Implementors, the Strongly Ordered and Device memory attributes defined in this chapter place certain restrictions on the system designer in terms of what they are allowed to build, and when to indicate completion of a transaction.
+
+Additional attributes and behaviors relate to the memory system architecture. These features are defined in other areas of this manual:
+
+* Virtual memory systems based on an MMU described in Chapter [B4 虚拟内存系统架构](#B4).
+* Protected memory systems based on an MPU described in Chapter B5 Protected Memory System Architecture.
+* Caches and write buffers described in Chapter B6 Caches and Write Buffers.
+* Tightly Coupled Memory (TCM) described in Chapter B7 Tightly Coupled Memory
+
+Some attributes are described in relation to an MMU for ARMv6. In general, these can also be applied to an MPU based system.
+
+<h2 id="B2.4">B2.4 ARMv6内存属性</h2>
+
+ARMv6架构定义了一组属性，这些属性反映了系统内存映射关系中所有的内存和设备特征。也将内存区域的访问顺序定义为了内存属性。
+
+描述内存区域，有3个互斥的主内存类型：
+
+* 正常内存
+* 设备内存
+* 强序内存
+
+正常内存具有下面的特性：
+
+* 可以重复写，没有任何副作用
+* 重复的读操作，返回最后一个写入的读取位置的值
+* 如果读写被中断，可以重新启动
+* 多字节访问不需要是原子的，且能够重新操作
+* 支持未对齐访问
+* 在访问目标系统内存之前，读写操作可以被合并
+* 读操作可以预取附加的内存位置，并且没有副作用
+
+通常情况下，系统外设（I/O）遵守不同的访问规则；在ARMv6可以被定义为强序或设备内存。I/O访问的例子有：
+
+* 可以连续读写队列值的FIFO
+* 中断控制器的寄存器，访问可以用作改变控制器本身状态的中断确认
+* 内存控制器配置寄存器，用于设置正常内存区域的时序（正确性）
+* 内存映射的外围设备，其中访问这样的内存区域会在系统内造成副作用。
+
+为了保证系统的正确性，访问规则比正常内存的要更为严格：
+
+*  读写会有副作用
+*  读写操作不能被重复
+*  必须维护读写事务的编号，大小和顺序
+
+另外，共享属性主要是针对多核系统的定义，如果被指定为共享，那就是多核共享这块内存，如果指定为非共享，就是某个内核独享。比如，具有DMA功能的智能外设。
+
+表B2-2 对内存属性做了一个总结
+
+| 内存基本类型|共享属性|其它属性|描述|
+|----------|----------|----------|----------|
+| 强序        | -      | -        | 所有对强序内存的访问都是按程序顺序执行的。所有的强序访问都被假定为共享的。|
+| 设备序      | 共享    | -        | 被设计用于多个内核共享访问映射为外设的内存 |
+| 设备序      | 非共享  | -        | 被设计用来访问单个内核访问的映射为外设的内存 |
+| 正常序      | 共享    | 非缓存的/Write-Through缓存/Write-Back缓存 | 被设计用于处理几个内核共享的正常序内存 |
+| 正常序      | 非共享   | 非缓存的/Write-Through缓存/Write-Back缓存 | 被设计用于处理单个内核使用的正常序内存 |
+
+<h3 id="B2.4.1">B2.4.1 正常内存属性</h3>
+
+该属性在MMU中的每一页都有定义，可以进一步定义为共享或非共享，用来描述系统中使用的大部分内存。该属性就是用来描述正常内存的，这样的内存存储没有任何副作用。正常内存可以读写或者是只读的。
+
+对于可写的正常内存，除非改变物理地址的映射，否则：
+
+* 从某个特定的位置加载数据，将会为相同的处理器加载那个位置上最近存储的数据。
+* 如果从某个特定的位置加载2次，中间没有store的操作，将会返回相同的数据。
+
+对于只读的正常内存：
+
+* 如果从某个特定的位置加载2次，将会为每一次加载返回相同的数据。
+
+对于正常内存的访问符合内存序模型的`弱序模型`。对于`弱序模型`可以在描述内存序问题的标准文本中找到。可以参考[第2章 共享内存-多核的内存一致性模型](#A2)。
+
+
+<h4 id="B2.4.1.1">B2.4.1.1 非共享正常内存</h4>
+
+<h4 id="B2.4.1.2">B2.4.1.2 共享正常内存</h4>
+
+<h4 id="B2.4.1.3">B2.4.1.3 可缓存的Write-Through，可缓存的Write-Back和非可缓存的内存</h4>
+
+<h3 id="B2.4.2">B2.4.2 设备内存属性</h3>
+
+设备内存属性就是为，访问那个内存位置会产生副作用，或者为load操作返回的数据依赖加载的编号的内存位置而定义的属性。内存映射外设和I/O内存位置就是典型的设备内存的示例。MMU中的每一个页也都定义了设备属性。
+
+从处理器到设备内存的访问按照指令定义的大小和顺序进行。对于这些内存位置的访问数量是由程序指定的。当程序中只指定了一次访问的时候，硬件的实现不能重复访问这些区域，也就是说，访问是不可重启的。比如说，一种实现就是，为了允许中断抛弃很缓慢的访问，在中断的前后可以重复访问。像这种实现优化就不能对设备内存使用。
+
+> 通俗地讲，就是对于设备内存区域的访问，就是由软件支配的。硬件本身不会做操作。
+
+另外，设备内存位置也是不可缓存的。尽管可以缓存对设备内存的写入操作，但是，只有在保证访问的次数，顺序和大小正确的时候，才能合并。多次访问同一地址，不能改变访问的次数，在这种情况下不允许合并访问。
+
+访问这种设备内存，以便控制正常内存的时候，要求使用内存屏障保证正确的执行。一个实例就是，对内存控制器的配置寄存器进行编程，控制相关的内存。
+
+<h4 id="B2.4.2.1">B2.4.2.1 共享属性</h4>
+
+为MMU中的每一个页面定义了共享属性。这些区域被称为共享设备或非共享设备。
+
+标记为非共享设备的内存区域只能被单个内核访问。一个系统支持共享和非共享设备的示例是，为其私有外设支持一个私有总线，而系统外设位于主系统总线（共享）上。这样的系统可能对私有外设具有更可控的访问时间预测（比如，watchdog定时器或中断控制器）。
+
+<h3 id="B2.4.3">B2.4.3 强序内存属性</h3>
+
+MMU中的每一页都定义了强序属性。对强序内存的访问就像是，在访问的前后插入了一个DMB内存屏障一样。具体的参考[B2.6.1 数据内存屏障（DMB）-CP15寄存器7](B2.6.1)
+
+对强序内存的访问就是按照程序的指定行为进行访问。硬件的实现不能重复访问这些位置。
+
+标记为强序的内存，不能被缓存，总是被视为共享内存。
+
+<h3 id="B2.4.4">B2.4.4 内存访问的限制</h3>
+
+（略）。其实就是对上面通用说明没有覆盖的地方进行补充说明。
+
+<h3 id="B2.4.5">B2.4.5 向后兼容</h3>
+
+（略）。
+
+<h2 id="B2.6">B2.6 内存屏障</h2>
+
+内存屏障，是处理器应用到指令或指令序列上，用来同步CPU核的load/store指令退出的事件的。内存屏障用来消除load/store指令的竞争性或者冲洗掉前面的指令。ARMv6提供了3种内存屏障指令，位于系统控制协处理器中，用于实现本章描述的内存序模型，并要求这些指令在特权模式和用户模式必须可用。
+
+* DMB
+
+    数据内存屏障（DataMemoryBarrier）
+
+* DSB
+
+    数据同步屏障（DataSynchronizationBarrier，也称为DataWriteBarrier）
+
+* PrefetchFlush
+
+    预取指令冲洗
+
+这些指令可以单独使用，也可以结合Cache和内存管理操作一起使用，还可以只在特权模式下使用。在早期版本的中，对内存屏障的支持是在实现时由芯片厂商自定义的。
+
+显式内存屏障影响CPU发起的load/store指令对内存的读写操作。由L1 DMA读写，预取指令或硬件页表访问造成的读写操作不属于显式访问。
+
+<h3 id="B2.6.1">B2.6.1 数据内存屏障（DMB）-CP15寄存器7</h3>
+
+DMB的行为如下：
+
+* 前面的数据对后面的数据可见
+* DMB对CPU上执行的其它指令的顺序没有影响
+
+因此，DMB确保指令前后的显式操作顺序，而无法保证这些操作的完成是否有竞争性。
+
+<h3 id="B2.6.2">B2.6.2 数据同步屏障（DSB）-CP15寄存器7</h3>
+
+DSB就是一种特殊的内存屏障，它的行为如下：
+
+* 该指令之前的所有显式内存操作必须完成
+* 该指令之前的所有Cache，分支预测器和TLB表上的操作必须完成
+
+另外，在DSB指令后的所有指令必须在DSB指令完成后才能执行。
+
+
+<h3 id="B2.6.3">B2.6.3 预取指令冲洗-CP15寄存器7</h3>
+
+PrefetchFlush指令会冲洗处理器中的流水线，以便在该指令执行后，从Cache或者内存中获取流水线刷新后的所有指令。它保证了上下文切换时的操作的效果，比如，改变ASID（应用程序空间标识符）、完成TLB维护操作或分支预测器维护操作，以及在PrefetchFlush之前执行的所有对改变CP15寄存器的更改，对在该指令执行后获取的指令是可见的。
+
+另外，预取刷新操作确保在预取刷新操作之后按程序顺序出现的任何分支都被写入分支预测逻辑，并且上下文在预取刷新操作之后是可见的。这是确保正确执行指令流所必须的。
+
+<h1 id="B3">B3 系统控制协处理器</h1>
+
+关于协处理器CP15，全名是系统控制协处理器。包含以下内容：
+
+* 关于CP15
+* 寄存器
+* 寄存器0-ID code
+* 寄存器1-控制寄存器
+* 寄存器2-15
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
+<h1 id="B4">B4 虚拟内存系统架构</h1>
+
+本章描述基于MMU的虚拟内存系统架构，包括以下内容：
+
+* 关于VMSA
+* 内存访问序列
+* 内存访问控制
+* 内存区域属性
+* Aborts
+* 错误地址和错误状态寄存器
+* 硬件页表转换
+* 页表和微页表的支持
+* CP15寄存器
 
 <h2 id="B4.1">B4.1 关于VMSA</h2>
 
-Complex operating systems typically use a virtual memory system to provide separate, protected address spaces for different processes. Processes are dynamically allocated memory and other memory mapped system resources under the control of a Memory Management Unit (MMU). The MMU allows fine-grained control of a memory system through a set of virtual to physical address mappings and associated memory properties held within one or more structures known as `Translation Lookaside Buffers` (TLBs) within the MMU. The contents of the TLBs are managed through hardware translation lookups from a set of translation tables maintained in memory.
+复杂的操作系统，通常使用虚拟内存系统为不同的进程，提供独立的、受保护的地址空间。进程是在内存管理单元（MMU）的控制下，动态分配的内存和其它内存映射的系统资源。MMU通过自身持有的TLB（转换旁路缓冲，Translation Lookaside Buffers，在这儿虽然命名为一个buffer的样子，但其实它是一个Cache）中的虚拟地址到物理地址的映射和相关的内存属性对系统内存实现细粒度的控制。TLB的内容是通过对在内存中维护的一组地址转换表进行转换查找来管理的。
 
-The process of doing a full translation table lookup is called a `translation table walk`. It is performed automatically by hardware, and has a significant cost in execution time, at least one main memory access, and often two. TLBs reduce the average cost of a memory access by caching the results of translation table walks. Implementations can have a unified TLB (von Neumann architecture) or separate Instruction and Data TLBs (Harvard architecture).
+执行一次完整转换表查找的过程被称为`转换表遍历`，是由硬件自动完成的，在执行时间上有很大的开销，至少是一个主内存访问，或者两个的周期。通过缓存遍历转换表的结果，TLB减少了内存访问的平均时间成本。在硬件实现上，对于冯诺依曼结构，一个统一的TLB；对于哈佛结构，独立的指令和数据TLB。
 
-The VMSA has been significantly enhanced in ARMv6. This is referred to as VMSAv6. To prevent the need for a TLB invalidation on a context switch, each virtual to physical address mapping can be marked as being associated with a particular application space, or as global for all application spaces. Only global mappings and those for the current application space are enabled at any time. By changing the `Application Space IDentifier` (ASID), the enabled set of virtual to physical address mappings can be altered. VMSAv6 has added definitions for different memory types (see `ARMv6 memory attributes - introduction` on page B2-8),and other attributes (see `Memory access control` on page B4-8). For backwards compatibility there is an XP control bit in the System Control Coprocessor, CP15 register 1, as defined in Register 1: Control register on page B4-40.
+在ARMv6上，VMSA得到了显著的加强，称为VMSAv6版本。为了防止上下文切换时的TLB失效，将每一个虚拟地址到物理地址的映射与某一个进程空间、或全局空间关联起来。任意时刻，只有全局和当前进程的地址空间的映射被使能。通过改变ASID（应用空间ID），使能的虚拟到物理的地址映射集合可以被改变。VMSAv6添加了许多不同的内存类型的定义，请参考[ARMv6内存属性](#B2.4)和其它属性。
 
-The set of memory properties associated with each TLB entry includes:
 
-* Memory access permission control
+与每个TLB条目相关联的内存属性包括:
 
-    This controls whether a program has no-access, read-only access, or read/write access to the memory area. When an access is not permitted, a memory abort is signaled to the processor. The level of access allowed can be affected by whether the program is running in User mode, or a privileged mode, and by the use of domains.
+* 内存访问权限控制
 
-* Memory region attributes
+    它控制程序对内存区域的读写访问权限，非、只读、读/写。当不允许访问时，将向处理器发出内存中止的信号。允许的访问级别可能受到程序是在用户模式还是特权模式下运行以及使用域的影响。
 
-    These describe properties of a memory region. Examples include device (VMSAv6), non-cacheable, write-through, and write-back.
+* 内存区域的属性
 
-* Virtual-to-physical address mapping
+    描述了内存的属性，比如设备内存(VMSAv6)，不可缓存的，直写（write-through）和后写（write-back）
 
-    An address generated by the ARM® processor is called a virtual address. The MMU allows this address to be mapped to a different physical address. This physical address identifies which main memory location is being accessed.
+* 虚拟到物理地址的映射
 
-    This can be used to manage the allocation of physical memory in many ways. For example, it can be used to allocate memory to different processes with potentially conflicting address maps, or to allow an application with a sparse address map to use a contiguous region of physical memory.
+    ARM处理器产生的地址称为虚拟地址。 MMU允许可以被映射到不同的物理地址。物理地址标识正在访问的内存地址。这可以导致多种方式管理物理内存的分配。这可以用于以多种方式管理物理内存的分配。例如，它可以用于将内存分配给具有潜在冲突地址映射的不同进程，或者允许具有稀疏地址映射的应用程序使用物理内存的连续区域。
 
-> Because of the Fast Context Switch Extension (FCSE, see Chapter B8), all references to virtual address in this chapter are made to the modified virtual address that it generates, except where explicitly stated otherwise. The virtual address and modified virtual address are equal when the FCSE mechanism is disabled (PID == zero). The FCSE is only present in ARMv6 for backwards compatibility. Its use in new systems is deprecated.
+> 由于快速上下文切换扩展(FCSE，参见[B8章](#B8))，本章中对虚拟地址的所有引用都指修改过的虚拟地址，除非另有明确说明。当FCSE被禁止的时候，虚拟地址和修改后的虚拟地址是相等的。FCSE存在仅仅是为了向后兼容，在新系统的设计中被废弃。
 
-B4.2.1 TLB match process
+<h3 id="B4.1.1">B4.1.1 VMSAv6引入的主要变化</h3>
 
-Each TLB entry contains a modified virtual address, a page size, a physical address, and a set of memory properties. It is marked as being associated with a particular application space, or as global for all application spaces. Where an ASID is used, register 13 in CP15 determines the currently selected application space.
+The following list summarizes the changes introduced in VMSAv6:
 
-A TLB entry matches if bits 31-N of the modified virtual address match, and it is either marked as global, or the ASID matches the current ASID, where N is log2 of the page size for the TLB entry.
+* Entries can be associated with an application space identifier, or marked as a global mapping. This eliminates the requirement for TLB flushes on most context switches.
+* Access permissions extended to allow both privileged read only, and privileged/user read-only modes to be simultaneously supported. The use of the System (S) and ROM (R) bits to control access permission determination are only supported for backwards compatibility.
+* Memory region attributes to mark pages shared by multiple processors.
+* The use of Tiny pages, and the fine page table second level format is now obsolete.
 
-If two or more entries match at any time (including global and ASID specific entries), the behavior of a TLB is UNPREDICTABLE. The operating system must ensure that no more than one TLB entry can match at any time, typically by flushing its TLBs when global page mappings are changed.
+<h2 id="B4.2">B4.2 内存访问序列</h2>
 
-A TLB can store entries based on the following block sizes:
+When the ARM CPU generates a memory access, the MMU performs a lookup for a mapping for the requested modified virtual address in a TLB. From VMSAv6 this also includes the current ASID. Implementations can use either Harvard or unified TLBs. If the implementation has separate instruction and data TLBs, it uses:
 
-* Supersections consist of 16MB blocks of memory
-* Sections consist of 1MB blocks of memory
-* Large pages consist of 64KB blocks of memory
-* Small pages consist of 4KB blocks of memory.
+* the instruction TLB for an instruction fetch
+* the data TLB for all other accesses.
 
-> The use of Tiny (1KB) pages is not supported in VMSAv6.
+If no global mapping, or mapping for the currently selected ASID (VMSAv6), for the modified virtual address can be found in the appropriate TLB then a translation table walk is automatically performed by hardware.
+
+
+
+<h3 id="B4.2.1">B4.2.1 TLB命中过程</h3>
+
+每一个TLB项包含一个修改后的虚拟地址，页大小，和物理地址，以及一组内存属性。通过ASID，它被指向某一进程空间，或全局空间。通过CP15的寄存器13选择当前选择的进程空间。
+
+如果MVA的第31~N位和TLB项匹配，就说明要么是全局的，要么ASID与当前的ASID匹配。其中，N是TLB项的页面大小的log2.
+
+在任何时候，如果超过2项命中，则TLB的行为不可预知（UNPREDICTABLE）。操作系统必须保证至多1个TLB项命中，通常是通过更改全局页面映射时通过刷新其TLB来保证。
+
+TLB可以存储的项数取决于内存的块大小：
+
+* 超级扇区，16M的内存块大小
+* 扇区，1M的内存块大小
+* 大页面，64K内存块大小
+* 小页，4K的内存块大小
+
+> 微页的使用(1KB)在VMSAv6架构中不支持
+
+<h2 id="B4.7">B4.7 硬件页表转换</h2>
+
+MMU支持以页或扇区访问内存：
+
+* 超级扇区，16M的内存块大小
+* 扇区，1M的内存块大小
+* 大页，64K内存块大小
+* 小页，4K的内存块大小
+* 微页，1K的内存块大小（VMSAv6不支持）
+
+内存中的转换表有2级：
+
+* 一级转换表
+
+    持有扇区和超级扇区转换，并且指向二级转换表
+
+* 二级转换表
+
+    持有大、小页的转换。
+
+The MMU translates modified virtual addresses generated by the CPU into physical addresses to access external memory, and also derives and checks the access permission. Translations occur as the result of a TLB miss, and start with a first-level fetch. A section-mapped access only requires a first-level fetch, whereas a page-mapped access also requires a second-level fetch.
+
+
+
+协处理器CP15的EE位控制查找的页表的大小端格式。
+
+> As the fine page table format and support for tiny pages is now OBSOLETE, definition of these features has been moved into a separate section, Fine page tables and support of tiny pages on page B4-35.
+
+<h3 id="B4.7.1">B4.7.1 转译表基地址</h3>
+
+当TLB没有命中时，就会发生转译过程。转译表基地址寄存器（TTBR，CP15的寄存器2），持有一级转译表的物理基地址。
+
+VMSAv6之前，存在一个简单的TTBR。只有TTBR的位\[31:14\]有意义，其它位都为0。因此，一级页表以16K为边界。
+
+VMSAv6引入了一个附加的TTBR，称为TTBR1。现在就有3个相关寄存器，TTBR0，TTBR1和TTBCR。如果发生TLB未命中，MVA的高bit位决定了是否使用一级转换表基地址还是二级转换表基地址。具体参考[VMSAv6中的页表转换](#4.7.3)
+
+TTBR1预计将用于操作系统和I/O地址，不会基于上下文发生改变。TTBR0预计将用于与进程有关的地址空间。当TTBCR被设为0，所有使用TTBR0的方法都将与之前的版本兼容。TTBR1表的大小是16K，但是TTBR0表的大小范围从128字节~16K，这依赖于TTBCR的N值，N可以取值0~7。所有的转译表必须自然对齐。
+
+VMSAv6 还引入了一个控制位，在TTBR的最低有效位，具体查看[VMSAv6中的页表转换](#4.7.3)。
+
+<h3 id="B4.7.2">B4.7.2 一级提取</h3>
+
+将转换表基地址寄存器（Translation Table Base register）的位\[31:14\]，和MVA的位[31:20]以及2个值为0的位，组成一个32位的物理地址，如图B4-3所示。通过这个物理地址就可以选出一个4字节的转换表里的一项，也就是一个扇区的一级描述符或二级页表的指针。
+
+![ARM_ARM_B_4_3.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_B_4_3.PNG)
+
+<h3 id="B4.7.3">B4.7.3 VMSAv6的页表转换</h3>
+
+VMSAv6 supports two page table formats:
+
+* A backwards-compatible format supporting sub-page access permissions. These have been extended so certain page table entries support extended region types.
+* A new format, not supporting sub-page access permissions, but with support for the VMSAv6 features. These features are:
+    - extended region types
+    - global and process specific pages
+    - more access permissions
+    - marking of shared and nonshared regions
+    - marking of execute-never regions.
+
+Subpages are described in Second-level descriptor - Coarse page table format on page B4-31.
+
+<h3 id="B4.7.4">B4.7.4 一级描述符</h3>
+
+一级表中的每一项都是一个描述符，描述了与其关联的1M大小的修改后虚拟地址（MVA）是怎样的被映射的。一级页表的每一项中的位\[1:0\]决定了一级描述符的类型：
+
+* 如果位\[1:0\] 等于0b00，相关的虚拟地址没有映射的物理地址，试图发起这样的访问，会产生[转译错误](#B4.5)。位\[31:2\]由软件使用，表示自己的目的，而硬件在这时候会自动忽略这些位。恰当的时候，位\[31:2\]会继续取得对描述符的访问权限。
+
+* 如果位\[1:0\] = 0b10，表示该项是一个与其相关的MVA的扇区描述符。
+
+* 如果位\[1:0\] = 0b01，给出一个粗二级表的物理地址，指定与其相关的1M大小的MVA地址范围如何被映射。粗二级表每个表的大小为1K，可以映射大页和小页。
+
+* 如果位\[1:0\] = 0b11，给出一个细二级表的物理地址（VMSAv6之前），VMSAv6保留。
+
+表B4-1 一级描述符格式(VMSAv6, 子页使能)
+![ARM_ARM_BT_4_1.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_BT_4_1.PNG)
+
+表B4-2 一级描述符格式 (VMSAv6,子页禁用))
+![ARM_ARM_BT_4_2.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_BT_4_2.PNG)
+
+<h3 id="B4.7.5">B4.7.5 扇区和超级扇区</h3>
+
+如果bit\[1:0\]等于0b10，一级描述符就是一个1M或16M的扇区描述。超级扇区是可选的。
+
+![ARM_ARM_B_4_4.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_B_4_4.PNG)
+
+
+<h3 id="B4.7.6">B4.7.6 粗页表描述符</h3>
+
+如果一级描述符是一个粗页表描述符，各个域具有下面的意义：
+
+| 位域 | 功能描述 |
+| ---- | ------- |
+| Bits[1:0]   | 标识描述符的类型（0b01表示粗页表描述符） |
+| Bits[4:2]   | 未定义，SBZ |
+| Bits[8:5]   | domain域，指明16种可能的domain域 |
+| Bit[9]      | 未定义 |
+| Bits[31:10] | 是一个页表基地址，指向粗二级页表 |
+
+![ARM_ARM_B_4_5.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_B_4_5.PNG)
+
+<h2 id="B4.9">B4.9 CP15</h2>
+
+<h1 id="B5">B5 受保护的内存系统架构（PMSA）</h1>
+
+用一张图进行阐述
+
+![ARM_ARM_B_5_1.PNG](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/arm-architecture/arm.com.sites/images/ARM_ARM_B_5_1.PNG)
 
 
 <h1 id="B6">B6 Cache和Write buffer</h1>
+
+本章介绍Cache和Write buffer，它们对于基于MMU的内存系统和基于MPU的内存系统都是常用的概念。本章包含以下内容：
+
+* 关于Cache和Write buffer
+* Cache结构
+* Cache的类型
+* L1 Cache
+* 其它级别的Cache的考虑
+* CP15
+
 
 <h1 id="B7">B7 紧耦合内存-TCM</h1>
 
