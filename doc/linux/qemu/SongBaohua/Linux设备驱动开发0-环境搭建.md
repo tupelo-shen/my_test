@@ -77,6 +77,10 @@ ubuntu安装方法：
 
     make CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm vexpress_defconfig
 
+个性化配置
+
+    make CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm menuconfig
+
 编译内核：
 
     make CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm
@@ -145,7 +149,7 @@ ubuntu安装方法：
 
 1. 创建rootfs目录，根文件系统内的文件全部放到其中。
 
-        mkdir -p rootfs/{dev,etc/init.d,lib}
+        mkdir -p rootfs/{bin,dev,etc/init.d,lib,proc,sbin,sys,usr,mnt,tmp,var}
 
 2. 拷贝busybox到根目录下
 
