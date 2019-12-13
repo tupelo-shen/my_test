@@ -1,16 +1,12 @@
 <h1 id="0">0 目录</h1>
 
-* [1 内核编译](#1)
-    - [1.1 配置内核](#1.1)
-    - [1.2 构建系统](#1.2)
-* [2 主机编译和加载](#2)
-* [3 目标板编译和加载](#3)
+* [1 配置内核](#1)
+* [2 构建系统](#2)
+* [3 实例](#3)
 
 ---
 
-<h1 id="1">1 内核编译</h1>
-
-<h2 id="1.1">1.1 配置内核</h2>
+<h1 id="1">1 配置内核</h1>
 
 1. 配置内核。在编译内核之前，必须根据实际情况对内核的各个模块作出选择。
 
@@ -20,7 +16,7 @@
 
 2. 配置内核的工具是基于Kconfig的机制完成的，也就是在每一级的目录添加Kconfig文件，对源代码的选择作出描述或者配置。相当于，在每一级目录下添加了条件编译。
 
-<h2 id="1.2">1.2 构建系统</h2>
+<h1 id="2">2 构建系统</h1>
 
 基于上一小节的理解，为了将程序添加到Linux内核中，需要作下面工作：
 
@@ -30,7 +26,7 @@
 
 关于构建系统的具体语法可以参考[Linux设备驱动开发3-Kconfig构建系统]()。
 
-<h2 id="1.3">1.3 实例</h2>
+<h1 id="3">3 实例</h1>
 
 我们还是以hello.c文件作为示例，看看详细的添加一个模块程序的步骤。
 
@@ -85,20 +81,102 @@
 
         endmenu
 
+4. 修改drivers/目录下的Makefile
 
-编译结果：
+    在文件的最后，添加如下一行代码：
 
-    OBJCOPY arch/arm/boot/Image
-    Kernel: arch/arm/boot/Image is ready
-    Kernel: arch/arm/boot/Image is ready
-    GZIP    arch/arm/boot/compressed/piggy.gzip
-    AS      arch/arm/boot/compressed/piggy.gzip.o
-    LD      arch/arm/boot/compressed/vmlinux
-    OBJCOPY arch/arm/boot/zImage
-    Kernel: arch/arm/boot/zImage is ready
-    Building modules, stage 2.
-    MODPOST 6 modules
-    CC      drivers/test/hello.mod.o
-    LD [M]  drivers/test/hello.ko
+        obj-$(CONFIG_TEST)      += test/
 
+5. 修改drivers/目录下的Kconfig
+
+    在文件的最后，添加如下一行代码：
+
+        source "drivers/test/Kconfig"
+
+6. 然后执行,
+
+        make CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm menuconfig
+
+    进入如下所示的界面中选择我们想要的模块。
+
+    ![2-1](https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/SongBaohua/images/2-1.PNG)
+
+7. 保存配置结果，进行编译
+
+        make CROSS_COMPILE=arm-linux-gnueabi- ARCH=arm
+
+    编译结果：
+
+        OBJCOPY arch/arm/boot/Image
+        Kernel: arch/arm/boot/Image is ready
+        Kernel: arch/arm/boot/Image is ready
+        GZIP    arch/arm/boot/compressed/piggy.gzip
+        AS      arch/arm/boot/compressed/piggy.gzip.o
+        LD      arch/arm/boot/compressed/vmlinux
+        OBJCOPY arch/arm/boot/zImage
+        Kernel: arch/arm/boot/zImage is ready
+        Building modules, stage 2.
+        MODPOST 6 modules
+        CC      drivers/test/hello.mod.o
+        LD [M]  drivers/test/hello.ko
+
+从上面的结果可以看出，hello.ko内核模块已经生成。将编译的内核和模块与rootfs根文件系统一起加载到开发板上运行，具体的步骤可以参考[Linux设备驱动开发0-环境搭建]()。
+
+制作完成后，加载到开发板，运行。代码执行结果：
+
+    / # insmod /lib/modules/4.4.203/kernel/drivers/test/hello.ko
+    Hello, world
+    / # rmmod hello.ko
+    Goodbye, cruel world
+    / #
+
+# rcS文件
+
+    PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin:
+
+    runlevel=S
+    prevlevel=N
+    umask 022
+    export PATH runlevel prevlevel
+
+    # Trap CTRL-C &c only in this shell so we can interrupt subprocesses.
+    trap ":" INT QUIT TSTP
+    /bin/hostname qemu-a9-test
+
+    /bin/mount -n -t proc none /proc
+    /bin/mount -n -t sysfs none /sys
+    # /bin/mount -n -t usbfs none /proc/bus/usb
+    /bin/mount -t ramfs none /dev
+
+    echo /sbin/mdev > /proc/sys/kernel/hotplug
+    /sbin/mdev -s
+    # /bin/hotplug
+
+    # mounting file system specified in /etc/fstab
+    mkdir -p /dev/pts
+    mkdir -p /dev/shm
+    /bin/mount -n -t devpts none /dev/pts -o mode=0622
+    /bin/mount -n -t tmpfs tmpfs /dev/shm
+    /bin/mount -n -t ramfs none /tmp
+    /bin/mount -n -t ramfs none /var
+
+    mkdir -p /var/empty
+    mkdir -p /var/log
+    mkdir -p /var/lock
+    mkdir -p /var/run
+    mkdir -p /var/tmp
+
+    # /sbin/hwclock -s -f /dev/rtc
+    syslogd
+
+    # /etc/rc.d/init.d/netd start
+    # echo " " > /dev/tty1
+    # echo "Starting networking..." > /dev/tty1
+    # mkdir /mnt/disk
+    # mount -t yaffs2 /dev/mtdblock3 /mnt/disk
+    # echo V > /dev/watchdog
+    # /sbin/ifconfig lo 127.0.0.1
+    # insmod /lib/modules/s3c2416_gpio.ko
+    # /bin/sleep 2 dmesg -n 1
+    # exec /usr/etc/rc.local
 

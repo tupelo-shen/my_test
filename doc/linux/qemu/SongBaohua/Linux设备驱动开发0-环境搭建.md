@@ -161,10 +161,16 @@ ubuntu安装方法：
 
 4. 创建4个tty端终设备
 
-        sudo mknod rootfs/dev/tty1 c 4 1
-        sudo mknod rootfs/dev/tty2 c 4 2
-        sudo mknod rootfs/dev/tty3 c 4 3
-        sudo mknod rootfs/dev/tty4 c 4 4
+        sudo mknod rootfs/dev/tty1      c 4 1
+        sudo mknod rootfs/dev/tty2      c 4 2
+        sudo mknod rootfs/dev/tty3      c 4 3
+        sudo mknod rootfs/dev/tty4      c 4 4
+        sudo mknod rootfs/dev/console   c 5 1
+        sudo mknod rootfs/dev/null      c 1 3
+
+5. 安装内核模块
+
+        make modules_install ARCH=arm INSTALL_MOD_PATH=../../rootfs  //把.ko文件copy到lib/modules中
 
 <h2 id="7.4">7.4 制作rootfs文件系统镜像</h2>
 
