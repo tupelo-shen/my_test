@@ -50,7 +50,7 @@ qemu版本：
 
 方法1: 直接下载某一个版本的内核
 
-    wgets https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.203.tar.xz
+    wget https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.203.tar.xz
 
 方法2： 获取最新的内核版本
 
@@ -88,6 +88,28 @@ ubuntu安装方法：
 <h1 id="5">5 编译安装QEMU</h1>
 
 具体的QEMU安装方法可以参考另一篇文章-[Ubuntu-16.04编译Qemu](https://blog.csdn.net/shenwanjiang111/article/details/82898119)
+
+* ERROR: glib-2.48 gthread-2.0 is required to compile QEMU
+
+    1. 执行
+
+        sudo apt-get install libglib2.0-dev
+
+    2. 如果报下面的错
+
+        The following packages have unmet dependencies:
+         libglib2.0-dev : Depends: libglib2.0-0 (= 2.48.0-1ubuntu4) but 2.48.2-0ubuntu4.1 is to be installed
+                          Depends: libglib2.0-bin (= 2.48.0-1ubuntu4) but 2.48.2-0ubuntu4.1 is to be installed
+                          Depends: zlib1g-dev but it is not going to be installed
+        E: Unable to correct problems, you have held broken packages.
+
+    3. 逐个执行下面的代码
+
+        sudo apt-get install libglib2.0-0=2.48.0-1ubuntu4
+        sudo apt-get install libglib2.0-bin=2.48.0-1ubuntu4
+        sudo apt-get install zlib1g= 1:1.2.8.dfsg-2ubuntu4
+
+    4. 然后再执行1
 
 <h1 id="6">6 测试QEMU和内核</h1>
 
