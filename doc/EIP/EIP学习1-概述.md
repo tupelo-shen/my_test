@@ -35,3 +35,4 @@
 * [EtherNet/IP developers guide from ODVA](http://www.odva.org/Portals/0/Library/Publications_Numbered/PUB00213R0_EtherNetIP_Developers_Guide.pdf)
 * ["EtherNet/IP™ – CIP on Ethernet Technology" (PDF)](https://www.odva.org/Portals/0/Library/Publications_Numbered/PUB00138R6_Tech-Series-EtherNetIP.pdf). ODVA. Retrieved 6 July 2016.
 * ["OpENer EtherNet/IP stack"](https://github.com/EIPStackGroup/OpENer). Retrieved 5 May 2017.
+* ["The instruction to OpENer EtherNet/IP stack"](http://eipstackgroup.github.io/OpENer/index.html).
