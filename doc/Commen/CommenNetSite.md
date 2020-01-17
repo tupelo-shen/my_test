@@ -10,3 +10,7 @@
 # 搜索引擎
 
 1. [dogedoge](https://www.dogedoge.com/),一个号称`注重隐私并且真正实用`的百度替代方案。
+
+# 个人学习网站
+
+1. [https://sketch2sky.com/](https://sketch2sky.com/)
