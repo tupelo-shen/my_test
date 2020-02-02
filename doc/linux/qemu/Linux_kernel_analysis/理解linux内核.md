@@ -429,29 +429,355 @@ The Unix operating system design is centered on its filesystem, which has severa
 
 <h3 id="1.5.1">1.5.1 文件</h3>
 
-A Unix file is an information container structured as a sequence of bytes; the kernel
-does not interpret the contents of a file. Many programming libraries implement
-higher-level abstractions, such as records structured into fields and record addressing
-based on keys. However, the programs in these libraries must rely on system calls
-offered by the kernel. From the user’s point of view, files are organized in a treestructured
-namespace, as shown in Figure 1-1.
+A Unix file is an information container structured as a sequence of bytes; the kernel does not interpret the contents of a file. Many programming libraries implement higher-level abstractions, such as records structured into fields and record addressing based on keys. However, the programs in these libraries must rely on system calls offered by the kernel. From the user’s point of view, files are organized in a tree-structured namespace, as shown in Figure 1-1.
+
+Unix文件是由字节序列构成的信息容器；内核不解释文件的内容。许多编程库在其上实现了更高级的抽象，比如record结构，由基于键值对的方式构成。但是，这些程序还是依赖于内核提供的系统调用接口。从用户的观点来看，文件就像组织在一个树形结构中，如图1-1所示。
+
+<img id="Figure_1-1" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_1_1.PNG">
+
+图1-1 目录树示例
+
+All the nodes of the tree, except the leaves, denote directory names. A directory node
+contains information about the files and directories just beneath it. A file or directory
+name consists of a sequence of arbitrary ASCII characters,* with the exception of
+/ and of the null character \0. Most filesystems place a limit on the length of a filename,
+typically no more than 255 characters. The directory corresponding to the
+root of the tree is called the root directory. By convention, its name is a slash (/).
+Names must be different within the same directory, but the same name may be used
+in different directories.
+
+Unix associates a current working directory with each process (see the section “The
+Process/Kernel Model” later in this chapter); it belongs to the process execution context,
+and it identifies the directory currently used by the process. To identify a specific
+file, the process uses a pathname, which consists of slashes alternating with a
+sequence of directory names that lead to the file. If the first item in the pathname is
+a slash, the pathname is said to be absolute, because its starting point is the root
+directory. Otherwise, if the first item is a directory name or filename, the pathname
+is said to be relative, because its starting point is the process’s current directory.
+
+While specifying filenames, the notations “.” and “..” are also used. They denote the
+current working directory and its parent directory, respectively. If the current working
+directory is the root directory, “.” and “..” coincide.
 
 
 <h3 id="1.5.2">1.5.2 硬链接和软链接</h3>
 
+A filename included in a directory is called a file hard link, or more simply, a link.
+The same file may have several links included in the same directory or in different
+ones, so it may have several filenames.
+
+The Unix command:
+
+    $ ln p1 p2
+
+is used to create a new hard link that has the pathname `p2` for a file identified by the pathname p1.
+
+Hard links have two limitations:
+
+* It is not possible to create hard links for directories. Doing so might transform the directory tree into a graph with cycles, thus making it impossible to locate a file according to its name.
+
+* Links can be created only among files included in the same filesystem. This is a serious limitation, because modern Unix systems may include several filesystems located on different disks and/or partitions, and users may be unaware of the physical divisions between them.
+
+To overcome these limitations, soft links (also called symbolic links) were introduced
+a long time ago. Symbolic links are short files that contain an arbitrary pathname of
+another file. The pathname may refer to any file or directory located in any filesystem;
+it may even refer to a nonexistent file.
+
+The Unix command:
+
+    $ ln -s p1 p2
+
+creates a new soft link with pathname `p2` that refers to pathname `p1`. When this command
+is executed, the filesystem extracts the directory part of `p2` and creates a new
+entry in that directory of type symbolic link, with the name indicated by `p2`. This new
+file contains the name indicated by pathname `p1`. This way, each reference to `p2` can
+be translated automatically into a reference to `p1`.
+
 <h3 id="1.5.3">1.5.3 文件类型</h3>
+
+Unix files may have one of the following types:
+
+* Regular file
+* Directory
+* Symbolic link
+* Block-oriented device file
+* Character-oriented device file
+* Pipe and named pipe (also called FIFO)
+* Socket
+
+The first three file types are constituents of any Unix filesystem. Their implementation is described in detail in Chapter 18.
+
+Device files are related both to I/O devices, and to device drivers integrated into the kernel. For example, when a program accesses a device file, it acts directly on the I/O device associated with that file (see [Chapter 13](#13)).
+
+Pipes and sockets are special files used for interprocess communication (see the section “Synchronization and Critical Regions” later in this chapter; also see [Chapter 19](#19)).
 
 <h3 id="1.5.4">1.5.4 文件描述符和Inode</h3>
 
+Unix makes a clear distinction between the contents of a file and the information
+about a file. With the exception of device files and files of special filesystems, each
+file consists of a sequence of bytes. The file does not include any control information,
+such as its length or an end-of-file (EOF) delimiter.
+
+All information needed by the filesystem to handle a file is included in a data structure
+called an inode. Each file has its own inode, which the filesystem uses to identify
+the file.
+
+While filesystems and the kernel functions handling them can vary widely from one
+Unix system to another, they must always provide at least the following attributes,
+which are specified in the POSIX standard:
+
+* File type (see the previous section)
+* Number of hard links associated with the file
+* File length in bytes
+* Device ID (i.e., an identifier of the device containing the file)
+* Inode number that identifies the file within the filesystem
+* UID of the file owner
+* User group ID of the file
+* Several timestamps that specify the inode status change time, the last access time, and the last modify time
+* Access rights and file mode (see the next section)
+
 <h3 id="1.5.5">1.5.5 访问权限和文件模式</h3>
 
+The potential users of a file fall into three classes:
+
+* The user who is the owner of the file
+* The users who belong to the same group as the file, not including the owner
+* All remaining users (others)
+
+There are three types of access rights—`read`, `write`, and `execute`—for each of these three classes. Thus, the set of access rights associated with a file consists of nine different binary flags. Three additional flags, called `suid` (Set User ID), `sgid` (Set Group ID), and `sticky`, define the file mode. These flags have the following meanings when applied to executable files:
+
+* suid
+    
+    A process executing a file normally keeps the User ID (UID) of the process owner. However, if the executable file has the suid flag set, the process gets the UID of the file owner.
+
+* sgid
+    
+    A process executing a file keeps the user group ID of the process group. However, if the executable file has the sgid flag set, the process gets the user group ID of the file.
+
+* sticky
+    
+    An executable file with the sticky flag set corresponds to a request to the kernel to keep the program in memory after its execution terminates.
+
+When a file is created by a process, its owner ID is the UID of the process. Its owner user group ID can be either the process group ID of the creator process or the user group ID of the parent directory, depending on the value of the sgid flag of the parent directory.
+
+<h3 id="1.5.6">1.5.6 操作文件的系统调用</h3>
+
+When a user accesses the contents of either a regular file or a directory, he actually
+accesses some data stored in a hardware block device. In this sense, a filesystem is a
+user-level view of the physical organization of a hard disk partition. Because a process
+in User Mode cannot directly interact with the low-level hardware components,
+each actual file operation must be performed in Kernel Mode. Therefore, the Unix
+operating system defines several system calls related to file handling.
+
+All Unix kernels devote great attention to the efficient handling of hardware block
+devices to achieve good overall system performance. In the chapters that follow, we
+will describe topics related to file handling in Linux and specifically how the kernel
+reacts to file-related system calls. To understand those descriptions, you will need to
+know how the main file-handling system calls are used; these are described in the
+next section.
+
+<h4 id="1.5.6.1">1.5.6.1 打开文件</h4>
+
+Processes can access only “opened” files. To open a file, the process invokes the system call:
+
+    fd = open(path, flag, mode)
+
+The three parameters have the following meanings:
+
+* path
+
+    Denotes the pathname (relative or absolute) of the file to be opened.
+
+* flag
+    
+    Specifies how the file must be opened (e.g., read, write, read/write, append). It also can specify whether a nonexisting file should be created.
+
+* mode
+
+    Specifies the access rights of a newly created file.
+
+This system call creates an “open file” object and returns an identifier called a `file` descriptor. An open file object contains:
+
+* Some file-handling data structures, such as a set of flags specifying how the file has been opened, an offset field that denotes the current position in the file from which the next operation will take place (the so-called file pointer), and so on.
+
+* Some pointers to kernel functions that the process can invoke. The set of permitted functions depends on the value of the flag parameter.
+
+We discuss open file objects in detail in Chapter 12. Let’s limit ourselves here to describing some general properties specified by the POSIX semantics.
+
+* A file descriptor represents an interaction between a process and an opened file, while an open file object contains data related to that interaction. The same open file object may be identified by several file descriptors in the same process.
+
+* Several processes may concurrently open the same file. In this case, the filesystem assigns a separate file descriptor to each file, along with a separate open file object. When this occurs, the Unix filesystem does not provide any kind of synchronization among the I/O operations issued by the processes on the same file. However, several system calls such as `flock()` are available to allow processes to synchronize themselves on the entire file or on portions of it (see [Chapter 12](#12)).
+
+To create a new file, the process also may invoke the `creat()` system call, which is handled by the kernel exactly like `open()`.
+
+<h4 id="1.5.6.2">1.5.6.2 访问打开的文件</h4>
+<h4 id="1.5.6.3">1.5.6.3 关闭文件</h4>
+<h4 id="1.5.6.2">1.5.6.2 重命名和删除文件</h4>
+
 <h2 id="1.6">1.6 Unix内核综述</h2>
+
+Unix kernels provide an execution environment in which applications may run. Therefore, the kernel must implement a set of services and corresponding interfaces. Applications use those interfaces and do not usually interact directly with hardware resources.
+
+<h3 id="1.6.1">1.6.1 进程/内核模型</h3>
+
+As already mentioned, a CPU can run in either User Mode or Kernel Mode. Actually, some CPUs can have more than two execution states. For instance, the 80×86 microprocessors have four different execution states. But all standard Unix kernels use only Kernel Mode and User Mode.
+
+When a program is executed in User Mode, it cannot directly access the kernel data structures or the kernel programs. When an application executes in Kernel Mode, however, these restrictions no longer apply. Each CPU model provides special instructions to switch from User Mode to Kernel Mode and vice versa. A program usually executes in User Mode and switches to Kernel Mode only when requesting a service provided by the kernel. When the kernel has satisfied the program’s request, it puts the program back in User Mode.
+
+Processes are dynamic entities that usually have a limited life span within the system. The task of creating, eliminating, and synchronizing the existing processes is delegated to a group of routines in the kernel.
+
+The kernel itself is not a process but a process manager. The process/kernel model assumes that processes that require a kernel service use specific programming constructs called system calls. Each system call sets up the group of parameters that identifies the process request and then executes the hardware-dependent CPU instruction to switch from User Mode to Kernel Mode.
+
+Besides user processes, Unix systems include a few privileged processes called `kernel threads` with the following characteristics:
+
+* They run in Kernel Mode in the kernel address space.
+* They do not interact with users, and thus do not require terminal devices.
+* They are usually created during system startup and remain alive until the system is shut down.
+
+On a uniprocessor system, only one process is running at a time, and it may run
+either in User or in Kernel Mode. If it runs in Kernel Mode, the processor is executing
+some kernel routine. Figure 1-2 illustrates examples of transitions between User
+and Kernel Mode. Process 1 in User Mode issues a system call, after which the process
+switches to Kernel Mode, and the system call is serviced. Process 1 then resumes
+execution in User Mode until a timer interrupt occurs, and the scheduler is activated
+in Kernel Mode. A process switch takes place, and Process 2 starts its execution in
+User Mode until a hardware device raises an interrupt. As a consequence of the interrupt,
+Process 2 switches to Kernel Mode and services the interrupt.
+
+<img id="Figure_1-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_1_2.PNG">
+
+图1-2 用户模式和内核模式之间的转换
+
+Unix kernels do much more than handle system calls; in fact, kernel routines can be activated in several ways:
+
+* A process invokes a system call.
+* The CPU executing the process signals an exception, which is an unusual condition such as an invalid instruction. The kernel handles the exception on behalf of the process that caused it.
+* A peripheral device issues an interrupt signal to the CPU to notify it of an event such as a request for attention, a status change, or the completion of an I/O operation. Each interrupt signal is dealt by a kernel program called an interrupt handler. Because peripheral devices operate asynchronously with respect to the CPU, interrupts occur at unpredictable times.
+* A kernel thread is executed. Because it runs in Kernel Mode, the corresponding program must be considered part of the kernel.
+
+<h3 id="1.6.2">1.6.2 进程实现</h3>
+
+To let the kernel manage processes, each process is represented by a *process descriptor* that includes information about the current state of the process.
+
+When the kernel stops the execution of a process, it saves the current contents of several processor registers in the process descriptor. These include:
+
+* 程序计数器(PC)和堆栈指针寄存器(SP)
+* 通用目的寄存器
+* 浮点寄存器
+* 处理器控制寄存器(Processor Status Word)，包含CPU状态信息
+* 内存管理寄存器，用于跟踪进程访问的RAM
+
+When the kernel decides to resume executing a process, it uses the proper process descriptor fields to load the CPU registers. Because the stored value of the program counter points to the instruction following the last instruction executed, the process resumes execution at the point where it was stopped.
+
+When a process is not executing on the CPU, it is waiting for some event. Unix kernels distinguish many wait states, which are usually implemented by queues of process descriptors; each (possibly empty) queue corresponds to the set of processes waiting for a specific event.
+
+<h3 id="1.6.3">1.6.3 可重入内核</h3>
+<h3 id="1.6.4">1.6.4 进程地址空间</h3>
+<h3 id="1.6.5">1.6.5 同步和临界区</h3>
+<h3 id="1.6.6">1.6.6 信号量和进程间通信</h3>
+<h3 id="1.6.7">1.6.7 进程管理</h3>
+<h3 id="1.6.8">1.6.8 内存管理</h3>
+<h3 id="1.6.9">1.6.9 设备驱动</h3>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="2">2 内存寻址</h1>
+
+This chapter deals with addressing techniques. Luckily, an operating system is not forced to keep track of physical memory all by itself; today’s microprocessors include several hardware circuits to make memory management both more efficient and more robust so that programming errors cannot cause improper accesses to memory outside the program.
+
+As in the rest of this book, we offer details in this chapter on how 80×86 microprocessors address memory chips and how Linux uses the available addressing circuits. You will find, we hope, that when you learn the implementation details on Linux’s most popular platform you will better understand both the general theory of paging and how to research the implementation on other platforms.
+
+This is the first of three chapters related to memory management; [Chapter 8](#8) discusses how the kernel allocates main memory to itself, while [Chapter 9](#9) considers how linear addresses are assigned to processes.
+
 <h2 id="2.1">2.1 内存地址</h2>
+
+程序员通常将内存地址作为访问内存单元内容的方式。但是，对于80x86处理器，必须区分下面3种地址（[ARM处理器是没有逻辑地址这个概念的，也就是说它们指令中的寻址方式是不同的。]()）：
+
+1. 逻辑地址
+    
+    在机器语言指令中用来指定算子或指令的地址。这类地址加强了x86架构的分段架构，但迫使基于MS-DOS和Windows系统编程的程序员将他们的程序也分段。每个逻辑地址由一个段地址和偏移量组成，偏移量描述段地址偏离实际物理地址的距离。
+
+2. 线性地址（也被称为虚拟地址）
+    
+    32位系统的寻址空间是4GB，也就是寻址范围是0x00000000到0xffffffff。
+
+3. 物理地址
+    
+    用来描述实际物理内存芯片的地址空间。也就是说，这些地址是发送到内存总线上的电信号。物理地址可以是32位，也可以是36位。
+
+内存管理单元（MMU）负责把逻辑地址转换成物理地址：首先，段管理单元把逻辑地址转换成线性地址；然后，页管理单元负责把线性地址转换成物理地址。如图2-1所示，
+
+<img id="Figure_2-1" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_1.PNG">
+
+图2-1 逻辑地址的转换过程
+
+在多核系统中，所有CPU共享内存，这意味着可能对内存发生并发访问。但是，对内存的读写操作必须是串行的，所以，添加了一个称为内存仲裁的硬件单元，负责CPU对内存访问权限的仲裁：如果内存空闲就让CPU访问，如果内存正在被另一个CPU访问就延缓该CPU的请求。即使单处理器系统也会使用内存仲裁，因为还有直接内存访问-DMA方式，同样会造成对内存访问的并发。多核系统中，内存仲裁单元的结构非常复杂，因为它有多个输入端口。比如，双核奔腾处理器，维护着一个2端口的仲裁单元，要求2个CPU在使用公共的总线之前先要交换同步消息。从编程的角度来说，仲裁单元被隐藏了，因为是硬件负责的，无需程序干预。
+
 <h2 id="2.2">2.2 内存分段</h2>
+
+Starting with the 80286 model, Intel microprocessors perform address translation in two different ways called real mode and protected mode. We’ll focus in the next sections on address translation when protected mode is enabled. Real mode exists mostly to maintain processor compatibility with older models and to allow the operating system to bootstrap (see Appendix A for a short description of real mode).
+
+<h3 id="2.2.1">2.2.1 段选择器和段寄存器</h3>
+
+A logical address consists of two parts: a segment identifier and an offset that specifies the relative address within the segment. The segment identifier is a 16-bit field called the Segment Selector (see Figure 2-2), while the offset is a 32-bit field. We’ll describe the fields of Segment Selectors in the section “Fast Access to Segment Descriptors” later in this chapter.
+
+<img id="Figure_2-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_2.PNG">
+
+图2-2 段选择器格式
+
+To make it easy to retrieve segment selectors quickly, the processor provides segmentation registers whose only purpose is to hold Segment Selectors; these registers are called cs, ss, ds, es, fs, and gs. Although there are only six of them, a program can reuse the same segmentation register for different purposes by saving its content in memory and then restoring it later.
+
+Three of the six segmentation registers have specific purposes:
+
+* cs 
+    
+    The code segment register, which points to a segment containing program instructions
+
+* ss 
+    
+    The stack segment register, which points to a segment containing the current program stack
+
+* ds 
+
+    The data segment register, which points to a segment containing global and static data
+
+The remaining three segmentation registers are general purpose and may refer to arbitrary data segments.
+
+The `cs` register has another important function: it includes a 2-bit field that specifies the Current Privilege Level (CPL) of the CPU. The value 0 denotes the highest privilege level, while the value 3 denotes the lowest one. Linux uses only levels 0 and 3, which are respectively called Kernel Mode and User Mode.
+
+<h3 id="2.2.2">2.2.2 段描述符</h3>
+
+Each segment is represented by an 8-byte Segment Descriptor that describes the segment characteristics. Segment Descriptors are stored either in the Global Descriptor Table (GDT) or in the Local Descriptor Table (LDT).
+
+Usually only one GDT is defined, while each process is permitted to have its own LDT if it needs to create additional segments besides those stored in the GDT. The address and size of the GDT in main memory are contained in the `gdtr` control register, while the address and size of the currently used LDT are contained in the `ldtr` control register.
+
+Figure 2-3 illustrates the format of a Segment Descriptor; the meaning of the various fields is explained in Table 2-1.
+
+Table 2-1. Segment Descriptor fields
+
+| Field name | Description |
+| ---------- | ----------- |
+| Base   | Contains the linear address of the first byte of the segment. |
+| G      | Granularity flag: if it is cleared (equal to 0), the segment size is expressed in bytes; otherwise, it is expressed in multiples of 4096 bytes. |
+| Limit  | ----------- |
+| S      | ----------- |
+| Type   | ----------- |
+| DPL    | ----------- |
+| P      | ----------- |
+| D or B | ----------- |
+
+<img id="Figure_2-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_3.PNG">
+
+图2-3 段描述符格式
+
+<img id="Figure_2-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_3.PNG">
+
+图2-3 段描述符格式
+
+<img id="Figure_2-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_3.PNG">
+
+图2-5 转换一个逻辑地址
+
 <h2 id="2.3">2.3 Linux中的分段机制</h2>
 <h2 id="2.4">2.4 内存分页</h2>
 <h2 id="2.5">2.5 Linux中的分页机制</h2>
@@ -509,15 +835,162 @@ namespace, as shown in Figure 1-1.
 <h2 id="1">9.3 内存区域</h2>
 <h2 id="1">9.4 页错误异常处理程序</h2>
 <h2 id="1">9.5 创建和删除进程地址空间</h2>
-<h2 id="1">9.6 管理堆</h2>
+
+<h2 id="9.6">9.6 管理堆</h2>
+
+Each Unix process owns a specific memory region called the heap, which is used to satisfy the process’s dynamic memory requests. The start_brk and brk fields of the memory descriptor delimit the starting and ending addresses, respectively, of that region.
+
+The following APIs can be used by the process to request and release dynamic memory:
+
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
-<h1 id="2">10 系统调用</h1>
-<h2 id="1">10.1 POSIX API和系统调用</h2>
-<h2 id="1">10.2 系统调用处理程序和服务例程</h2>
-<h2 id="1">10.3 进入和退出系统调用</h2>
-<h2 id="1">10.4 参数传递</h2>
-<h2 id="1">10.5 内核包装例程</h2>
+
+<h1 id="10">10 系统调用</h1>
+
+Operating systems offer processes running in user mode a set of interfaces to interact with hardware devices such as the CPU, disks, and printers. Putting extralayer between the application and the hardware has several advantages. First, it makes programming easier by freeing users from studying low-level programming characteristics of hardware devices. Second, it greatly increases system security, because the kernel can check the accuracy of the request at the interface level before attempting to satisfy it. Last but not least, these interfaces make programs more portable, because the can be compiled and executed correctly on every kernel that offers the same set of interfaces.
+
+Unix systems implement most interfaces between User Mode processes and hardware devices by means of system calls issued to the kernel. This chapter examines in detail how Linux implements system calls that User Mode programs issue to the kernel.
+
+<h2 id="10.1">10.1 POSIX API和系统调用</h2>
+
+Let's start by stressing the difference between an application programmer interface(API) and a system call. The former is a function definition that specifies how to obtain a given service, while the latter is an explicit request to the kernel made via a software interrupt.
+
+Unix systems include several libraries of functions that provide APIs to programmers. Some of the APIs defined by the *libc* standard C library refer to *wrapper routines*(routines whose only purpose is to issue a system call). Usually, each system call has a corresponding wrapper routine, which defines the API that application programs should employ.
+
+The converse is not true, by the way - an API does not necessarily correspond to a specific system call. First of all, the API offer its services directly in User Mode.(For something abstact such as math functions, there may be no reason to make system calls.) Second, a single API function could make several system calls. Moreover, several API functions could make the same system call, but wrap extra functionality aound it. For instance, in Linux, the *malloc()*, *calloc()*, and *free()* APIs are implemented in the *libc* library. The code in this library keeps track of the allocation and deallocation requests and uses the *brk*() system call to enlarge or shrink the process heap (see the section "Managing the Heap" in [Chapter 9](#9))
+
+The POSIX standard refers to APIs and not to system calls. A system can be certified as POSIX-compliant if it offers the proper set of APIs to the application programs, no matter how the corresponding functions are implemented. As a matter of fact, several non-Unix systems have been certified as POSIX-compliant, because they offer all traditional Unix services in User Mode libraries.
+
+From the programmer’s point of view, the distinction between an API and a system call is irrelevant — the only things that matter are the function name, the parameter types, and the meaning of the return code. From the kernel designer’s point of view, however, the distinction does matter because system calls belong to the kernel, while User Mode libraries don’t.
+
+Most wrapper routines return an integer value, whose meaning depends on the corresponding system call. A return value of –1 usually indicates that the kernel was unable to satisfy the process request. A failure in the system call handler may be caused by invalid parameters, a lack of available resources, hardware problems, and so on. The specific error code is contained in the *errno* variable, which is defined in the libc library.
+
+Each error code is defined as a macro constant, which yields a corresponding positive integer value. The POSIX standard specifies the macro names of several error codes. In Linux, on 80×86 systems, these macros are defined in the header file *include/asm-i386/errno.h*. To allow portability of C programs among Unix systems, the *include/asm-i386/errno.h* header file is included, in turn, in the standard */usr/include/errno.h* C library header file. Other systems have their own specialized subdirectories of header files.
+
+核心笔记：
+
+1. POSIX API和系统调用的区别：
+    
+    `POSIX API`可以理解为一些标准C函数库，而系统调用是在其上进行的封装，以满足用户态和内核态切换需要。系统只要是使用符合`POSIX`标准定义的函数实现系统调用，就是与`POSIX`兼容的。
+
+2. 为什么这么设计？不直接使用API？
+    
+    如果使用API，那么用户态程序可以直接访问硬件资源，这与`进程/内核`模型的设计理念不符。使用系统调用有2个好处：
+
+    * 用户态和内核态隔离开来，访问更加安全
+    * 便于用户态程序的移植
+
+3. 对于系统调用，用户可能更关心返回值。
+    
+    其返回值用一个整数表示，其宏定义位于 *include/arch-specific/errno.h*头文件中。在这儿，`arch-specific`与系统平台的架构相关。用户态的 标准C库的 */usr/include/errno.h*头文件中也应该包含这些错误返回码。
+
+<h2 id="10.2">10.2 系统调用处理程序和服务例程</h2>
+
+When a User Mode process invokes a system call, the CPU switches to Kernel Mode
+and starts the execution of a kernel function. As we will see in the next section, in the
+80 × 86 architecture a Linux system call can be invoked in two different ways. The net
+result of both methods, however, is a jump to an assembly language function called
+the *system call handler*.
+
+Because the kernel implements many different system calls, the User Mode process
+must pass a parameter called the *system call number* to identify the required system
+call; the *eax* register is used by Linux for this purpose. As we’ll see in the section
+“Parameter Passing” later in this chapter, additional parameters are usually passed
+when invoking a system call.
+
+All system calls return an integer value. The conventions for these return values are
+different from those for wrapper routines. In the kernel, positive or 0 values denote a
+successful termination of the system call, while negative values denote an error condition.
+In the latter case, the value is the negation of the error code that must be
+returned to the application program in the *errno* variable. The *errno* variable is not
+set or used by the kernel. Instead, the wrapper routines handle the task of setting this
+variable after a return from a system call.
+
+The system call handler, which has a structure similar to that of the other exception
+handlers, performs the following operations:
+
+* Saves the contents of most registers in the Kernel Mode stack (this operation is common to all system calls and is coded in assembly language).
+
+* Handles the system call by invoking a corresponding C function called the *system call service routine*.
+
+* Exits from the handler: the registers are loaded with the values saved in the Kernel Mode stack, and the CPU is switched back from Kernel Mode to User Mode (this operation is common to all system calls and is coded in assembly language).
+
+The name of the service routine associated with the *xyz()* system call is usually *sys_xyz()*; there are, however, a few exceptions to this rule.
+
+Figure 10-1 illustrates the relationships between the application program that invokes a system call, the corresponding wrapper routine, the system call handler, and the system call service routine. The arrows denote the execution flow between the functions. The terms “SYSCALL” and “SYSEXIT” are placeholders for the actual assembly language instructions that switch the CPU, respectively, from User Mode to Kernel Mode and from Kernel Mode to User Mode.
+
+<img id="Figure_10-1" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_10_1.PNG">
+
+图10-1 系统调用的过程
+
+To associate each system call number with its corresponding service routine, the kernel uses a *system call dispatch table*, which is stored in the *sys_call_table* array and has *NR_syscalls* entries (289 in the Linux 2.6.11 kernel). The Nth entry contains the service routine address of the system call having number N.
+
+The *NR_syscalls* macro is just a static limit on the maximum number of implementable system calls; it does not indicate the number of system calls actually implemented. Indeed, each entry of the dispatch table may contain the address of the *sys_ni_syscall()* function, which is the service routine of the “nonimplemented” system calls; it just returns the error code -ENOSYS.
+
+
+
+<h2 id="10.3">10.3 进入和退出系统调用</h2>
+
+Native applications* can invoke a system call in two different ways:
+
+* By executing the int $0x80 assembly language instruction; in older versions of the Linux kernel, this was the only way to switch from User Mode to Kernel Mode.
+
+* By executing the sysenter assembly language instruction, introduced in the Intel Pentium II microprocessors; this instruction is now supported by the Linux 2.6 kernel.
+
+Similarly, the kernel can exit from a system call—thus switching the CPU back to User Mode—in two ways:
+
+* By executing the *iret* assembly language instruction.
+
+* By executing the sysexit assembly language instruction, which was introduced in the Intel Pentium II microprocessors together with the sysenter instruction.
+
+However, supporting two different ways to enter the kernel is not as simple as it might look, because:
+
+* The kernel must support both older libraries that only use the int $0x80 instruction and more recent ones that also use the sysenter instruction.
+
+* A standard library that makes use of the sysenter instruction must be able to cope with older kernels that support only the int $0x80 instruction.
+
+* The kernel and the standard library must be able to run both on older processors that do not include the sysenter instruction and on more recent ones that include it.
+
+We will see in the section “Issuing a System Call via the sysenter Instruction” later in this chapter how the Linux kernel solves these compatibility problems.
+
+<h3 id="10.3.1">10.3.1 使用中断$0x80指令发起系统调用</h3>
+
+The “traditional” way to invoke a system call makes use of the *int* assembly language instruction, which was discussed in the section “Hardware Handling of Interrupts and Exceptions” in [Chapter 4](#4).
+
+The vector 128—in hexadecimal, 0x80—is associated with the kernel entry point. The *trap_init()* function, invoked during kernel initialization, sets up the Interrupt Descriptor Table entry corresponding to vector 128 as follows:
+
+    set_system_gate(0x80, &system_call);
+
+The call loads the following values into the gate descriptor fields (see the section “Interrupt, Trap, and System Gates” in [Chapter 4](#4)):
+
+* Segment Selector
+* Offset
+* Type
+* DPL(Descriptor Privilege Level)
+    
+    Set to 3. This allows processes in User Mode to invoke the exception handler (see the section “Hardware Handling of Interrupts and Exceptions” in Chapter 4).
+
+Therefore, when a User Mode process issues an *int $0x80* instruction, the CPU switches into Kernel Mode and starts executing instructions from the *system_call* address.
+
+<h4 id="10.3.1.1">10.3.1.1 system_call()函数</h4>
+
+The *system_call()* function starts by saving the system call number and all the CPU registers that may be used by the exception handler on the stack—except for eflags,
+cs, eip, ss, and esp, which have already been saved automatically by the control unit
+(see the section “Hardware Handling of Interrupts and Exceptions” in Chapter 4).
+The SAVE_ALL macro, which was already discussed in the section “I/O Interrupt Handling”
+in Chapter 4, also loads the Segment Selector of the kernel data segment in ds
+and es:
+
+<h4 id="10.3.1.2">10.3.1.2 从system_call退出</h4>
+
+<h3 id="10.3.2">10.3.2 使用sysenter指令发起系统调用</h3>
+
+<h2 id="10.4">10.4 参数传递</h2>
+
+<h2 id="10.5">10.5 内核包装例程</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="2">11 信号量</h1>
 <h2 id="1">11.1 信号量的角色</h2>
 <h2 id="1">11.2 创建信号量</h2>
