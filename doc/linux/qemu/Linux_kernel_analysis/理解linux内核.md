@@ -758,29 +758,1379 @@ Table 2-1. Segment Descriptor fields
 | Field name | Description |
 | ---------- | ----------- |
 | Base   | Contains the linear address of the first byte of the segment. |
-| G      | Granularity flag: if it is cleared (equal to 0), the segment size is expressed in bytes; otherwise, it is expressed in multiples of 4096 bytes. |
-| Limit  | ----------- |
-| S      | ----------- |
-| Type   | ----------- |
-| DPL    | ----------- |
-| P      | ----------- |
-| D or B | ----------- |
+| G      | 粒度，如果=0，段按字节表示；否则，按4K的倍数表示。|
+| Limit  | 该段最后一个内存单元的偏移量，相当于长度。如果G=0，段的大小为1~1MB；否则为4K~4GB。|
+| S      | 系统标志：如果被清除，则该段是一个系统段，用来存储关键数据结构，比如LDT；否则，就是正常代码段或数据段。|
+| Type   | 段类型和访问权限。|
+| DPL    | 描述符特权级别：用来限制对段的访问。它表示访问段所要求的最小CPU特权级别。因此，如果一个段的特权级别被设置为0，则只有CPL也是0的时候才能访问，也就是说只有内核模式才能访问。如果将DPL设置为3，任何CPL的值都可以访问该段，也就是说，什么模式都可以访问该段。|
+| P      | 段当前标志:如果段当前没有存储在主存中，则等于0。Linux总是将这个标志(第47位)设置为1，因为它从不将整个段交换到磁盘。 |
+| D or B | Called D or B depending on whether the segment contains code or data. Its meaning is slightly different in the two cases, but it is basically set (equal to 1) if the addresses used as segment offsets are 32 bits long, and it is cleared if they are 16 bits long (see the Intel manual for further details). |
+| AVL    | May be used by the operating system, but it is ignored by Linux. |
+
+There are several types of segments, and thus several types of Segment Descriptors. The following list shows the types that are widely used in Linux.
+
+* *代码段描述符*
+* *数据段描述符*
+* *任务状态段描述符*
+* *LDT描述符*
+
 
 <img id="Figure_2-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_3.PNG">
 
 图2-3 段描述符格式
 
-<img id="Figure_2-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_3.PNG">
+<h3 id="2.2.3">2.2.3 快速访问段描述符</h3>
 
-图2-3 段描述符格式
+We recall that logical addresses consist of a 16-bit Segment Selector and a 32-bit Offset, and that segmentation registers store only the Segment Selector.
 
-<img id="Figure_2-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_3.PNG">
+To speed up the translation of logical addresses into linear addresses, the 80 × 86 processor
+provides an additional nonprogrammable register—that is, a register that cannot
+be set by a programmer—for each of the six programmable segmentation
+registers. Each nonprogrammable register contains the 8-byte Segment Descriptor
+(described in the previous section) specified by the Segment Selector contained in the
+corresponding segmentation register. Every time a Segment Selector is loaded in a segmentation
+register, the corresponding Segment Descriptor is loaded from memory
+into the matching nonprogrammable CPU register. From then on, translations of logical
+addresses referring to that segment can be performed without accessing the GDT
 
-图2-5 转换一个逻辑地址
+or LDT stored in main memory; the processor can refer only directly to the CPU register
+containing the Segment Descriptor. Accesses to the GDT or LDT are necessary
+only when the contents of the segmentation registers change (see Figure 2-4).
+
+<img id="Figure_2-4" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_4.PNG">
+
+图2-4 段选择器和段描述符
+
+Any Segment Selector includes three fields that are described in Table 2-2.
+
+Table 2-2. Segment Selector fields
+| Field name | Description |
+| ---------- | ----------- |
+| index | Identifies the Segment Descriptor entry contained in the GDT or in the LDT (described further in the text following this table). |
+| TI    | Table Indicator: specifies whether the Segment Descriptor is included in the GDT (TI = 0) or in the LDT (TI = 1). |
+| RPL   | Requestor Privilege Level: specifies the Current Privilege Level of the CPU when the corresponding Segment Selector is loaded into the cs register; it also may be used to selectively weaken the processor privilege level when accessing data segments (see Intel documentation for details). |
+
+Because a Segment Descriptor is 8 bytes long, its relative address inside the GDT or
+the LDT is obtained by multiplying the 13-bit index field of the Segment Selector by
+8. For instance, if the GDT is at 0x00020000 (the value stored in the gdtr register) and
+the index specified by the Segment Selector is 2, the address of the corresponding
+Segment Descriptor is 0x00020000 + (2 × 8), or 0x00020010.
+
+The first entry of the GDT is always set to 0. This ensures that logical addresses with
+a null Segment Selector will be considered invalid, thus causing a processor exception.
+The maximum number of Segment Descriptors that can be stored in the GDT is
+8,191 (i.e., 2^13–1).
+
+<h3 id="2.2.4">2.2.4 段硬件单元</h3>
+
+Figure 2-5 shows in detail how a logical address is translated into a corresponding
+linear address. The segmentation unit performs the following operations:
+
+* Examines the TI field of the Segment Selector to determine which Descriptor Table stores the Segment Descriptor. This field indicates that the Descriptor is either in the GDT (in which case the segmentation unit gets the base linear address of the GDT from the gdtr register) or in the active LDT (in which case the segmentation unit gets the base linear address of that LDT from the ldtr register).
+
+* Computes the address of the Segment Descriptor from the `index` field of the Segment Selector. The `index` field is multiplied by 8 (the size of a Segment Descriptor), and the result is added to the content of the `gdtr` or `ldtr` register.
+
+* Adds the offset of the logical address to the Base field of the Segment Descriptor, thus obtaining the linear address.
+
+
+<img id="Figure_2-5" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_5.PNG">
+
+图2-5 转换逻辑地址
+
+Notice that, thanks to the nonprogrammable registers associated with the segmentation registers, the first two operations need to be performed only when a segmentation register has been changed.
 
 <h2 id="2.3">2.3 Linux中的分段机制</h2>
+
+Segmentation has been included in 80×86 microprocessors to encourage programmers to split their applications into logically related entities, such as subroutines or global and local data areas. However, Linux uses segmentation in a very limited way. In fact, segmentation and paging are somewhat redundant, because both can be used to separate the physical address spaces of processes: segmentation can assign a different linear address space to each process, while paging can map the same linear address space into different physical address spaces. Linux prefers paging to segmentation for the following reasons:
+
+* Memory management is simpler when all processes use the same segment register values—that is, when they share the same set of linear addresses.
+
+* One of the design objectives of Linux is portability to a wide range of architectures; RISC architectures in particular have limited support for segmentation.
+
+The 2.6 version of Linux uses segmentation only when required by the 80×86 architecture.
+
+All Linux processes running in User Mode use the same pair of segments to address instructions and data. These segments are called *user code segment* and *user data segment*, respectively. Similarly, all Linux processes running in Kernel Mode use the same pair of segments to address instructions and data: they are called *kernel code segment* and *kernel data segment*, respectively. Table 2-3 shows the values of the Segment Descriptor fields for these four crucial segments.
+
+Table 2-3. Values of the Segment Descriptor fields for the four main Linux segments
+| Segment     | Base       | G | Limit   | S | Type | DPL | D/B | P |
+| ----------- | ---------- | - | -----   | - | ---- | --- | --- | - |
+| user code   | 0x00000000 | 1 | 0xfffff | 1 | 10   | 3   | 1   | 1 |
+| user data   | 0x00000000 | 1 | 0xfffff | 1 | 2    | 3   | 1   | 1 |
+| kernel code | 0x00000000 | 1 | 0xfffff | 1 | 10   | 0   | 1   | 1 |
+| kernel data | 0x00000000 | 1 | 0xfffff | 1 | 2    | 0   | 1   | 1 |
+
+The corresponding Segment Selectors are defined by the macros `__USER_CS`, `__USER_DS`, `__KERNEL_CS`, and `__KERNEL_DS`, respectively. To address the kernel code segment, for instance, the kernel just loads the value yielded by the `__KERNEL_CS` macro into the `cs` segmentation register.
+Notice that the linear addresses associated with such segments all start at 0 and reach the addressing limit of 232 –1. This means that all processes, either in User Mode or
+in Kernel Mode, may use the same logical addresses.
+
+Another important consequence of having all segments start at `0x00000000` is that in
+Linux, logical addresses coincide with linear addresses; that is, the value of the Offset
+field of a logical address always coincides with the value of the corresponding linear
+address.
+
+As stated earlier, the Current Privilege Level of the CPU indicates whether the processor
+is in User or Kernel Mode and is specified by the `RPL` field of the Segment Selector
+stored in the `cs` register. Whenever the CPL is changed, some segmentation registers
+must be correspondingly updated. For instance, when the `CPL` is equal to 3 (User
+Mode), the `ds` register must contain the Segment Selector of the user data segment,
+but when the CPL is equal to 0, the `ds` register must contain the Segment Selector of
+the kernel data segment.
+
+A similar situation occurs for the `ss` register. It must refer to a User Mode stack
+inside the user data segment when the CPL is 3, and it must refer to a Kernel Mode
+stack inside the kernel data segment when the CPL is 0. When switching from User
+Mode to Kernel Mode, Linux always makes sure that the `ss` register contains the Segment
+Selector of the kernel data segment.
+
+When saving a pointer to an instruction or to a data structure, the kernel does not
+need to store the Segment Selector component of the logical address, because the `ss`
+register contains the current Segment Selector. As an example, when the kernel
+invokes a function, it executes a `call` assembly language instruction specifying just
+the Offset component of its logical address; the Segment Selector is implicitly selected
+as the one referred to by the `cs` register. Because there is just one segment of type
+“executable in Kernel Mode,” namely the code segment identified by `__KERNEL_CS`, it
+is sufficient to load `__KERNEL_CS` into `cs` whenever the CPU switches to Kernel Mode.
+The same argument goes for pointers to kernel data structures (implicitly using the `ds`
+register), as well as for pointers to user data structures (the kernel explicitly uses the
+`es` register).
+
+Besides the four segments just described, Linux makes use of a few other specialized segments. We’ll introduce them in the next section while describing the Linux GDT.
+
+<h3 id="2.3.1">2.3.1 Linux GDT</h3>
+
+单处理器系统只有一个GDT，而多处理器系统中每一个CPU都有一个GDT。所有的GDT存储在`cpu_gdt_table`数组中，而GDT的地址和大小存储在`cpu_gdt_descr`数组中，其中GDT的大小用来初始化`gdtr`寄存器。如果查看源代码，这些符号的定义位于文件`arch/i386/kernel/head.S`中，说明根据处理器架构不同，这些定义也是不同的。本书中所有的宏、函数和其它符号都来源于源代码，可以轻松找到。
+
+GDT的布局可以参考图2-6.每一个GDT包含18个段描述符和14个空、未使用和保留的项。之所以插入未使用的项是因为，段描述符通常在[cache]()中是按照32字节的line一起访问的。
+
+<img id="Figure_2-6" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_6.PNG">
+
+图2-6 全局描述符表-GDT
+
+这18个段描述符指向下面这些段：
+
+* 4个用户和内核代码和数据段
+
+* 任务状态段(TSS)，系统中的每个CPU都不相同。
+different for each processor in the system. The linear address space corresponding to a TSS is a small subset of the linear address space corresponding to the kernel data segment. The Task State Segments are sequentially stored in the `init_tss` array; in particular, the Base field of the TSS descriptor for the Nth CPU points to the Nth component of the `init_tss` array. The G (granularity) flag is cleared, while the Limit field is set to 0xeb, because the TSS segment is 236 bytes long. The Type field is set to 9 or 11 (available 32-bit TSS), and the DPL is set to 0, because processes in User Mode are not allowed to access TSS segments. You will find details on how Linux uses TSSs in the section “Task State Segment” in Chapter 3.
+
+* A segment including the default Local Descriptor Table (LDT), usually shared by all processes (see the next section).
+
+* Three Thread-Local Storage (TLS) segments: this is a mechanism that allows multithreaded applications to make use of up to three segments containing data local to each thread. The *set_thread_area()* and *get_thread_area()* system calls, respectively, create and release a TLS segment for the executing process.
+
+* Three segments related to Advanced Power Management (APM): the BIOS code makes use of segments, so when the Linux APM driver invokes BIOS functions to get or set the status of APM devices, it may use custom code and data segments.
+
+* Five segments related to Plug and Play (PnP) BIOS services. As in the previous case, the BIOS code makes use of segments, so when the Linux PnP driver invokes BIOS functions to detect the resources used by PnP devices, it may use custom code and data segments.
+
+* A special TSS segment used by the kernel to handle “Double fault” exceptions (see “Exceptions” in Chapter 4).
+
+As stated earlier, there is a copy of the GDT for each processor in the system. All copies of the GDT store identical entries, except for a few cases. First, each processor has its own TSS segment, thus the corresponding GDT’s entries differ. Moreover, a few entries in the GDT may depend on the process that the CPU is executing (LDT and TLS Segment Descriptors). Finally, in some cases a processor may temporarily modify an entry in its copy of the GDT; this happens, for instance, when invoking an APM’s BIOS procedure.
+
+<h3 id="2.3.2">2.3.2 Linux LDT</h3>
+
+Most Linux User Mode applications do not make use of a Local Descriptor Table, thus the kernel defines a default LDT to be shared by most processes. The default Local Descriptor Table is stored in the `default_ldt` array. It includes five entries, but only two of them are effectively used by the kernel: a call gate for iBCS executables, and a call gate for Solaris/x86 executables (see the section “Execution Domains” in Chapter 20). Call gates are a mechanism provided by 80×86 microprocessors to change the privilege level of the CPU while invoking a predefined function; as we won’t discuss them further, you should consult the Intel documentation for more details.
+
+In some cases, however, processes may require to set up their own LDT. This turns out to be useful to applications (such as Wine) that execute segment-oriented Microsoft Windows applications. The `modify_ldt()` system call allows a process to do this.
+
+Any custom LDT created by modify_ldt() also requires its own segment. When a processor starts executing a process having a custom LDT, the LDT entry in the CPU-specific copy of the GDT is changed accordingly.
+
+User Mode applications also may allocate new segments by means of modify_ldt(); the kernel, however, never makes use of these segments, and it does not have to keep track of the corresponding Segment Descriptors, because they are included in the custom LDT of the process.
+
 <h2 id="2.4">2.4 内存分页</h2>
+
+The paging unit translates linear addresses into physical ones. One key task in the
+unit is to check the requested access type against the access rights of the linear
+address. If the memory access is not valid, it generates a Page Fault exception (see
+Chapter 4 and Chapter 8).
+
+For the sake of efficiency, linear addresses are grouped in fixed-length intervals called
+pages; contiguous linear addresses within a page are mapped into contiguous physical
+addresses. In this way, the kernel can specify the physical address and the access
+rights of a page instead of those of all the linear addresses included in it. Following
+the usual convention, we shall use the term “page” to refer both to a set of linear
+addresses and to the data contained in this group of addresses.
+
+The paging unit thinks of all RAM as partitioned into fixed-length page frames
+(sometimes referred to as physical pages). Each page frame contains a page—that is,
+the length of a page frame coincides with that of a page. A page frame is a constituent
+of main memory, and hence it is a storage area. It is important to distinguish a
+page from a page frame; the former is just a block of data, which may be stored in
+any page frame or on disk.
+
+The data structures that map linear to physical addresses are called page tables; they
+are stored in main memory and must be properly initialized by the kernel before
+enabling the paging unit.
+
+Starting with the 80386, all 80 × 86 processors support paging; it is enabled by setting
+the PG flag of a control register named cr0. When PG = 0, linear addresses are
+interpreted as physical addresses.
+
+<h3 id="2.4.1">2.4.1 常规分页</h3>
+
+Starting with the 80386, the paging unit of Intel processors handles 4 KB pages.
+
+The 32 bits of a linear address are divided into three fields:
+
+* Directory
+    
+    The most significant 10 bits
+
+* Table
+    
+    The intermediate 10 bits
+
+* Offset
+    
+    The least significant 12 bits
+
+The translation of linear addresses is accomplished in two steps, each based on a type of translation table. The first translation table is called the *Page Directory*, and the second is called the `Page Table`.
+
+> In the discussion that follows, the lowercase “page table” term denotes any page storing the mapping between linear and physical addresses, while the capitalized “Page Table” term denotes a page in the last level of page tables.
+
+The aim of this two-level scheme is to reduce the amount of RAM required for perprocess Page Tables. If a simple one-level Page Table was used, then it would require up to 2^20 entries (i.e., at 4 bytes per entry, 4 MB of RAM) to represent the Page Table for each process (if the process used a full 4 GB linear address space), even though a process does not use all addresses in that range. The two-level scheme reduces the memory by requiring Page Tables only for those virtual memory regions actually used by a process.
+
+Each active process must have a Page Directory assigned to it. However, there is no need to allocate RAM for all Page Tables of a process at once; it is more efficient to allocate RAM for a Page Table only when the process effectively needs it.
+
+The physical address of the Page Directory in use is stored in a control register named `cr3`. The *Directory* field within the linear address determines the entry in the Page Directory that points to the proper Page Table. The address’s *Table* field, in turn, determines the entry in the Page Table that contains the physical address of the page frame containing the page. The *Offset* field determines the relative position within the page frame (see Figure 2-7). Because it is 12 bits long, each page consists of 4096 bytes of data.
+
+<img id="Figure_2-7" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_7.PNG">
+
+图2-7 80×86处理器分页
+
+Both the Directory and the Table fields are 10 bits long, so Page Directories and Page Tables can include up to 1,024 entries. It follows that a Page Directory can address up to 1024 × 1024 × 4096=2^32 memory cells, as you’d expect in 32-bit addresses.
+
+The entries of Page Directories and Page Tables have the same structure. Each entry includes the following fields:
+
+* Present flag
+    
+    If it is set, the referred-to page (or Page Table) is contained in main memory; if the flag is 0, the page is not contained in main memory and the remaining entry bits may be used by the operating system for its own purposes. If the entry of a Page Table or Page Directory needed to perform an address translation has the Present flag cleared, the paging unit stores the linear address in a control register named `cr2` and generates exception 14: the Page Fault exception. (We will see in [Chapter 17](#17) how Linux uses this field.)
+
+* Field containing the 20 most significant bits of a page frame physical address
+    
+    Because each page frame has a 4-KB capacity, its physical address must be a multiple of 4096, so the 12 least significant bits of the physical address are always equal to 0. If the field refers to a Page Directory, the page frame contains a Page Table; if it refers to a Page Table, the page frame contains a page of data.
+
+* Accessed flag
+    
+    Set each time the paging unit addresses the corresponding page frame. This flag may be used by the operating system when selecting pages to be swapped out. The paging unit never resets this flag; this must be done by the operating system.
+
+* Dirty flag
+    
+    Applies only to the Page Table entries. It is set each time a write operation is performed on the page frame. As with the Accessed flag, Dirty may be used by the operating system when selecting pages to be swapped out. The paging unit never resets this flag; this must be done by the operating system.
+
+* Read/Write flag
+
+    Contains the access right (Read/Write or Read) of the page or of the Page Table (see the section “Hardware Protection Scheme” later in this chapter).
+
+* User/Supervisor flag
+
+    Contains the privilege level required to access the page or Page Table (see the later section “Hardware Protection Scheme”).
+
+* PCD and PWT flags
+
+    Controls the way the page or Page Table is handled by the hardware cache (see the section “Hardware Cache” later in this chapter).
+
+* Page Size flag
+
+    Applies only to Page Directory entries. If it is set, the entry refers to a 2 MB– or 4MB–long page frame (see the following sections).
+
+* Global flag
+
+    Applies only to Page Table entries. This flag was introduced in the Pentium Pro to prevent frequently used pages from being flushed from the TLB cache (see the section “Translation Lookaside Buffers (TLB)” later in this chapter). It works only if the Page Global Enable (PGE) flag of register cr4 is set.
+
+
+<h3 id="2.4.2">2.4.2 扩展分页</h3>
+
+Starting with the Pentium model, 80 × 86 microprocessors introduce extended paging,
+which allows page frames to be 4 MB instead of 4 KB in size (see Figure 2-8).
+Extended paging is used to translate large contiguous linear address ranges into corresponding
+physical ones; in these cases, the kernel can do without intermediate
+Page Tables and thus save memory and preserve TLB entries (see the section “Translation
+Lookaside Buffers (TLB)”).
+
+<img id="Figure_2-8" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_8.PNG">
+
+图2-8 扩展分页
+
+As mentioned in the previous section, extended paging is enabled by setting the Page Size flag of a Page Directory entry. In this case, the paging unit divides the 32 bits of a linear address into two fields:
+
+* Directory
+    
+    The most significant 10 bits
+
+* Offset
+    
+    The remaining 22 bits   
+
+Page Directory entries for extended paging are the same as for normal paging, except that:
+
+* The Page Size flag must be set.
+* Only the 10 most significant bits of the 20-bit physical address field are significant. This is because each physical address is aligned on a 4-MB boundary, so the 22 least significant bits of the address are 0.
+* Extended paging coexists with regular paging; it is enabled by setting the PSE flag of
+the cr4 processor register.
+
+
+<h3 id="2.4.3">2.4.3 硬件保护</h3>
+
+The paging unit uses a different protection scheme from the segmentation unit.
+While 80 × 86 processors allow four possible privilege levels to a segment, only two
+privilege levels are associated with pages and Page Tables, because privileges are controlled
+by the User/Supervisor flag mentioned in the earlier section “Regular Paging.”
+When this flag is 0, the page can be addressed only when the CPL is less than 3 (this
+means, for Linux, when the processor is in Kernel Mode). When the flag is 1, the
+page can always be addressed.
+
+Furthermore, instead of the three types of access rights (Read, Write, and Execute)
+associated with segments, only two types of access rights (Read and Write) are associated
+with pages. If the Read/Write flag of a Page Directory or Page Table entry is
+equal to 0, the corresponding Page Table or page can only be read; otherwise it can
+be read and written.*
+
+<h3 id="2.4.4">2.4.4 常规分页的示例</h3>
+
+A simple example will help in clarifying how regular paging works. Let’s assume that
+the kernel assigns the linear address space between 0x20000000 and 0x2003ffff to a
+running process.† This space consists of exactly 64 pages. We don’t care about the
+physical addresses of the page frames containing the pages; in fact, some of them
+might not even be in main memory. We are interested only in the remaining fields of
+the Page Table entries.
+
+Let’s start with the 10 most significant bits of the linear addresses assigned to the
+process, which are interpreted as the Directory field by the paging unit. The
+addresses start with a 2 followed by zeros, so the 10 bits all have the same value,
+namely 0x080 or 128 decimal. Thus the Directory field in all the addresses refers to
+the 129th entry of the process Page Directory. The corresponding entry must contain
+the physical address of the Page Table assigned to the process (see Figure 2-9). If no
+other linear addresses are assigned to the process, all the remaining 1,023 entries of
+the Page Directory are filled with zeros.
+
+<img id="Figure_2-9" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_9.PNG">
+
+图2-9 分页示例
+
+The values assumed by the intermediate 10 bits, (that is, the values of the Table field)
+range from 0 to 0x03f, or from 0 to 63 decimal. Thus, only the first 64 entries of the
+Page Table are valid. The remaining 960 entries are filled with zeros.
+
+Suppose that the process needs to read the byte at linear address 0x20021406. This
+address is handled by the paging unit as follows:
+
+1. The Directory field 0x80 is used to select entry 0x80 of the Page Directory, which points to the Page Table associated with the process’s pages.
+
+2. The Table field 0x21 is used to select entry 0x21 of the Page Table, which points to the page frame containing the desired page.
+
+3. Finally, the Offset field 0x406 is used to select the byte at offset 0x406 in the desired page frame.
+
+If the Present flag of the 0x21 entry of the Page Table is cleared, the page is not
+present in main memory; in this case, the paging unit issues a Page Fault exception
+while translating the linear address. The same exception is issued whenever the process
+attempts to access linear addresses outside of the interval delimited by
+0x20000000 and 0x2003ffff, because the Page Table entries not assigned to the process
+are filled with zeros; in particular, their Present flags are all cleared.
+
+
+
+<h3 id="2.4.5">2.4.5 物理地址扩展(PAE)分页机制</h3>
+
+The amount of RAM supported by a processor is limited by the number of address
+pins connected to the address bus. Older Intel processors from the 80386 to the Pentium
+used 32-bit physical addresses. In theory, up to 4 GB of RAM could be installed
+on such systems; in practice, due to the linear address space requirements of User
+Mode processes, the kernel cannot directly address more than 1 GB of RAM, as we
+will see in the later section “Paging in Linux.”
+
+However, big servers that need to run hundreds or thousands of processes at the same
+time require more than 4 GB of RAM, and in recent years this created a pressure on
+Intel to expand the amount of RAM supported on the 32-bit 80 × 86 architecture.
+
+Intel has satisfied these requests by increasing the number of address pins on its processors
+from 32 to 36. Starting with the Pentium Pro, all Intel processors are now
+able to address up to 236 = 64 GB of RAM. However, the increased range of physical
+addresses can be exploited only by introducing a new paging mechanism that translates
+32-bit linear addresses into 36-bit physical ones.
+
+With the Pentium Pro processor, Intel introduced a mechanism called Physical
+Address Extension (PAE). Another mechanism, Page Size Extension (PSE-36), was
+introduced in the Pentium III processor, but Linux does not use it, and we won’t discuss
+it further in this book.
+
+PAE is activated by setting the Physical Address Extension (PAE) flag in the cr4 control
+register. The Page Size (PS) flag in the page directory entry enables large page
+sizes (2 MB when PAE is enabled).
+
+Intel has changed the paging mechanism in order to support PAE.
+
+* The 64 GB of RAM are split into 224 distinct page frames, and the physical
+address field of Page Table entries has been expanded from 20 to 24 bits.
+Because a PAE Page Table entry must include the 12 flag bits (described in the
+earlier section “Regular Paging”) and the 24 physical address bits, for a grand
+total of 36, the Page Table entry size has been doubled from 32 bits to 64 bits. As
+a result, a 4-KB PAE Page Table includes 512 entries instead of 1,024.
+
+* A new level of Page Table called the Page Directory Pointer Table (PDPT) consisting
+of four 64-bit entries has been introduced.
+
+* The cr3 control register contains a 27-bit Page Directory Pointer Table base
+address field. Because PDPTs are stored in the first 4 GB of RAM and aligned to
+a multiple of 32 bytes (25), 27 bits are sufficient to represent the base address of
+such tables.
+
+* When mapping linear addresses to 4 KB pages (PS flag cleared in Page Directory entry), the 32 bits of a linear address are interpreted in the following way:
+    - cr3
+        
+        Points to a PDPT
+
+    - bits 31–30
+        
+        Point to 1 of 4 possible entries in PDPT
+
+    - bits 29–21
+        
+        Point to 1 of 512 possible entries in Page Directory
+
+    - bits 20–12
+        
+        Point to 1 of 512 possible entries in Page Table
+
+    - bits 11–0
+        
+        Offset of 4-KB page
+
+* When mapping linear addresses to 2-MB pages (PS flag set in Page Directory entry), the 32 bits of a linear address are interpreted in the following way:
+    - cr3
+        
+        Points to a PDPT
+
+    - bits 31–30
+        
+        Point to 1 of 4 possible entries in PDPT
+
+    - bits 29–21
+        
+        Point to 1 of 512 possible entries in Page Directory
+
+    - bits 20–0
+        
+        Offset of 2-MB page
+
+To summarize, once cr3 is set, it is possible to address up to 4 GB of RAM. If we
+want to address more RAM, we’ll have to put a new value in cr3 or change the content
+of the PDPT. However, the main problem with PAE is that linear addresses are
+still 32 bits long. This forces kernel programmers to reuse the same linear addresses
+to map different areas of RAM. We’ll sketch how Linux initializes Page Tables when
+PAE is enabled in the later section, “Final kernel Page Table when RAM size is more
+than 4096 MB.” Clearly, PAE does not enlarge the linear address space of a process,
+because it deals only with physical addresses. Furthermore, only the kernel can modify
+the page tables of the processes, thus a process running in User Mode cannot use
+a physical address space larger than 4 GB. On the other hand, PAE allows the kernel
+to exploit up to 64 GB of RAM, and thus to increase significantly the number of processes
+in the system.
+
+<h3 id="2.4.6">2.4.6 64位架构分页</h3>
+
+As we have seen in the previous sections, two-level paging is commonly used by 32-
+bit microprocessors*. Two-level paging, however, is not suitable for computers that
+adopt a 64-bit architecture. Let’s use a thought experiment to explain why:
+
+Start by assuming a standard page size of 4 KB. Because 1 KB covers a range of 210
+addresses, 4 KB covers 212 addresses, so the Offset field is 12 bits. This leaves up to
+52 bits of the linear address to be distributed between the Table and the Directory
+fields. If we now decide to use only 48 of the 64 bits for addressing (this restriction
+leaves us with a comfortable 256 TB address space!), the remaining 48-12 = 36 bits
+will have to be split among Table and the Directory fields. If we now decide to reserve
+18 bits for each of these two fields, both the Page Directory and the Page Tables of
+each process should include 218 entries—that is, more than 256,000 entries.
+
+For that reason, all hardware paging systems for 64-bit processors make use of additional paging levels. The number of levels used depends on the type of processor. Table 2-4 summarizes the main characteristics of the hardware paging systems used by some 64-bit platforms supported by Linux. Please refer to the section “Hardware Dependency” in Chapter 1 for a short description of the hardware associated with the platform name.
+
+Table 2-4. Paging levels in some 64-bit architectures
+
+| Platform name | Page size | Number of address bits used | Number of paging levels | Linear address splitting |
+| --- | --- | --- | --- | --- |
+| alpha  | 8 KB*| 43 | 3 | 10 + 10 + 10 + 13  |
+| ia64   | 4 KB | 39 | 3 | 9 + 9 + 9 + 12     |
+| ppc64  | 4 KB | 41 | 3 | 10 + 10 + 9 + 12   |
+| sh64   | 4 KB | 41 | 3 | 10 + 10 + 9 + 12   |
+| x86_64 | 4 KB | 48 | 4 | 9 + 9 + 9 + 9 + 12 |
+
+> *This architecture supports different page sizes; we select a typical page size adopted by Linux.
+
+As we will see in the section “Paging in Linux” later in this chapter, Linux succeeds in providing a common paging model that fits most of the supported hardware paging systems.
+
+<h3 id="2.4.7">2.4.7 硬件Cache</h3>
+
+Today’s microprocessors have clock rates of several gigahertz, while dynamic RAM
+(DRAM) chips have access times in the range of hundreds of clock cycles. This
+means that the CPU may be held back considerably while executing instructions that
+require fetching operands from RAM and/or storing results into RAM.
+
+Hardware cache memories were introduced to reduce the speed mismatch between
+CPU and RAM. They are based on the well-known locality principle, which holds
+both for programs and data structures. This states that because of the cyclic structure
+of programs and the packing of related data into linear arrays, addresses close to
+the ones most recently used have a high probability of being used in the near future.
+It therefore makes sense to introduce a smaller and faster memory that contains the
+most recently used code and data. For this purpose, a new unit called the line was
+introduced into the 80 × 86 architecture. It consists of a few dozen contiguous bytes
+that are transferred in burst mode between the slow DRAM and the fast on-chip
+static RAM (SRAM) used to implement caches.
+
+The cache is subdivided into subsets of lines. At one extreme, the cache can be direct mapped, in which case a line in main memory is always stored at the exact same location in the cache. At the other extreme, the cache is fully associative, meaning that any line in memory can be stored at any location in the cache. But most caches are to some degree N-way set associative, where any line of main memory can be stored in any one of N lines of the cache. For instance, a line of memory can be stored in two different lines of a two-way set associative cache.
+
+As shown in Figure 2-10, the cache unit is inserted between the paging unit and the
+main memory. It includes both a hardware cache memory and a cache controller. The
+cache memory stores the actual lines of memory. The cache controller stores an array
+of entries, one entry for each line of the cache memory. Each entry includes a tag and
+a few flags that describe the status of the cache line. The tag consists of some bits
+that allow the cache controller to recognize the memory location currently mapped
+by the line. The bits of the memory’s physical address are usually split into three
+groups: the most significant ones correspond to the tag, the middle ones to the cache
+controller subset index, and the least significant ones to the offset within the line.
+
+<img id="Figure_2-10" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_10.PNG">
+
+图2-10 硬件cache
+
+When accessing a RAM memory cell, the CPU extracts the subset index from the
+physical address and compares the tags of all lines in the subset with the high-order
+bits of the physical address. If a line with the same tag as the high-order bits of the
+address is found, the CPU has a `cache hit`; otherwise, it has a `cache miss`.
+
+When a cache hit occurs, the cache controller behaves differently, depending on the
+access type. For a read operation, the controller selects the data from the cache line
+and transfers it into a CPU register; the RAM is not accessed and the CPU saves time,
+which is why the cache system was invented. For a write operation, the controller
+may implement one of two basic strategies called write-through and write-back. In a
+write-through, the controller always writes into both RAM and the cache line, effectively
+switching off the cache for write operations. In a write-back, which offers more
+immediate efficiency, only the cache line is updated and the contents of the RAM are
+left unchanged. After a write-back, of course, the RAM must eventually be updated.
+The cache controller writes the cache line back into RAM only when the CPU executes
+an instruction requiring a flush of cache entries or when a FLUSH hardware
+signal occurs (usually after a cache miss).
+
+When a cache miss occurs, the cache line is written to memory, if necessary, and the correct line is fetched from RAM into the cache entry.
+
+多处理器系统为每一个处理器提供一个cache，因此需要外部提供同步cache内容的硬件电路。如图2-11所示，每一个CPU都有自己局部的cache。这个更新增加了耗时：无论何时CPU修改了它的cache，它必须检查其它的cache是否包含相同的数据；否则，它必须通知其它CPU更新成正确的值。这个操作称为 *cache snooping*。幸运的是，这些都是硬件完成的，内核无需关心。
+
+> ARM架构类似的电路称为 *Snoop Control Unit-SCU*。
+
+<img id="Figure_2-11" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_11.PNG">
+
+图2-11 双核架构中的cache
+
+Cache technology is rapidly evolving. For example, the first Pentium models included a single on-chip cache called the L1-cache. More recent models also include other larger, slower on-chip caches called the L2-cache, L3-cache, etc. The consistency between the cache levels is implemented at the hardware level. Linux ignores these hardware details and assumes there is a single cache.
+
+The CD flag of the cr0 processor register is used to enable or disable the cache circuitry.
+The NW flag, in the same register, specifies whether the write-through or the
+write-back strategy is used for the caches.
+
+Another interesting feature of the Pentium cache is that it lets an operating system
+associate a different cache management policy with each page frame. For this purpose,
+each Page Directory and each Page Table entry includes two flags: PCD (Page
+Cache Disable), which specifies whether the cache must be enabled or disabled while
+accessing data included in the page frame; and PWT (Page Write-Through), which
+specifies whether the write-back or the write-through strategy must be applied while
+writing data into the page frame. Linux clears the PCD and PWT flags of all Page Directory
+and Page Table entries; as a result, caching is enabled for all page frames, and
+the write-back strategy is always adopted for writing.
+
+<h3 id="2.4.8">2.4.8 转换后备缓存-TLB</h3>
+
+Besides general-purpose hardware caches, 80 × 86 processors include another cache
+called Translation Lookaside Buffers (TLB) to speed up linear address translation.
+When a linear address is used for the first time, the corresponding physical address is
+computed through slow accesses to the Page Tables in RAM. The physical address is
+then stored in a TLB entry so that further references to the same linear address can
+be quickly translated.
+
+In a multiprocessor system, each CPU has its own TLB, called the local TLB of the
+CPU. Contrary to the hardware cache, the corresponding entries of the TLB need not
+be synchronized, because processes running on the existing CPUs may associate the
+same linear address with different physical ones.
+
+When the cr3 control register of a CPU is modified, the hardware automatically
+invalidates all entries of the local TLB, because a new set of page tables is in use and
+the TLBs are pointing to old data.
+
 <h2 id="2.5">2.5 Linux中的分页机制</h2>
+
+Linux adopts a common paging model that fits both 32-bit and 64-bit architectures.
+As explained in the earlier section “Paging for 64-bit Architectures,” two paging levels
+are sufficient for 32-bit architectures, while 64-bit architectures require a higher
+number of paging levels. Up to version 2.6.10, the Linux paging model consisted of
+three paging levels. Starting with version 2.6.11, a four-level paging model has been
+adopted.* The four types of page tables illustrated in Figure 2-12 are called:
+
+* Page Global Directory
+* Page Upper Directory
+* Page Middle Directory
+* Page Table
+
+The Page Global Directory includes the addresses of several Page Upper Directories,
+which in turn include the addresses of several Page Middle Directories, which in
+turn include the addresses of several Page Tables. Each Page Table entry points to a
+page frame. Thus the linear address can be split into up to five parts. Figure 2-12
+does not show the bit numbers, because the size of each part depends on the computer
+architecture.
+
+<img id="Figure_2-12" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_12.PNG">
+
+图2-12 linux分页模型
+
+For 32-bit architectures with no Physical Address Extension, two paging levels are sufficient. Linux essentially eliminates the Page Upper Directory and the Page Middle Directory fields by saying that they contain zero bits. However, the positions of the Page Upper Directory and the Page Middle Directory in the sequence of pointers are kept so that the same code can work on 32-bit and 64-bit architectures. The kernel keeps a position for the Page Upper Directory and the Page Middle Directory by setting the number of entries in them to 1 and mapping these two entries into the proper entry of the Page Global Directory.
+
+For 32-bit architectures with the Physical Address Extension enabled, three paging
+levels are used. The Linux’s Page Global Directory corresponds to the 80 × 86’s Page
+Directory Pointer Table, the Page Upper Directory is eliminated, the Page Middle
+Directory corresponds to the 80 × 86’s Page Directory, and the Linux’s Page Table
+corresponds to the 80 × 86’s Page Table.
+
+Finally, for 64-bit architectures three or four levels of paging are used depending on
+the linear address bit splitting performed by the hardware (see Table 2-4).
+
+Linux’s handling of processes relies heavily on paging. In fact, the automatic translation
+of linear addresses into physical ones makes the following design objectives
+feasible:
+
+* Assign a different physical address space to each process, ensuring an efficient protection against addressing errors.
+
+* Distinguish pages (groups of data) from page frames (physical addresses in main
+memory). This allows the same page to be stored in a page frame, then saved to
+disk and later reloaded in a different page frame. This is the basic ingredient of
+the virtual memory mechanism (see Chapter 17).
+
+In the remaining part of this chapter, we will refer for the sake of concreteness to the
+paging circuitry used by the 80 × 86 processors.
+
+As we will see in Chapter 9, each process has its own Page Global Directory and its
+own set of Page Tables. When a process switch occurs (see the section “Process
+Switch” in Chapter 3), Linux saves the cr3 control register in the descriptor of the
+process previously in execution and then loads cr3 with the value stored in the
+descriptor of the process to be executed next. Thus, when the new process resumes
+its execution on the CPU, the paging unit refers to the correct set of Page Tables.
+
+Mapping linear to physical addresses now becomes a mechanical task, although it is
+still somewhat complex. The next few sections of this chapter are a rather tedious list
+of functions and macros that retrieve information the kernel needs to find addresses
+and manage the tables; most of the functions are one or two lines long. You may
+want to only skim these sections now, but it is useful to know the role of these functions
+and macros, because you’ll see them often in discussions throughout this book.
+
+
+<h3 id="2.5.1">2.5.1 线性地址域</h3>
+
+下面的宏简化了页表的处理：
+
+* PAGE_SHIFT
+    
+    Specifies the length in bits of the Offset field; when applied to 80 × 86 processors, it yields the value 12. Because all the addresses in a page must fit in the Offset field, the size of a page on 80 × 86 systems is 212 or the familiar 4,096 bytes; the PAGE_SHIFT of 12 can thus be considered the logarithm base 2 of the total page size. This macro is used by PAGE_SIZE to return the size of the page. Finally, the PAGE_MASK macro yields the value 0xfffff000 and is used to mask all the bits of the Offset field.
+
+* PMD_SHIFT
+    
+    The total length in bits of the Offset and Table fields of a linear address; in other words, the logarithm of the size of the area a Page Middle Directory entry can map. The PMD_SIZE macro computes the size of the area mapped by a single entry of the Page Middle Directory—that is, of a Page Table. The PMD_MASK macro is used to mask all the bits of the Offset and Table fields.
+
+    When PAE is disabled, PMD_SHIFT yields the value 22 (12 from Offset plus 10 from Table), PMD_SIZE yields 2^22 or 4 MB, and PMD_MASK yields 0xffc00000. Conversely, when PAE is enabled, PMD_SHIFT yields the value 21 (12 from Offset plus 9 from Table), PMD_SIZE yields 2^21 or 2 MB, and PMD_MASK yields 0xffe00000.
+
+    Large pages do not make use of the last level of page tables, thus LARGE_PAGE_SIZE, which yields the size of a large page, is equal to PMD_SIZE (2PMD_SHIFT) while LARGE_PAGE_MASK, which is used to mask all the bits of the Offset and Table fields in a large page address, is equal to PMD_MASK.
+
+* PUD_SHIFT
+    
+    Determines the logarithm of the size of the area a Page Upper Directory entry can map. The PUD_SIZE macro computes the size of the area mapped by a single entry of the Page Global Directory. The PUD_MASK macro is used to mask all the bits of the Offset, Table, Middle Air, and Upper Air fields.
+
+    On the 80 × 86 processors, PUD_SHIFT is always equal to PMD_SHIFT and PUD_SIZE is equal to 4 MB or 2 MB.
+
+* PGDIR_SHIFT
+    
+    Determines the logarithm of the size of the area that a Page Global Directory entry can map. The PGDIR_SIZE macro computes the size of the area mapped by a single entry of the Page Global Directory. The PGDIR_MASK macro is used to mask all the bits of the Offset, Table, Middle Air, and Upper Air fields.
+
+    When PAE is disabled, PGDIR_SHIFT yields the value 22 (the same value yielded by PMD_SHIFT and by PUD_SHIFT), PGDIR_SIZE yields 2^22 or 4 MB, and PGDIR_MASK yields 0xffc00000. Conversely, when PAE is enabled, PGDIR_SHIFT yields the value 30 (12 from Offset plus 9 from Table plus 9 from Middle Air), PGDIR_SIZE yields 2^30 or 1 GB, and PGDIR_MASK yields 0xc0000000.
+
+* PTRS_PER_PTE, PTRS_PER_PMD, PTRS_PER_PUD, and PTRS_PER_PGD
+    
+    Compute the number of entries in the Page Table, Page Middle Directory, Page Upper Directory, and Page Global Directory. They yield the values 1,024, 1, 1, and 1,024, respectively, when PAE is disabled; and the values 512, 512, 1, and 4, respectively, when PAE is enabled.
+
+<h3 id="2.5.2">2.5.2 页表处理</h3>
+
+pte_t, pmd_t, pud_t, and pgd_t describe the format of, respectively, a Page Table, a
+Page Middle Directory, a Page Upper Directory, and a Page Global Directory entry.
+They are 64-bit data types when PAE is enabled and 32-bit data types otherwise.
+pgprot_t is another 64-bit (PAE enabled) or 32-bit (PAE disabled) data type that represents
+the protection flags associated with a single entry.
+
+Five type-conversion macros—_ _pte, _ _pmd, _ _pud, _ _pgd, and _ _pgprot—cast an
+unsigned integer into the required type. Five other type-conversion macros—pte_
+val, pmd_val, pud_val, pgd_val, and pgprot_val—perform the reverse casting from
+one of the four previously mentioned specialized types into an unsigned integer.
+
+The kernel also provides several macros and functions to read or modify page table entries:
+
+* pte_none, pmd_none, pud_none, and pgd_none yield the value 1 if the corresponding entry has the value 0; otherwise, they yield the value 0.
+
+* pte_clear, pmd_clear, pud_clear, and pgd_clear clear an entry of the corresponding page table, thus forbidding a process to use the linear addresses mapped by the page table entry. The ptep_get_and_clear() function clears a Page Table entry and returns the previous value.
+
+* set_pte, set_pmd, set_pud, and set_pgd write a given value into a page table entry; set_pte_atomic is identical to set_pte, but when PAE is enabled it also ensures that the 64-bit value is written atomically.
+
+* pte_same(a,b) returns 1 if two Page Table entries a and b refer to the same page and specify the same access privileges, 0 otherwise.
+
+* pmd_large(e) returns 1 if the Page Middle Directory entry e refers to a large page (2 MB or 4 MB), 0 otherwise.
+
+The pmd_bad macro is used by functions to check Page Middle Directory entries
+passed as input parameters. It yields the value 1 if the entry points to a bad Page
+Table—that is, if at least one of the following conditions applies:
+
+* The page is not in main memory (Present flag cleared).
+* The page allows only Read access (Read/Write flag cleared).
+* Either Accessed or Dirty is cleared (Linux always forces these flags to be set for every existing Page Table).
+
+The pud_bad and pgd_bad macros always yield 0. No pte_bad macro is defined,
+because it is legal for a Page Table entry to refer to a page that is not present in main
+memory, not writable, or not accessible at all.
+
+The pte_present macro yields the value 1 if either the Present flag or the Page Size
+flag of a Page Table entry is equal to 1, the value 0 otherwise. Recall that the Page
+Size flag in Page Table entries has no meaning for the paging unit of the microprocessor;
+the kernel, however, marks Present equal to 0 and Page Size equal to 1 for
+the pages present in main memory but without read, write, or execute privileges. In
+this way, any access to such pages triggers a Page Fault exception because Present is
+cleared, and the kernel can detect that the fault is not due to a missing page by
+checking the value of Page Size.
+
+The pmd_present macro yields the value 1 if the Present flag of the corresponding
+entry is equal to 1—that is, if the corresponding page or Page Table is loaded in
+main memory. The pud_present and pgd_present macros always yield the value 1.
+
+The functions listed in Table 2-5 query the current value of any of the flags included
+in a Page Table entry; with the exception of pte_file(), these functions work properly
+only on Page Table entries for which pte_present returns 1.
+
+Table 2-5. Page flag reading functions
+
+| Function name | Description |
+| ------------- | ----------- |
+| pte_user()    | Reads the User/Supervisor flag |
+| pte_read()    | Reads the User/Supervisor flag (pages on the 80 × 86 processor cannot be protected against reading) |
+| pte_write()   | Reads the Read/Write flag |
+| pte_exec()    | Reads the User/Supervisor flag (pages on the 80x86 processor cannot be protected against code execution) |
+| pte_dirty()   | Reads the Dirty flag |
+| pte_young()   | Reads the Accessed flag |
+| pte_file()    | Reads the Dirty flag (when the Present flag is cleared and the Dirty flag is set, the page belongs to a non-linear disk file mapping; see Chapter 16) |
+
+Another group of functions listed in Table 2-6 sets the value of the flags in a Page Table entry.
+
+Table 2-6. Page flag setting functions
+
+| Function name | Description |
+| ------------- | ----------- |
+| mk_pte_huge() | Sets the Page Size and Present flags of a Page Table entry |
+| pte_wrprotect()    | Clears the Read/Write flag |
+| pte_rdprotect()    | Clears the User/Supervisor flag |
+| pte_exprotect()    | Clears the User/Supervisor flag |
+| pte_mkwrite()    | Sets the Read/Write flag |
+| pte_mkread()    | Sets the User/Supervisor flag |
+| pte_mkexec()    | Sets the User/Supervisor flag |
+| pte_mkclean()    | Clears the Dirty flag |
+| pte_mkdirty()    | Sets the Dirty flag |
+| pte_mkold()    | Clears the Accessed flag (makes the page old) |
+| pte_mkyoung()    | Sets the Accessed flag (makes the page young) |
+| pte_modify(p,v)   | Sets all access rights in a Page Table entry p to a specified value v |
+| ptep_set_wrprotect()    | Like pte_wrprotect(), but acts on a pointer to a Page Table entry |
+| ptep_set_access_flags()    | If the Dirty flag is set, sets the page’s access rights to a specified value and invokes flush_tlb_page() (see the section “Translation Lookaside Buffers (TLB)” later in this chapter) |
+| ptep_mkdirty()    | Like pte_mkdirty() but acts on a pointer to a Page Table entry |
+| ptep_test_and_clear_dirty()    | Like pte_mkclean() but acts on a pointer to a Page Table entry and returns the old value of the flag |
+| ptep_test_and_clear_young()    | Like pte_mkold() but acts on a pointer to a Page Table entry and returnsthe old value of the flag |
+
+Now, let’s discuss the macros listed in Table 2-7 that combine a page address and a
+group of protection flags into a page table entry or perform the reverse operation of
+extracting the page address from a page table entry. Notice that some of these macros refer to a page through the linear address of its “page descriptor” (see the section
+“Page Descriptors” in Chapter 8) rather than the linear address of the page itself.
+
+Table 2-7. Macros acting on Page Table entries
+
+| Function name | Description |
+| ------------- | ----------- |
+| pgd_index(addr) | Yields the index (relative position) of the entry in the Page Global Directory that maps the linear address addr. |
+| pgd_offset(mm, addr) | Receives as parameters the address of a memory descriptor cw (see Chapter 9) and a linear address addr. The macro yields the linear address of the entry in a Page Global Directory that corresponds to the address addr; the Page Global Directory is found through a pointer within the memory descriptor. |
+| pgd_offset_k(addr) | Yields the linear address of the entry in the master kernel Page Global Directory that corresponds to the address addr (see the later section “Kernel Page Tables”). |
+| pgd_page(pgd) | Yields the page descriptor address of the page frame containing the Page Upper Directory referred to by the Page Global Directory entry pgd. In a twoor three-level paging system, this macro is equivalent to pud_page() applied to the folded Page Upper Directory entry. |
+| pud_offset(pgd, addr) | Receives as parameters a pointer pgd to a Page Global Directory entry and a linear address addr. The macro yields the linear address of the entry in a Page Upper Directory that corresponds to addr. In a two- or three-level paging system, this macro yields pgd, the address of a Page Global Directory entry. |
+| pud_page(pud) | Yields the linear address of the Page Middle Directory referred to by the Page Upper Directory entry pud. In a two-level paging system, this macro is equivalent to pmd_page() applied to the folded Page Middle Directory entry. |
+| pmd_index(addr) | Yields the index (relative position) of the entry in the Page Middle Directory that maps the linear address addr. |
+| pmd_offset(pud, addr) | Receives as parameters a pointer pud to a Page Upper Directory entry and a linear address addr. The macro yields the address of the entry in a Page Middle Directory that corresponds to addr. In a two-level paging system, it yields pud, the address of a Page Global Directory entry. |
+| pmd_page(pmd) | Yields the page descriptor address of the Page Table referred to by the Page Middle Directory entry pmd. In a two-level paging system, pmd is actually an entry of a Page Global Directory. |
+| mk_pte(p,prot) | Receives as parameters the address of a page descriptor p and a group of access rights prot, and builds the corresponding Page Table entry. |
+| pte_index(addr) | Yields the index (relative position) of the entry in the Page Table that maps the linear address addr. |
+| pte_offset_kernel(dir, addr) | Yields the linear address of the Page Table that corresponds to the linear address addr mapped by the Page Middle Directory dir. Used only on the master kernel page tables (see the later section “Kernel Page Tables”). |
+| pte_offset_map(dir, addr) | Receives as parameters a pointer dir to a Page Middle Directory entry and a linear address addr; it yields the linear address of the entry in the Page Table that corresponds to the linear address addr. If the Page Table is kept in high memory, the kernel establishes a temporary kernel mapping (see the section “Kernel Mappings of High-Memory Page Frames” in Chapter 8), to be released by means of pte_unmap. The macros pte_offset_map_nested and pte_unmap_nested are identical, but they use a different temporary kernel mapping. |
+| pte_page(x) | Returns the page descriptor address of the page referenced by the Page Table entry x. |
+| pte_to_pgoff(pte) | Extracts from the content pte of a Page Table entry the file offset corresponding to a page belonging to a non-linear file memory mapping (see the section “Non-Linear Memory Mappings” in Chapter 16). |
+| pgoff_to_pte(offset) | Sets up the content of a Page Table entry for a page belonging to a non-linear file memory mapping. |
+
+The last group of functions of this long list was introduced to simplify the creation and deletion of page table entries.
+
+When two-level paging is used, creating or deleting a Page Middle Directory entry is
+trivial. As we explained earlier in this section, the Page Middle Directory contains a
+single entry that points to the subordinate Page Table. Thus, the Page Middle Directory
+entry is the entry within the Page Global Directory, too. When dealing with Page
+Tables, however, creating an entry may be more complex, because the Page Table
+that is supposed to contain it might not exist. In such cases, it is necessary to allocate
+a new page frame, fill it with zeros, and add the entry.
+
+If PAE is enabled, the kernel uses three-level paging. When the kernel creates a new
+Page Global Directory, it also allocates the four corresponding Page Middle Directories;
+these are freed only when the parent Page Global Directory is released.
+
+When two or three-level paging is used, the Page Upper Directory entry is always
+mapped as a single entry within the Page Global Directory.
+
+As usual, the description of the functions listed in Table 2-8 refers to the 80 × 86
+architecture.
+
+Table 2-8. Page allocation functions
+
+| Function name | Description |
+| ------------- | ----------- |
+| pgd_alloc(mm) | Allocates a new Page Global Directory; if PAE is enabled, it also allocates the three children Page Middle Directories that map the User Mode linear addresses. The argument mm (the address of a memory descriptor) is ignored  on the 80x86 architecture. |
+| pgd_free( pgd) | Releases the Page Global Directory at address pgd; if PAE is enabled, it also releases the three Page Middle Directories that map the User Mode linear addresses. |
+| pud_alloc(mm, pgd, addr) | In a two- or three-level paging system, this function does nothing: it simply returns the linear address of the Page Global Directory entry pgd. |
+| pud_free(x) | In a two- or three-level paging system, this macro does nothing. |
+| pmd_alloc(mm, pud, addr) | Defined so generic three-level paging systems can allocate a new Page Middle Directory for the linear address addr. If PAE is not enabled, the function simply returns the input parameter pud—that is, the address of the entry in the Page Global Directory. If PAE is enabled, the function returns the linear address of the Page Middle Directory entry that maps the linear address addr. The argument cw is ignored. |
+| pmd_free(x ) | Does nothing, because Page Middle Directories are allocated and deallocated together with their parent Page Global Directory. |
+| pte_alloc_map(mm, pmd, addr) | Receives as parameters the address of a Page Middle Directory entry pmd and a linear address addr, and returns the address of the Page Table entry corresponding to addr. If the Page Middle Directory entry is null, the function allocates a new Page Table by invoking pte_alloc_one( ). If a new Page Table is allocated, the entry corresponding to addr is initialized and the User/Supervisor flag is set. If the Page Table is kept in high memory, the kernel establishes a temporary kernel mapping (see the section “Kernel Mappings of High-Memory Page Frames” in Chapter 8), to be released by pte_unmap. |
+| pte_alloc_kernel(mm, pmd, addr) | If the Page Middle Directory entry pmd associated with the address addr is null, the function allocates a new Page Table. It then returns the linear address of the Page Table entry associated with addr. Used only for master kernel page tables (see the later section “Kernel Page Tables”). |
+| pte_free( pte) | Releases the Page Table associated with the pte page descriptor pointer. |
+| pte_free_kernel(pte) | Equivalent to pte_free(), but used for master kernel page tables. |
+| clear_page_range(mmu,start,end) | Clears the contents of the page tables of a process from linear address start to end by iteratively releasing its Page Tables and clearing the Page Middle Directory entries. |
+
+<h3 id="2.5.3">2.5.3 物理内存布局</h3>
+
+During the initialization phase the kernel must build a physical addresses map that specifies which physical address ranges are usable by the kernel and which are unavailable (either because they map hardware devices’ I/O shared memory or because the corresponding page frames contain BIOS data).
+
+The kernel considers the following page frames as *reserved*:
+
+* Those falling in the unavailable physical address ranges
+* Those containing the kernel’s code and initialized data structures
+
+A page contained in a reserved page frame can never be dynamically assigned or swapped to disk.
+
+As a general rule, the Linux kernel is installed in RAM starting from the physical address 0x00100000—i.e., from the second megabyte. The total number of page frames required depends on how the kernel is configured. A typical configuration yields a kernel that can be loaded in less than 3 MB of RAM.
+
+Why isn’t the kernel loaded starting with the first available megabyte of RAM? Well, the PC architecture has several peculiarities that must be taken into account. For example:
+
+* Page frame 0 is used by BIOS to store the system hardware configuration detected during the Power-On Self-Test (POST); the BIOS of many laptops, moreover, writes data on this page frame even after the system is initialized.
+
+* Physical addresses ranging from 0x000a0000 to 0x000fffff are usually reserved to
+BIOS routines and to map the internal memory of ISA graphics cards. This area
+is the well-known hole from 640 KB to 1 MB in all IBM-compatible PCs: the
+physical addresses exist but they are reserved, and the corresponding page
+frames cannot be used by the operating system.
+
+* Additional page frames within the first megabyte may be reserved by specific
+computer models. For example, the IBM ThinkPad maps the 0xa0 page frame
+into the 0x9f one.
+
+In the early stage of the boot sequence (see Appendix A), the kernel queries the BIOS
+and learns the size of the physical memory. In recent computers, the kernel also
+invokes a BIOS procedure to build a list of physical address ranges and their corresponding
+memory types.
+
+Later, the kernel executes the machine_specific_memory_setup() function, which
+builds the physical addresses map (see Table 2-9 for an example). Of course, the kernel
+builds this table on the basis of the BIOS list, if this is available; otherwise the
+kernel builds the table following the conservative default setup: all page frames with
+numbers from 0x9f (LOWMEMSIZE()) to 0x100 (HIGH_MEMORY) are marked as reserved.
+
+Table 2-9. Example of BIOS-provided physical addresses map
+
+| Start      | End        | Type   |
+| ---------- | ---------- | ------ |
+| 0x00000000 | 0x0009ffff | Usable |
+| 0x000f0000 | 0x000fffff | Reserved |
+| 0x00100000 | 0x07feffff | Usable |
+| 0x07ff0000 | 0x07ff2fff | ACPI data |
+| 0x07ff3000 | 0x07ffffff | ACPI NVS |
+| 0xffff0000 | 0xffffffff | Reserved |
+
+A typical configuration for a computer having 128 MB of RAM is shown in
+Table 2-9. The physical address range from 0x07ff0000 to 0x07ff2fff stores information
+about the hardware devices of the system written by the BIOS in the POST
+phase; during the initialization phase, the kernel copies such information in a suitable
+kernel data structure, and then considers these page frames usable. Conversely,
+the physical address range of 0x07ff3000 to 0x07ffffff is mapped to ROM chips of the hardware devices. The physical address range starting from 0xffff0000 is marked
+as reserved, because it is mapped by the hardware to the BIOS’s ROM chip (see
+Appendix A). Notice that the BIOS may not provide information for some physical
+address ranges (in the table, the range is 0x000a0000 to 0x000effff). To be on the safe
+side, Linux assumes that such ranges are not usable.
+
+The kernel might not see all physical memory reported by the BIOS: for instance, the
+kernel can address only 4 GB of RAM if it has not been compiled with PAE support,
+even if a larger amount of physical memory is actually available. The setup_memory( )
+function is invoked right after machine_specific_memory_setup(): it analyzes the table
+of physical memory regions and initializes a few variables that describe the kernel’s
+physical memory layout. These variables are shown in Table 2-10.
+
+Table 2-10. Variables describing the kernel’s physical memory layout
+
+| Variable name | Description |
+| ------------- | ----------- |
+| num_physpages | Page frame number of the highest usable page frame |
+| totalram_pages | Total number of usable page frames |
+| min_low_pfn | Page frame number of the first usable page frame after the kernel image in RAM |
+| max_pfn | Page frame number of the last usable page frame |
+| max_low_pfn | Page frame number of the last page frame directly mapped by the kernel (low memory) |
+| totalhigh_pages | Total number of page frames not directly mapped by the kernel (high memory) |
+| highstart_pfn | Page frame number of the first page frame not directly mapped by the kernel |
+| highend_pfn | Page frame number of the last page frame not directly mapped by the kernel |
+
+To avoid loading the kernel into groups of noncontiguous page frames, Linux prefers
+to skip the first megabyte of RAM. Clearly, page frames not reserved by the PC
+architecture will be used by Linux to store dynamically assigned pages.
+
+Figure 2-13 shows how the first 3 MB of RAM are filled by Linux. We have assumed
+that the kernel requires less than 3 MB of RAM.
+
+The symbol _text, which corresponds to physical address 0x00100000, denotes the
+address of the first byte of kernel code. The end of the kernel code is similarly identified
+by the symbol _etext. Kernel data is divided into two groups: initialized and
+uninitialized. The initialized data starts right after _etext and ends at _edata. The
+uninitialized data follows and ends up at _end.
+
+The symbols appearing in the figure are not defined in Linux source code; they are
+produced while compiling the kernel.*
+
+<img id="Figure_2-13" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_13.PNG">
+
+图2-13 Linux内核前768个页帧
+
+<h3 id="2.5.4">2.5.4 进程页表</h3>
+
+The linear address space of a process is divided into two parts:
+
+* Linear addresses from 0x00000000 to 0xbfffffff can be addressed when the process runs in either User or Kernel Mode.
+
+* Linear addresses from 0xc0000000 to 0xffffffff can be addressed only when the process runs in Kernel Mode.
+
+When a process runs in User Mode, it issues linear addresses smaller than
+0xc0000000; when it runs in Kernel Mode, it is executing kernel code and the linear
+addresses issued are greater than or equal to 0xc0000000. In some cases, however, the
+kernel must access the User Mode linear address space to retrieve or store data.
+
+The PAGE_OFFSET macro yields the value 0xc0000000; this is the offset in the linear
+address space of a process where the kernel lives. In this book, we often refer directly
+to the number 0xc0000000 instead.
+
+The content of the first entries of the Page Global Directory that map linear
+addresses lower than 0xc0000000 (the first 768 entries with PAE disabled, or the first
+3 entries with PAE enabled) depends on the specific process. Conversely, the remaining
+entries should be the same for all processes and equal to the corresponding
+entries of the master kernel Page Global Directory (see the following section).
+
+<h3 id="2.5.5">2.5.5 内核页表</h3>
+
+The kernel maintains a set of page tables for its own use, rooted at a so-called master
+kernel Page Global Directory. After system initialization, this set of page tables is
+never directly used by any process or kernel thread; rather, the highest entries of the
+master kernel Page Global Directory are the reference model for the corresponding
+entries of the Page Global Directories of every regular process in the system.
+
+We explain how the kernel ensures that changes to the master kernel Page Global
+Directory are propagated to the Page Global Directories that are actually used by
+processes in the section “Linear Addresses of Noncontiguous Memory Areas” in
+Chapter 8.
+
+We now describe how the kernel initializes its own page tables. This is a two-phase
+activity. In fact, right after the kernel image is loaded into memory, the CPU is still
+running in real mode; thus, paging is not enabled.
+
+In the first phase, the kernel creates a limited address space including the kernel’s
+code and data segments, the initial Page Tables, and 128 KB for some dynamic data
+structures. This minimal address space is just large enough to install the kernel in
+RAM and to initialize its core data structures.
+
+In the second phase, the kernel takes advantage of all of the existing RAM and sets
+up the page tables properly. Let us examine how this plan is executed.
+
+<h4 id="2.5.5.1">2.5.5.1 临时内核页表</h4>
+
+A provisional Page Global Directory is initialized statically during kernel compilation,
+while the provisional Page Tables are initialized by the startup_32() assembly
+language function defined in arch/i386/kernel/head.S. We won’t bother mentioning
+the Page Upper Directories and Page Middle Directories anymore, because they are
+equated to Page Global Directory entries. PAE support is not enabled at this stage.
+
+The provisional Page Global Directory is contained in the swapper_pg_dir variable.
+The provisional Page Tables are stored starting from pg0, right after the end of the
+kernel’s uninitialized data segments (symbol _end in Figure 2-13). For the sake of
+simplicity, let’s assume that the kernel’s segments, the provisional Page Tables, and
+the 128 KB memory area fit in the first 8 MB of RAM. In order to map 8 MB of RAM,
+two Page Tables are required.
+
+The objective of this first phase of paging is to allow these 8 MB of RAM to be easily
+addressed both in real mode and protected mode. Therefore, the kernel must create a
+mapping from both the linear addresses 0x00000000 through 0x007fffff and the linear
+addresses 0xc0000000 through 0xc07fffff into the physical addresses 0x00000000
+through 0x007fffff. In other words, the kernel during its first phase of initialization
+can address the first 8 MB of RAM by either linear addresses identical to the physical
+ones or 8 MB worth of linear addresses, starting from 0xc0000000.
+
+The Kernel creates the desired mapping by filling all the swapper_pg_dir entries with
+zeroes, except for entries 0, 1, 0x300 (decimal 768), and 0x301 (decimal 769); the latter
+two entries span all linear addresses between 0xc0000000 and 0xc07fffff. The 0,
+1, 0x300, and 0x301 entries are initialized as follows:
+
+* The address field of entries 0 and 0x300 is set to the physical address of pg0, while the address field of entries 1 and 0x301 is set to the physical address of the page frame following pg0.
+* The Present, Read/Write, and User/Supervisor flags are set in all four entries.
+* The Accessed, Dirty, PCD, PWD, and Page Size flags are cleared in all four entries.
+
+The startup_32( ) assembly language function also enables the paging unit. This is
+achieved by loading the physical address of swapper_pg_dir into the cr3 control register
+and by setting the PG flag of the cr0 control register, as shown in the following
+equivalent code fragment:
+
+    movl $swapper_pg_dir-0xc0000000, %eax
+    movl %eax, %cr3                         /* set the page table pointer.. */
+    movl %cr0, %eax
+    orl $0x80000000, %eax
+    movl %eax, %cr0                         /* ..and set paging (PG) bit */
+
+<h4 id="2.5.5.2">2.5.5.2 内核页表（RAM < 896M）</h4>
+
+The final mapping provided by the kernel page tables must transform linear
+addresses starting from `0xc0000000` into physical addresses starting from 0.
+
+The `__pa` macro is used to convert a linear address starting from PAGE_OFFSET to the
+corresponding physical address, while the `__va` macro does the reverse.
+
+The master kernel Page Global Directory is still stored in `swapper_pg_dir`. It is initialized
+by the `paging_init()` function, which does the following:
+
+1. Invokes pagetable_init() to set up the Page Table entries properly.
+2. Writes the physical address of swapper_pg_dir in the cr3 control register.
+3. If the CPU supports PAE and if the kernel is compiled with PAE support, sets the PAE flag in the cr4 control register.
+4. Invokes __flush_tlb_all() to invalidate all TLB entries.
+
+The actions performed by pagetable_init() depend on both the amount of RAM
+present and on the CPU model. Let’s start with the simplest case. Our computer has
+less than 896 MB* of RAM, 32-bit physical addresses are sufficient to address all the
+available RAM, and there is no need to activate the PAE mechanism. (See the earlier
+section “The Physical Address Extension (PAE) Paging Mechanism.”)
+
+The swapper_pg_dir Page Global Directory is reinitialized by a cycle equivalent to the
+following:
+
+    pgd = swapper_pg_dir + pgd_index(PAGE_OFFSET); /* 768 */
+    phys_addr = 0x00000000;
+    while (phys_addr < (max_low_pfn * PAGE_SIZE)) {
+        pmd = one_md_table_init(pgd); /* returns pgd itself */
+        set_pmd(pmd, _ _pmd(phys_addr | pgprot_val(_ _pgprot(0x1e3))));
+        /* 0x1e3 == Present, Accessed, Dirty, Read/Write, Page Size, Global */
+        phys_addr += PTRS_PER_PTE * PAGE_SIZE; /* 0x400000 */
+        ++pgd;
+    }
+
+We assume that the CPU is a recent 80 × 86 microprocessor supporting 4 MB pages
+and “global” TLB entries. Notice that the User/Supervisor flags in all Page Global
+Directory entries referencing linear addresses above 0xc0000000 are cleared, thus
+denying processes in User Mode access to the kernel address space. Notice also that
+the Page Size flag is set so that the kernel can address the RAM by making use of
+large pages (see the section “Extended Paging” earlier in this chapter).
+
+The identity mapping of the first megabytes of physical memory (8 MB in our example)
+built by the startup_32() function is required to complete the initialization phase
+of the kernel. When this mapping is no longer necessary, the kernel clears the corresponding
+page table entries by invoking the zap_low_mappings() function.
+
+Actually, this description does not state the whole truth. As we’ll see in the later section
+“Fix-Mapped Linear Addresses,” the kernel also adjusts the entries of Page
+Tables corresponding to the “fix-mapped linear addresses.”
+
+<h4 id="2.5.5.3">2.5.5.3 内核页表（896M < RAM < 4096M）</h4>
+
+In this case, the RAM cannot be mapped entirely into the kernel linear address space.
+The best Linux can do during the initialization phase is to map a RAM window of
+size 896 MB into the kernel linear address space. If a program needs to address other
+parts of the existing RAM, some other linear address interval must be mapped to the
+required RAM. This implies changing the value of some page table entries. We’ll
+discuss how this kind of dynamic remapping is done in Chapter 8.
+
+To initialize the Page Global Directory, the kernel uses the same code as in the previous
+case.
+
+
+<h4 id="2.5.5.4">2.5.5.4 内核页表（RAM > 4096M）</h4>
+
+Let’s now consider kernel Page Table initialization for computers with more than
+4 GB; more precisely, we deal with cases in which the following happens:
+
+* The CPU model supports Physical Address Extension (PAE).
+* The amount of RAM is larger than 4 GB.
+* The kernel is compiled with PAE support.
+
+Although PAE handles 36-bit physical addresses, linear addresses are still 32-bit
+addresses. As in the previous case, Linux maps a 896-MB RAM window into the kernel
+linear address space; the remaining RAM is left unmapped and handled by
+dynamic remapping, as described in Chapter 8. The main difference with the previous case is that a three-level paging model is used, so the Page Global Directory is
+initialized by a cycle equivalent to the following:
+
+    pgd_idx = pgd_index(PAGE_OFFSET); /* 3 */
+    for (i=0; i<pgd_idx; i++)
+        set_pgd(swapper_pg_dir + i, _ _pgd(_ _pa(empty_zero_page) + 0x001));
+        /* 0x001 == Present */
+    pgd = swapper_pg_dir + pgd_idx;
+    phys_addr = 0x00000000;
+    for (; i<PTRS_PER_PGD; ++i, ++pgd) {
+        pmd = (pmd_t *) alloc_bootmem_low_pages(PAGE_SIZE);
+        set_pgd(pgd, _ _pgd(_ _pa(pmd) | 0x001)); /* 0x001 == Present */
+        if (phys_addr < max_low_pfn * PAGE_SIZE)
+            for (j=0; j < PTRS_PER_PMD /* 512 */
+                    && phys_addr < max_low_pfn*PAGE_SIZE; ++j) {
+                set_pmd(pmd, _ _pmd(phys_addr | pgprot_val(_ _pgprot(0x1e3))));
+                /* 0x1e3 == Present, Accessed, Dirty, Read/Write,  Page Size, Global */
+                phys_addr += PTRS_PER_PTE * PAGE_SIZE; /* 0x200000 */
+            }
+    }
+    swapper_pg_dir[0] = swapper_pg_dir[pgd_idx];
+
+The kernel initializes the first three entries in the Page Global Directory corresponding
+to the user linear address space with the address of an empty page (empty_zero_
+page). The fourth entry is initialized with the address of a Page Middle Directory
+(pmd) allocated by invoking alloc_bootmem_low_pages(). The first 448 entries in the
+Page Middle Directory (there are 512 entries, but the last 64 are reserved for noncontiguous
+memory allocation; see the section “Noncontiguous Memory Area Management”
+in Chapter 8) are filled with the physical address of the first 896 MB of RAM.
+
+Notice that all CPU models that support PAE also support large 2-MB pages and global
+pages. As in the previous cases, whenever possible, Linux uses large pages to
+reduce the number of Page Tables.
+
+The fourth Page Global Directory entry is then copied into the first entry, so as to
+mirror the mapping of the low physical memory in the first 896 MB of the linear
+address space. This mapping is required in order to complete the initialization of
+SMPsystems: when it is no longer necessary, the kernel clears the corresponding
+page table entries by invoking the zap_low_mappings() function, as in the previous
+cases.
+
+<h3 id="2.5.6">2.5.6 固定映射的线性地址</h3>
+
+We saw that the initial part of the fourth gigabyte of kernel linear addresses maps the
+physical memory of the system. However, at least 128 MB of linear addresses are
+always left available because the kernel uses them to implement noncontiguous
+memory allocation and fix-mapped linear addresses.
+
+Noncontiguous memory allocation is just a special way to dynamically allocate and
+release pages of memory, and is described in the section “Linear Addresses of Noncontiguous
+Memory Areas” in Chapter 8. In this section, we focus on fix-mapped linear
+addresses.
+
+Basically, a fix-mapped linear address is a constant linear address like 0xffffc000
+whose corresponding physical address does not have to be the linear address minus
+0xc000000, but rather a physical address set in an arbitrary way. Thus, each fixmapped
+linear address maps one page frame of the physical memory. As we’ll see in
+later chapters, the kernel uses fix-mapped linear addresses instead of pointer variables
+that never change their value.
+
+Fix-mapped linear addresses are conceptually similar to the linear addresses that
+map the first 896 MB of RAM. However, a fix-mapped linear address can map any
+physical address, while the mapping established by the linear addresses in the initial
+portion of the fourth gigabyte is linear (linear address X maps physical address
+X –PAGE_OFFSET).
+
+With respect to variable pointers, fix-mapped linear addresses are more efficient. In
+fact, dereferencing a variable pointer requires one memory access more than dereferencing
+an immediate constant address. Moreover, checking the value of a variable
+pointer before dereferencing it is a good programming practice; conversely, the check
+is never required for a constant linear address.
+
+Each fix-mapped linear address is represented by a small integer index defined in the
+enum fixed_addresses data structure:
+
+    enum fixed_addresses {
+        FIX_HOLE,
+        FIX_VSYSCALL,
+        FIX_APIC_BASE,
+        FIX_IO_APIC_BASE_0,
+        [...]
+        __end_of_fixed_addresses
+    };
+
+Fix-mapped linear addresses are placed at the end of the fourth gigabyte of linear
+addresses. The fix_to_virt() function computes the constant linear address starting
+from the index:
+
+    inline unsigned long fix_to_virt(const unsigned int idx)
+    {
+        if (idx >= __end_of_fixed_addresses)
+        __this_fixmap_does_not_exist();
+        return (0xfffff000UL - (idx << PAGE_SHIFT));
+    }
+
+
+Let’s assume that some kernel function invokes fix_to_virt(FIX_IO_APIC_BASE_0).
+Because the function is declared as “inline,” the C compiler does not generate a call
+to fix_to_virt(), but inserts its code in the calling function. Moreover, the check on
+the index value is never performed at runtime. In fact, FIX_IO_APIC_BASE_0 is a constant
+equal to 3, so the compiler can cut away the if statement because its condition
+is false at compile time. Conversely, if the condition is true or the argument of fix_
+to_virt() is not a constant, the compiler issues an error during the linking phase
+because the symbol _ _this_fixmap_does_not_exist is not defined anywhere. Eventually,
+the compiler computes 0xfffff000-(3<<PAGE_SHIFT) and replaces the fix_to_
+virt() function call with the constant linear address 0xffffc000.
+
+To associate a physical address with a fix-mapped linear address, the kernel uses the
+set_fixmap(idx,phys) and set_fixmap_nocache(idx,phys) macros. Both of them initialize
+the Page Table entry corresponding to the fix_to_virt(idx) linear address
+with the physical address phys; however, the second function also sets the PCD flag of
+the Page Table entry, thus disabling the hardware cache when accessing the data in
+the page frame (see the section “Hardware Cache” earlier in this chapter). Conversely,
+clear_fixmap(idx) removes the linking between a fix-mapped linear address
+idx and the physical address.
+
+<h3 id="2.5.7">2.5.7 处理Cache和TLB</h3>
+
+The last topic of memory addressing deals with how the kernel makes an optimal use
+of the hardware caches. Hardware caches and Translation Lookaside Buffers play a
+crucial role in boosting the performance of modern computer architectures. Several
+techniques are used by kernel developers to reduce the number of cache and TLB
+misses.
+
+<h4 id="2.5.7.1">2.5.7.1 处理Cache</h4>
+
+As mentioned earlier in this chapter, hardware caches are addressed by cache lines.
+The L1_CACHE_BYTES macro yields the size of a cache line in bytes. On Intel models
+earlier than the Pentium 4, the macro yields the value 32; on a Pentium 4, it yields
+the value 128.
+
+To optimize the cache hit rate, the kernel considers the architecture in making the
+following decisions.
+
+* The most frequently used fields of a data structure are placed at the low offset within the data structure, so they can be cached in the same line.
+
+* When allocating a large set of data structures, the kernel tries to store each of them in memory in such a way that all cache lines are used uniformly.
+
+Cache synchronization is performed automatically by the 80 × 86 microprocessors, thus the Linux kernel for this kind of processor does not perform any hardware cache flushing. The kernel does provide, however, cache flushing interfaces for processors that do not synchronize caches.
+
+<h4 id="2.5.7.2">2.5.7.2 处理TLB</h4>
+
+Processors cannot synchronize their own TLB cache automatically because it is the
+kernel, and not the hardware, that decides when a mapping between a linear and a
+physical address is no longer valid.
+
+Linux 2.6 offers several TLB flush methods that should be applied appropriately,
+depending on the type of page table change (see Table 2-11).
+
+Table 2-11. Architecture-independent TLB-invalidating methods
+
+| Method name | Description | Typically used when |
+| ----------- | ----------- | ------------------- |
+| flush_tlb_all | Flushes all TLB entries (including those that refer to global pages, that is, pages whose Global flag is set) | Changing the kernel page table entries |
+| flush_tlb_kernel_range | Flushes all TLB entries in a given range of linear addresses (including those that refer to global pages) | Changing a range of kernel page table entries |
+| flush_tlb | Flushes all TLB entries of the non-global pages owned by the current process | Performing a process switch |
+| flush_tlb_mm | Flushes all TLB entries of the non-global pages owned by a given process | Forking a new process |
+| flush_tlb_range | Flushes the TLB entries corresponding to a linear address interval of a given process | Releasing a linear address interval of a process |
+| flush_tlb_pgtables | Flushes the TLB entries of a given contiguous subset of page tables of a given process | Releasing some page tables of a process |
+| flush_tlb_page | Flushes the TLB of a single Page Table entry of a given process | Processing a Page Fault |
+
+Despite the rich set of TLB methods offered by the generic Linux kernel, every microprocessor
+usually offers a far more restricted set of TLB-invalidating assembly language
+instructions. In this respect, one of the more flexible hardware platforms is
+Sun’s UltraSPARC. In contrast, Intel microprocessors offers only two TLB-invalidating
+techniques:
+
+* All Pentium models automatically flush the TLB entries relative to non-global pages when a value is loaded into the cr3 register.
+
+* In Pentium Pro and later models, the invlpg assembly language instruction invalidates a single TLB entry mapping a given linear address.
+
+Table 2-12 lists the Linux macros that exploit such hardware techniques; these macros
+are the basic ingredients to implement the architecture-independent methods
+listed in Table 2-11.
+
+Table 2-12. TLB-invalidating macros for the Intel Pentium Pro and later processors
+
+| Method name | Description | Typically used when |
+| ----------- | ----------- | ------------------- |
+| __flush_tlb() | Rewrites cr3 register back into itself | flush_tlb, flush_tlb_mm, flush_tlb_range |
+| __flush_tlb_global() | Disables global pages by clearing the PGE flag of cr4, rewrites cr3 register back into itself, and sets again the PGE flag | flush_tlb_all, flush_tlb_kernel_range |
+| __flush_tlb_single(addr) | Executes invlpg assembly language instruction with parameter addr | flush_tlb_page |
+
+Notice that the flush_tlb_pgtables method is missing from Table 2-12: in the 80 × 86
+architecture nothing has to be done when a page table is unlinked from its parent
+table, thus the function implementing this method is empty.
+
+The architecture-independent TLB-invalidating methods are extended quite simply
+to multiprocessor systems. The function running on a CPU sends an Interprocessor
+Interrupt (see “Interprocessor Interrupt Handling” in Chapter 4) to the other CPUs
+that forces them to execute the proper TLB-invalidating function.
+
+As a general rule, any process switch implies changing the set of active page tables.
+Local TLB entries relative to the old page tables must be flushed; this is done automatically
+when the kernel writes the address of the new Page Global Directory into
+the cr3 control register. The kernel succeeds, however, in avoiding TLB flushes in the
+following cases:
+
+
+* When performing a process switch between two regular processes that use the
+same set of page tables (see the section “The schedule( ) Function” in
+Chapter 7).
+
+* When performing a process switch between a regular process and a kernel
+thread. In fact, we’ll see in the section “Memory Descriptor of Kernel Threads”
+in Chapter 9, that kernel threads do not have their own set of page tables; rather,
+they use the set of page tables owned by the regular process that was scheduled
+last for execution on the CPU.
+
+Besides process switches, there are other cases in which the kernel needs to flush
+some entries in a TLB. For instance, when the kernel assigns a page frame to a User
+Mode process and stores its physical address into a Page Table entry, it must flush
+any local TLB entry that refers to the corresponding linear address. On multiprocessor
+systems, the kernel also must flush the same TLB entry on the CPUs that are
+using the same set of page tables, if any.
+
+To avoid useless TLB flushing in multiprocessor systems, the kernel uses a technique
+called lazy TLBmode . The basic idea is the following: if several CPUs are using
+the same page tables and a TLB entry must be flushed on all of them, then TLB
+flushing may, in some cases, be delayed on CPUs running kernel threads.
+In fact, each kernel thread does not have its own set of page tables; rather, it makes
+use of the set of page tables belonging to a regular process. However, there is no need
+to invalidate a TLB entry that refers to a User Mode linear address, because no kernel
+thread accesses the User Mode address space.*
+
+When some CPUs start running a kernel thread, the kernel sets it into lazy TLB
+mode. When requests are issued to clear some TLB entries, each CPU in lazy TLB
+mode does not flush the corresponding entries; however, the CPU remembers that its
+current process is running on a set of page tables whose TLB entries for the User
+Mode addresses are invalid. As soon as the CPU in lazy TLB mode switches to a regular
+process with a different set of page tables, the hardware automatically flushes
+the TLB entries, and the kernel sets the CPU back in non-lazy TLB mode. However,
+if a CPU in lazy TLB mode switches to a regular process that owns the same set of
+page tables used by the previously running kernel thread, then any deferred TLB
+invalidation must be effectively applied by the kernel. This “lazy” invalidation is
+effectively achieved by flushing all non-global TLB entries of the CPU.
+
+Some extra data structures are needed to implement the lazy TLB mode. The cpu_
+tlbstate variable is a static array of NR_CPUS structures (the default value for this
+macro is 32; it denotes the maximum number of CPUs in the system) consisting of
+an active_mm field pointing to the memory descriptor of the current process (see
+Chapter 9) and a state flag that can assume only two values: TLBSTATE_OK (non-lazy
+TLB mode) or TLBSTATE_LAZY (lazy TLB mode). Furthermore, each memory descriptor
+includes a cpu_vm_mask field that stores the indices of the CPUs that should
+receive Interprocessor Interrupts related to TLB flushing. This field is meaningful
+only when the memory descriptor belongs to a process currently in execution.
+
+When a CPU starts executing a kernel thread, the kernel sets the state field of its
+cpu_tlbstate element to TLBSTATE_LAZY; moreover, the cpu_vm_mask field of the active
+memory descriptor stores the indices of all CPUs in the system, including the one
+that is entering in lazy TLB mode. When another CPU wants to invalidate the TLB
+entries of all CPUs relative to a given set of page tables, it delivers an Interprocessor
+Interrupt to all CPUs whose indices are included in the cpu_vm_mask field of the corresponding
+memory descriptor.
+
+When a CPU receives an Interprocessor Interrupt related to TLB flushing and verifies
+that it affects the set of page tables of its current process, it checks whether the
+state field of its cpu_tlbstate element is equal to TLBSTATE_LAZY. In this case, the kernel
+refuses to invalidate the TLB entries and removes the CPU index from the cpu_
+vm_mask field of the memory descriptor. This has two consequences:
+
+* As long as the CPU remains in lazy TLB mode, it will not receive other Interprocessor Interrupts related to TLB flushing.
+
+* If the CPU switches to another process that is using the same set of page tables as the kernel thread that is being replaced, the kernel invokes _ _flush_tlb() to invalidate all non-global TLB entries of the CPU.
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
