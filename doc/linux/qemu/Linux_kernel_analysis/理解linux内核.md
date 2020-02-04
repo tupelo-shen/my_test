@@ -937,196 +937,133 @@ User Mode applications also may allocate new segments by means of modify_ldt(); 
 
 <h2 id="2.4">2.4 内存分页</h2>
 
-The paging unit translates linear addresses into physical ones. One key task in the
-unit is to check the requested access type against the access rights of the linear
-address. If the memory access is not valid, it generates a Page Fault exception (see
-Chapter 4 and Chapter 8).
+分页单元将线性地址转换成物理地址。分页单元主要的任务就是根据线性地址的访问权限检查请求的访问类型。如果访问无效，则产生一个页错误异常（具体看[第4章](#4)和[第8章](#8)）。
 
-For the sake of efficiency, linear addresses are grouped in fixed-length intervals called
-pages; contiguous linear addresses within a page are mapped into contiguous physical
-addresses. In this way, the kernel can specify the physical address and the access
-rights of a page instead of those of all the linear addresses included in it. Following
-the usual convention, we shall use the term “page” to refer both to a set of linear
-addresses and to the data contained in this group of addresses.
+为了效率，将线性地址按照固定长度组织，称为页；一个页的连续线性地址映射为连续的物理地址。通过这种方式，内核可以按页指定物理地址和访问权限，而不是对整个地址进行操作，增加了灵活性。基于传统习惯，我们使用 *page*这个词表示一组线性地址及其存储内容。
 
-The paging unit thinks of all RAM as partitioned into fixed-length page frames
-(sometimes referred to as physical pages). Each page frame contains a page—that is,
-the length of a page frame coincides with that of a page. A page frame is a constituent
-of main memory, and hence it is a storage area. It is important to distinguish a
-page from a page frame; the former is just a block of data, which may be stored in
-any page frame or on disk.
+分页单元把所有的RAM分为固定长度的`页帧`（有时，也称为物理页）。每一个页帧都包含一个页，也就是说，页帧的长度和页的长度是一致的。页帧是内存的组成部分，因而是指一段存储区域。弄清楚`页`和`页帧`这两个概念是非常重要的；前者是一块数据，可能存储在任何页帧或硬盘上。
 
-The data structures that map linear to physical addresses are called page tables; they
-are stored in main memory and must be properly initialized by the kernel before
-enabling the paging unit.
+映射线性地址到物理地址的数据结构，称为`页表`；他们存储在内存中，在使能分页单元之前必须被正确初始化。
 
-Starting with the 80386, all 80 × 86 processors support paging; it is enabled by setting
-the PG flag of a control register named cr0. When PG = 0, linear addresses are
-interpreted as physical addresses.
+从80386架构开始，所有的x86架构处理器都支持分页机制；通过控制寄存器cr0的PG标志位进行设置。当PG=0，线性地址就是物理地址。
+
+> <font color="red">注：</font>
+> <font color="red">也就是分段机制已经被废弃了，所以暂时不深究了。</font>
 
 <h3 id="2.4.1">2.4.1 常规分页</h3>
 
-Starting with the 80386, the paging unit of Intel processors handles 4 KB pages.
+从80386架构开始，英特尔的分页单元将页的大小划分为4KB。32位的线性地址被分为3个域：
 
-The 32 bits of a linear address are divided into three fields:
+* 目录 - 最高有效10位
 
-* Directory
-    
-    The most significant 10 bits
+* 表 - 中间10位
 
-* Table
-    
-    The intermediate 10 bits
+* 偏移量 - 最低有效12位
 
-* Offset
-    
-    The least significant 12 bits
+线性地址的转换分为2步，每一步都依赖一个转换表。第一级转换表称为`页目录`，第二级称为`页表`。
 
-The translation of linear addresses is accomplished in two steps, each based on a type of translation table. The first translation table is called the *Page Directory*, and the second is called the `Page Table`.
+> 在后面的讨论中，小写的`page table`表示存储着线性地址和物理地址映射关系的任何页，而大写的`Page Table`术语表示最后一级页表中的页。
 
-> In the discussion that follows, the lowercase “page table” term denotes any page storing the mapping between linear and physical addresses, while the capitalized “Page Table” term denotes a page in the last level of page tables.
+2级页表的方案的目的是减少每个进程页表所占的RAM数量。如果只使用1级页表，为了按照4K大小的页访问，那就需要多达2^20项，每项占用4字节，需要4M的RAM，而且还有那么多进程，想想就很可怕。另外，即使一个进程不使用所有的线性地址空间，一级页表也还是这么大。这大大降低了RAM的实际使用率。而使用2级页表可以减少内存的使用，因为第二级页表只是进程实际使用的虚拟地址空间。（第二级页表是进程在创建的时候动态申请的）
 
-The aim of this two-level scheme is to reduce the amount of RAM required for perprocess Page Tables. If a simple one-level Page Table was used, then it would require up to 2^20 entries (i.e., at 4 bytes per entry, 4 MB of RAM) to represent the Page Table for each process (if the process used a full 4 GB linear address space), even though a process does not use all addresses in that range. The two-level scheme reduces the memory by requiring Page Tables only for those virtual memory regions actually used by a process.
+每个激活的进程必须有一个页目录。但是，无需一次为进程的所有二级页表分配内存。只当进程需要某个二级页表的时候再给其分配内存，这样更有效率。
 
-Each active process must have a Page Directory assigned to it. However, there is no need to allocate RAM for all Page Tables of a process at once; it is more efficient to allocate RAM for a Page Table only when the process effectively needs it.
-
-The physical address of the Page Directory in use is stored in a control register named `cr3`. The *Directory* field within the linear address determines the entry in the Page Directory that points to the proper Page Table. The address’s *Table* field, in turn, determines the entry in the Page Table that contains the physical address of the page frame containing the page. The *Offset* field determines the relative position within the page frame (see Figure 2-7). Because it is 12 bits long, each page consists of 4096 bytes of data.
+页目录的物理地址被存储在控制寄存器`cr3`。线性地址中的 *Directory*域决定了在页目录中的第几项，而该项的内容又指向恰当的二级页表。*Table*域，决定了在页表中的第几项，而该项的内容就是对应的页帧的物理地址。*Offset*域决定了在页帧中的相对位置（参考图2-7）。*Offset*域所占的长度是12位，正好是每页4096个字节的大小。
 
 <img id="Figure_2-7" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_7.PNG">
 
-图2-7 80×86处理器分页
+图2-7 80×86处理器分页框图
 
-Both the Directory and the Table fields are 10 bits long, so Page Directories and Page Tables can include up to 1,024 entries. It follows that a Page Directory can address up to 1024 × 1024 × 4096=2^32 memory cells, as you’d expect in 32-bit addresses.
+*Directory*和 *Table*域的长度都是10位，所以所能寻址的项数都是1024项。结果就是，一个页目录可以寻址的大小为`1024 × 1024 × 4096=2^32`，正与期望的32位地址相同。
 
-The entries of Page Directories and Page Tables have the same structure. Each entry includes the following fields:
+页目录和页表中的项具有相同的结构。每一项包含下面这些内容：
 
-* Present flag
+* Present标志
     
-    If it is set, the referred-to page (or Page Table) is contained in main memory; if the flag is 0, the page is not contained in main memory and the remaining entry bits may be used by the operating system for its own purposes. If the entry of a Page Table or Page Directory needed to perform an address translation has the Present flag cleared, the paging unit stores the linear address in a control register named `cr2` and generates exception 14: the Page Fault exception. (We will see in [Chapter 17](#17) how Linux uses this field.)
+    如果被设置，说明指向的页（或二级页表）被包含在内存中；如果该标志为0，内存中没有该页，该项中的其它位由操作系统作其它目的使用。如果需要执行地址转换的二级页表或页目录中的项中的`Present`标志被清除，分页单元就将该线性地址存储到控制寄存器`cr2`中并产生异常14-页错误异常。（我们将在[第17章 Linux如何使用该标志](#17)中看到。）
 
-* Field containing the 20 most significant bits of a page frame physical address
+    <font color="blue"> 通俗地讲，使用该标志表示要访问的地址在内存中存不存在，不存在的话，就会产生页错误异常。</font>
+
+* 包含页帧物理地址中最重要的20位的域
     
-    Because each page frame has a 4-KB capacity, its physical address must be a multiple of 4096, so the 12 least significant bits of the physical address are always equal to 0. If the field refers to a Page Directory, the page frame contains a Page Table; if it refers to a Page Table, the page frame contains a page of data.
+    因为每个页帧具有4KB的容量，它的物理地址肯定是4096的倍数，所以，所包含的物理地址的低12位总是0。如果该域是指向页目录的，页帧中包含的是一个页表；如果它指向一个页表，页帧中包含的是数据所在的页。
 
-* Accessed flag
+* 访问标志
     
-    Set each time the paging unit addresses the corresponding page frame. This flag may be used by the operating system when selecting pages to be swapped out. The paging unit never resets this flag; this must be done by the operating system.
+    每次分页单元访问相应的页帧时，设置该标志。操作系统在选择要换出的页时，使用该标志。分页单元绝不会复位该标志，应该由操作系统完成。
 
-* Dirty flag
+* Dirty标志
     
-    Applies only to the Page Table entries. It is set each time a write operation is performed on the page frame. As with the Accessed flag, Dirty may be used by the operating system when selecting pages to be swapped out. The paging unit never resets this flag; this must be done by the operating system.
+    只对页表项有用。每次对页帧实行写操作的时候，设置该标志。因为和Accessed标志一样，也是操作系统在选择要换出的页时使用该标志。分页单元绝不会复位该标志，应该由操作系统完成。
 
-* Read/Write flag
+* Read/Write标志
 
-    Contains the access right (Read/Write or Read) of the page or of the Page Table (see the section “Hardware Protection Scheme” later in this chapter).
+    页或页表的访问权限（读写、只读）。具体参考本章后面的[硬件保护机制](#2.4.3)。
 
-* User/Supervisor flag
+* User/Supervisor标志
 
-    Contains the privilege level required to access the page or Page Table (see the later section “Hardware Protection Scheme”).
+    访问页或页表所需要的特权级别。具体参考本章后面的[硬件保护机制](#2.4.3)。
 
-* PCD and PWT flags
+* PCD和PWT标志
 
-    Controls the way the page or Page Table is handled by the hardware cache (see the section “Hardware Cache” later in this chapter).
+    控制硬件Cache处理页或页表的方式。具体参考本章后面的[硬件Cache](#2.4.7)。
 
-* Page Size flag
+* 页大小标志
 
-    Applies only to Page Directory entries. If it is set, the entry refers to a 2 MB– or 4MB–long page frame (see the following sections).
+   只对页目录有效。如果被设置，每项指向2MB或4MB大小的页帧（后面会有介绍）。
 
-* Global flag
+* 全局标志
 
-    Applies only to Page Table entries. This flag was introduced in the Pentium Pro to prevent frequently used pages from being flushed from the TLB cache (see the section “Translation Lookaside Buffers (TLB)” later in this chapter). It works only if the Page Global Enable (PGE) flag of register cr4 is set.
+   只对页表项有用。这个标记是在Pentium Pro中引入的，用于防止频繁使用的页面从TLB缓存中被刷新(请参阅本章后面的[转换后备缓存-TLB](#2.4.8)一节)。只有在设置了寄存器cr4的页全局使能(PGE)标志的情况下才能工作。
 
 
 <h3 id="2.4.2">2.4.2 扩展分页</h3>
 
-Starting with the Pentium model, 80 × 86 microprocessors introduce extended paging,
-which allows page frames to be 4 MB instead of 4 KB in size (see Figure 2-8).
-Extended paging is used to translate large contiguous linear address ranges into corresponding
-physical ones; in these cases, the kernel can do without intermediate
-Page Tables and thus save memory and preserve TLB entries (see the section “Translation
-Lookaside Buffers (TLB)”).
+从奔腾系列开始，80×86架构处理器引入了扩展分页，允许页帧的大小为4M，从而代替4K（看图2-8）。扩展分页用来转换大段连续的线性地址到相应的物理内存。内核无需中间的二级页表即可以保存内存，且保护TLB中的项不被频繁的刷新。（参考后面的[转换后备缓存-TLB](#2.4.8)一节）
 
 <img id="Figure_2-8" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_8.PNG">
 
 图2-8 扩展分页
 
-As mentioned in the previous section, extended paging is enabled by setting the Page Size flag of a Page Directory entry. In this case, the paging unit divides the 32 bits of a linear address into two fields:
+正如前面提到的，通过设置页目录项中的页大小标志来使能扩展分页。这时，分页单元把32位线性地址分成2部分：
 
-* Directory
-    
-    The most significant 10 bits
+* 目录 - 最高有效10位
 
-* Offset
-    
-    The remaining 22 bits   
+* 偏移量 - 剩下的22位
+  
+使能了扩展分页的页目录项和普通的分页几乎相同，除了：
 
-Page Directory entries for extended paging are the same as for normal paging, except that:
-
-* The Page Size flag must be set.
-* Only the 10 most significant bits of the 20-bit physical address field are significant. This is because each physical address is aligned on a 4-MB boundary, so the 22 least significant bits of the address are 0.
-* Extended paging coexists with regular paging; it is enabled by setting the PSE flag of
-the cr4 processor register.
-
+* 必须设置`页大小`标志。
+* 只有物理地址20位中的最高10位有效。这是因为低22位全被设为0。
+* 扩展分页和常规分页共存。通过cr4寄存器中的PSE标志进行使能。
 
 <h3 id="2.4.3">2.4.3 硬件保护</h3>
 
-The paging unit uses a different protection scheme from the segmentation unit.
-While 80 × 86 processors allow four possible privilege levels to a segment, only two
-privilege levels are associated with pages and Page Tables, because privileges are controlled
-by the User/Supervisor flag mentioned in the earlier section “Regular Paging.”
-When this flag is 0, the page can be addressed only when the CPL is less than 3 (this
-means, for Linux, when the processor is in Kernel Mode). When the flag is 1, the
-page can always be addressed.
+分页单元使用与分段单元不一样的保护机制。尽管80x86允许4个可能的特权级别访问一个段，但是分页机制只使用了2个特权级别访问页和页表，特别级别的设定已经在[常规分页](#2.4.1)中提到，使用`User/Supervisor`标志。当这个标志为0，页只能被CPL低于3的特权级别访问（对于Linux，这意味着处理器此时处于内核模式）；当该标志为1，总是可以访问页。
 
-Furthermore, instead of the three types of access rights (Read, Write, and Execute)
-associated with segments, only two types of access rights (Read and Write) are associated
-with pages. If the Read/Write flag of a Page Directory or Page Table entry is
-equal to 0, the corresponding Page Table or page can only be read; otherwise it can
-be read and written.*
+另外，代替分段机制时的三种访问权限（读、写、和执行），分页机制只有两种访问权限（读和写）。如果页目录或二级页表的读/写标志等于0，相应的二级页表或页是只读的；否则，可被读写。
 
 <h3 id="2.4.4">2.4.4 常规分页的示例</h3>
 
-A simple example will help in clarifying how regular paging works. Let’s assume that
-the kernel assigns the linear address space between 0x20000000 and 0x2003ffff to a
-running process.† This space consists of exactly 64 pages. We don’t care about the
-physical addresses of the page frames containing the pages; in fact, some of them
-might not even be in main memory. We are interested only in the remaining fields of
-the Page Table entries.
+我们使用一个简单的示例阐明常规分页的工作机理。假定内核分配线性地址0x20000000~0x2003ffff给正在运行的进程。这段地址实际是64个页。我们不关心页帧的物理地址；事实上，有些也有可能不在内存范围内。我们感兴趣的只是二级页表项的其余域。
 
-Let’s start with the 10 most significant bits of the linear addresses assigned to the
-process, which are interpreted as the Directory field by the paging unit. The
-addresses start with a 2 followed by zeros, so the 10 bits all have the same value,
-namely 0x080 or 128 decimal. Thus the Directory field in all the addresses refers to
-the 129th entry of the process Page Directory. The corresponding entry must contain
-the physical address of the Page Table assigned to the process (see Figure 2-9). If no
-other linear addresses are assigned to the process, all the remaining 1,023 entries of
-the Page Directory are filled with zeros.
+我们从该线性地址的最高有效10位开始，它们被分页单元解释为页面目录域。该段地址以2开始，后面紧跟0，所以最高10位的值相同，都是0x080或128。所以，所有地址的目录域都指向该进程页表目录的第129项。该项中肯定包含分配给进程的二级页表的物理地址（如图2-9所示）。如果没有其它线性地址分配给进程，页目录其余的1023项都会被填充0。
 
 <img id="Figure_2-9" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_9.PNG">
 
-图2-9 分页示例
+图2-9 常规分页示例
 
-The values assumed by the intermediate 10 bits, (that is, the values of the Table field)
-range from 0 to 0x03f, or from 0 to 63 decimal. Thus, only the first 64 entries of the
-Page Table are valid. The remaining 960 entries are filled with zeros.
+赋给中间10位的值，范围是0~0x03f，或者说0~63。也就是说，只有二级页表的前64项是合法的。其余的960项被填充0。
 
-Suppose that the process needs to read the byte at linear address 0x20021406. This
-address is handled by the paging unit as follows:
+假设该进程想要读取线性地址0x20021406处的字节值。分页单元的处理过程如下：
 
-1. The Directory field 0x80 is used to select entry 0x80 of the Page Directory, which points to the Page Table associated with the process’s pages.
+1. 使用目录域的值0x80锁定页目录中的第0x80项，其中的内容指向该进程的页所对应的二级页表。
 
-2. The Table field 0x21 is used to select entry 0x21 of the Page Table, which points to the page frame containing the desired page.
+2. 页表域的值0x21用来锁定二级页表的第0x21项，它指向想要访问页的页帧。
 
-3. Finally, the Offset field 0x406 is used to select the byte at offset 0x406 in the desired page frame.
+3.最后使用偏移值0x406选择想要的页帧，在偏移量0x406处的值。
 
-If the Present flag of the 0x21 entry of the Page Table is cleared, the page is not
-present in main memory; in this case, the paging unit issues a Page Fault exception
-while translating the linear address. The same exception is issued whenever the process
-attempts to access linear addresses outside of the interval delimited by
-0x20000000 and 0x2003ffff, because the Page Table entries not assigned to the process
-are filled with zeros; in particular, their Present flags are all cleared.
-
-
+如果二级页表第0x21项的Present标志被清除，想要访问的地址所在页不在内存中。这时，分页单元发送一个页错误异常。如果进程想要访问地址0x20000000~0x2003ffff范围之外的地址，也会发生相同的页错误异常。上面提到二级页表的其余未用的项被填充0，尤其是，Present标志全被清除。
 
 <h3 id="2.4.5">2.4.5 物理地址扩展(PAE)分页机制</h3>
 
@@ -1353,12 +1290,7 @@ the TLBs are pointing to old data.
 
 <h2 id="2.5">2.5 Linux中的分页机制</h2>
 
-Linux adopts a common paging model that fits both 32-bit and 64-bit architectures.
-As explained in the earlier section “Paging for 64-bit Architectures,” two paging levels
-are sufficient for 32-bit architectures, while 64-bit architectures require a higher
-number of paging levels. Up to version 2.6.10, the Linux paging model consisted of
-three paging levels. Starting with version 2.6.11, a four-level paging model has been
-adopted.* The four types of page tables illustrated in Figure 2-12 are called:
+Linux adopts a common paging model that fits both 32-bit and 64-bit architectures. As explained in the earlier section “Paging for 64-bit Architectures,” two paging levels are sufficient for 32-bit architectures, while 64-bit architectures require a higher number of paging levels. Up to version 2.6.10, the Linux paging model consisted of three paging levels. Starting with version 2.6.11, a four-level paging model has been adopted.* The four types of page tables illustrated in Figure 2-12 are called:
 
 * Page Global Directory
 * Page Upper Directory
@@ -2135,7 +2067,79 @@ vm_mask field of the memory descriptor. This has two consequences:
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="3">3 进程</h1>
+
+The concept of a process is fundamental to any multiprogramming operating system. A process is usually defined as an instance of a program in execution; thus, if 16 users are running vi at once, there are 16 separate processes (although they can share the same executable code). Processes are often called tasks or threads in the Linux source code.
+
+In this chapter, we discuss static properties of processes and then describe how process switching is performed by the kernel. The last two sections describe how processes can be created and destroyed. We also describe how Linux supports multithreaded applications—as mentioned in Chapter 1, it relies on so-called lightweight processes (LWP).
+
 <h2 id="1">3.1 进程、轻量级进程和线程</h2>
+
+The term “process” is often used with several different meanings. In this book, we
+stick to the usual OS textbook definition: a process is an instance of a program in
+execution. You might think of it as the collection of data structures that fully
+describes how far the execution of the program has progressed.
+
+Processes are like human beings: they are generated, they have a more or less significant
+life, they optionally generate one or more child processes, and eventually they
+die. A small difference is that sex is not really common among processes—each process
+has just one parent.
+
+From the kernel’s point of view, the purpose of a process is to act as an entity to
+which system resources (CPU time, memory, etc.) are allocated.
+
+When a process is created, it is almost identical to its parent. It receives a (logical)
+copy of the parent’s address space and executes the same code as the parent, beginning
+at the next instruction following the process creation system call. Although the
+parent and child may share the pages containing the program code (text), they have separate copies of the data (stack and heap), so that changes by the child to a memory
+location are invisible to the parent (and vice versa).
+
+While earlier Unix kernels employed this simple model, modern Unix systems do
+not. They support multithreaded applications—user programs having many relatively
+independent execution flows sharing a large portion of the application data
+structures. In such systems, a process is composed of several user threads (or simply
+threads), each of which represents an execution flow of the process. Nowadays, most
+multithreaded applications are written using standard sets of library functions called
+pthread (POSIX thread) libraries.
+
+Older versions of the Linux kernel offered no support for multithreaded applications.
+From the kernel point of view, a multithreaded application was just a normal process.
+The multiple execution flows of a multithreaded application were created, handled,
+and scheduled entirely in User Mode, usually by means of a POSIX-compliant
+pthread library.
+
+However, such an implementation of multithreaded applications is not very satisfactory.
+For instance, suppose a chess program uses two threads: one of them controls
+the graphical chessboard, waiting for the moves of the human player and showing
+the moves of the computer, while the other thread ponders the next move of the
+game. While the first thread waits for the human move, the second thread should
+run continuously, thus exploiting the thinking time of the human player. However, if
+the chess program is just a single process, the first thread cannot simply issue a
+blocking system call waiting for a user action; otherwise, the second thread is
+blocked as well. Instead, the first thread must employ sophisticated nonblocking
+techniques to ensure that the process remains runnable.
+
+Linux uses lightweight processes to offer better support for multithreaded applications.
+Basically, two lightweight processes may share some resources, like the address
+space, the open files, and so on. Whenever one of them modifies a shared resource,
+the other immediately sees the change. Of course, the two processes must synchronize
+themselves when accessing the shared resource.
+
+A straightforward way to implement multithreaded applications is to associate a
+lightweight process with each thread. In this way, the threads can access the same set
+of application data structures by simply sharing the same memory address space, the
+same set of open files, and so on; at the same time, each thread can be scheduled
+independently by the kernel so that one may sleep while another remains runnable.
+Examples of POSIX-compliant pthread libraries that use Linux’s lightweight processes
+are LinuxThreads, Native POSIX Thread Library (NPTL), and IBM’s Next
+Generation Posix Threading Package (NGPT).
+
+POSIX-compliant multithreaded applications are best handled by kernels that support
+“thread groups.” In Linux a thread group is basically a set of lightweight processes
+that implement a multithreaded application and act as a whole with regards to
+
+some system calls such as getpid(), kill(), and _exit(). We are going to describe
+them at length later in this chapter.
+
 <h2 id="1">3.2 进程描述符</h2>
 <h2 id="1">3.3 进程切换</h2>
 <h2 id="1">3.4 创建进程</h2>
