@@ -14,3 +14,10 @@
 # 个人学习网站
 
 1. [https://sketch2sky.com/](https://sketch2sky.com/)
+2. [日本在加拿大的学生（名雪-nayuki）的个人网站](https://www.nayuki.io)：记录个人的编程
+
+# Linux
+
+1. [http://www.linuxassembly.org](http://www.linuxassembly.org)，介绍Linux汇编编程的网站
+2. [Douglas Thain教授的在线课程](https://www3.nd.edu)，关于计算机科学的
+3. [我们的Linux内核之旅](http://www.kerneltravel.net/)，关于linux的一些资源的介绍
