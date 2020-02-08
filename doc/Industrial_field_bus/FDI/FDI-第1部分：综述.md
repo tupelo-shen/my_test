@@ -60,16 +60,42 @@ EDDL是一种描述现场设备的语言。它使系统能够配置、校准、�
 
 <h2 id="4.3">4.3 FDT</h2>
 
-FDT® is an interface specification that standardizes the interface between the device software and the systems. It provides independence from the communication protocol and establishes a clear boundary between the software provided by the device supplier and the software provided by the system supplier.
+FDT®是一个接口规范，规范了设备软件和系统之间的接口。它独立于通信协议，并在设备供应商提供的软件和系统供应商提供的软件之间建立明确的界限。
 
-In FDT®, field devices are delivered with a device-specific software component called a Device Type Manager (DTM), which is only functional when used in conjunction with an FDT®-specific environment called a "frame application". A frame application interacts with a DTM through a set of standard FDT® interfaces.
+在FDT规范中，现场设备由设备特定的软件组件(称为设备类型管理器-DTM)提供，该组件仅在与基于FDT的框架应用程序（比如，YOKOGAWA公司的FieldMate）结合使用时才有用。框架应用程序通过一组标准FDT接口与DTM交互。
 
-A device supplier can develop a DTM for each of its devices, or it can develop a DTM for a group of devices. A DTM can be used to access Device Parameters, configure and operate the device, and diagnose problems. A DTM can range from a simple Graphical User Interface (GUI) for setting Device Parameters to a highly sophisticated application for performing complex calculations for diagnosis.
+设备供应商可以为每一个设备开发一个DTM，也可以为一组设备开发一个DTM。使用DTM可以访问设备参数、配置和操作设备和诊断设备。DTM可以是用于设置设备参数的简单图形用户界面(GUI)，也可以是用于执行复杂计算进行诊断的非常复杂的应用程序。
 
-DTMs can be nested in order to support Modular Devices. The nesting of DTMs also allows multi-level communication hierarchies to be supported. Devices routed through different bus protocols can be connected through standard interfaces. A device DTM just has to support its own communication protocol. Gateway DTMs that connect to the device DTM handle protocol transformation.
+为了支持模块化设备，可以嵌套DTM。DTM的嵌套还允许多级通信层次结构。通过不同总线协议路由的设备可以通过标准接口连接。一个设备DTM仅必须支持它自己的通信协议。连接到设备DTM的网关DTM处理协议转换。
 
-The FDT® specification supports a variety of bus protocols, for example: PROFIBUS, HART, FOUNDATION Fieldbus, Interbus, AS-interface, IO-Link, DeviceNet, and PROFINET IO.
-
-In 1998, the specification phase started in the context of the Zentralverband Elektrotechnik und Elektronikindustrie e. V. (ZVEI). In 1999, completion of the technology was accelerated when the specification was adopted by PROFIBUS Nutzerorganisation e. V. (PNO), which later transferred the rights to the FDT Group AISBL. FDT® was standardardized as IEC 62453-1 in May 2009.
+FDT®规范支持多种总线协议，例如:PROFIBUS、HART、基金会现场总线、Interbus、AS-interface、IO- link、DeviceNet和PROFINET IO。
 
 <h2 id="4.4">4.4 OPC UA</h2>
+
+OPC Unified Architecture (OPC UA) is a platform-independent standard through which various kinds of systems and devices can communicate by sending messages between clients and servers over various types of networks. It supports robust, secure communication that assures the identity of clients and servers and resists attacks.
+
+OPC UA defines standard sets of services that servers can provide, and individual servers specify to clients what service sets they support. The services act on an object model which is managed by the server and discoverable by a client. Information is conveyed using standard and vendor-defined data types, and servers define object models that clients can dynamically discover. Servers can provide access to both current and historical data, as well as alarms and events to notify clients of important changes.
+
+OPC UA can be mapped onto a variety of communication protocols and data can be encoded in various ways to trade off portability and efficiency. Transports and encodings for XML based Web Services as well as a high performance binary are defined for OPC UA. The abstraction of the OPC UA standard from any particular technology provides future-proofing allowing OPC UA to be mapped onto future technologies.
+
+The integration of system components includes a “how” factor and a “what” factor. The comprehensive set of services provided by OPC UA enables the “how” of system integration. OPC UA also provides the basic building blocks of the “what” of system integration by defining an extensible object model. Other standards bodies, vendors, and end users can extend this object model to achieve a tight integration between system components.
+
+OPC UA is standardized in IEC 62541.
+
+<h1 id="5">5 架构</h1>
+
+<h2 id="5.1">5.1 综述</h2>
+
+FDI架构由3部分组成：FDI包、FDI客户端、FDI服务器，如下图所示：
+
+<img id="Pic_1" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/Industrial_field_bus/FDI/images/FDI_PART1_1_1.PNG">
+
+图1-1 FDI架构框图
+
+<h2 id="5.2">5.2 FDI包</h2>
+<h2 id="5.3">5.3 FDI客户端</h2>
+<h2 id="5.4">5.4 FDI服务器</h2>
+<h2 id="5.5">5.5 FDI通信服务器</h2>
+<h2 id="5.6">5.6 用户接口分层</h2>
+<h2 id="5.7">5.7 FDI安全考虑</h2>
+<h2 id="5.8">5.8 冗余</h2>
