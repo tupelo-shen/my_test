@@ -941,9 +941,9 @@ User Mode applications also may allocate new segments by means of modify_ldt(); 
 
 为了效率，将线性地址按照固定长度组织，称为页；一个页的连续线性地址映射为连续的物理地址。通过这种方式，内核可以按页指定物理地址和访问权限，而不是对整个地址进行操作，增加了灵活性。基于传统习惯，我们使用 *page*这个词表示一组线性地址及其存储内容。
 
-分页单元把所有的RAM分为固定长度的`页帧`（有时，也称为物理页）。每一个页帧都包含一个页，也就是说，页帧的长度和页的长度是一致的。页帧是内存的组成部分，因而是指一段存储区域。弄清楚`页`和`页帧`这两个概念是非常重要的；前者是一块数据，可能存储在任何页帧或硬盘上。
+分页单元把所有的RAM分为固定长度的`页帧`（有时，也称为物理页）。每一个页帧都包含一个页，也就是说，页帧的长度和页的长度是一致的。页帧是内存的组成部分，是指一段存储区域。弄清楚`页`和`页帧`这两个概念是非常重要的；前者是一块数据，可能存储在任何页帧或硬盘上。
 
-映射线性地址到物理地址的数据结构，称为`页表`；他们存储在内存中，在使能分页单元之前必须被正确初始化。
+映射线性地址到物理地址的数据结构，称为页表；它们存储在内存中，使能分页单元之前必须被正确初始化。
 
 从80386架构开始，所有的x86架构处理器都支持分页机制；通过控制寄存器cr0的PG标志位进行设置。当PG=0，线性地址就是物理地址。
 
@@ -1067,170 +1067,87 @@ User Mode applications also may allocate new segments by means of modify_ldt(); 
 
 <h3 id="2.4.5">2.4.5 物理地址扩展(PAE)分页机制</h3>
 
-The amount of RAM supported by a processor is limited by the number of address
-pins connected to the address bus. Older Intel processors from the 80386 to the Pentium
-used 32-bit physical addresses. In theory, up to 4 GB of RAM could be installed
-on such systems; in practice, due to the linear address space requirements of User
-Mode processes, the kernel cannot directly address more than 1 GB of RAM, as we
-will see in the later section “Paging in Linux.”
+处理器能够访问的RAM数量是受到总线宽度的影响的。从80386到奔腾系列，这些旧英特尔处理器都是使用32位物理地址。理论上，可以使用4GB的RAM；实际上，因为用户模式进程的线性地址要求，内核不能直接寻址超过1GB的RAM，比如，在32位系统上，页上层目录和页中层目录被消除了，这将在[Linux分页机制](#2.5)中提到。
 
-However, big servers that need to run hundreds or thousands of processes at the same
-time require more than 4 GB of RAM, and in recent years this created a pressure on
-Intel to expand the amount of RAM supported on the 32-bit 80 × 86 architecture.
+但是，大型服务器需要同时运行成千上万个进程，这往往要求RAM大于4GB。这就要求英特尔扩展32位80x86架构支持的RAM数量。
 
-Intel has satisfied these requests by increasing the number of address pins on its processors
-from 32 to 36. Starting with the Pentium Pro, all Intel processors are now
-able to address up to 236 = 64 GB of RAM. However, the increased range of physical
-addresses can be exploited only by introducing a new paging mechanism that translates
-32-bit linear addresses into 36-bit physical ones.
+英特尔通过增加CPU的地址线，32位扩展到36位，来满足这个要求。从奔腾Pro开始，所有的英特尔处理器能够寻址2^36=64GB的RAM。但是，增加了物理地址的范围，也需要新分页硬件单元，完成将32位线性地址转换成36位的物理地址。
 
-With the Pentium Pro processor, Intel introduced a mechanism called Physical
-Address Extension (PAE). Another mechanism, Page Size Extension (PSE-36), was
-introduced in the Pentium III processor, but Linux does not use it, and we won’t discuss
-it further in this book.
+通过奔腾Pro处理器，英特尔引入一种机制，称为物理地址扩展（PAE）。奔腾III处理器还引入了另外一种机制，称为页大小扩展（PSE-36），但是Linux并没有使用，所以，我们不再介绍。
 
-PAE is activated by setting the Physical Address Extension (PAE) flag in the cr4 control
-register. The Page Size (PS) flag in the page directory entry enables large page
-sizes (2 MB when PAE is enabled).
+PAE可以通过设置cr4寄存器中PAE标志激活。页目录项中的页大小（PS）标志能够使能大页访问（PAE被使能时，是2M）。
 
-Intel has changed the paging mechanism in order to support PAE.
+为了支持PAE，英特尔改变了硬件分页单元：
 
-* The 64 GB of RAM are split into 224 distinct page frames, and the physical
-address field of Page Table entries has been expanded from 20 to 24 bits.
-Because a PAE Page Table entry must include the 12 flag bits (described in the
-earlier section “Regular Paging”) and the 24 physical address bits, for a grand
-total of 36, the Page Table entry size has been doubled from 32 bits to 64 bits. As
-a result, a 4-KB PAE Page Table includes 512 entries instead of 1,024.
+* 64G的物理内存被分割成2^24个不同的页帧，页表项的物理地址域从20位扩展到24位。因为基于PAE的最后一级页表中的项必须是12位（前面的[常规分页](#2.4.1)中已经讲述过），再加上24位的物理地址，总位数达到36位，页表项的大小必须从32位扩展到64位才能满足要求。结果，4K页大小的PAE页表中包含512项而不是之前说的1024项。
 
-* A new level of Page Table called the Page Directory Pointer Table (PDPT) consisting
-of four 64-bit entries has been introduced.
+* 多出来的一级页表称为页目录指针表（PDPT），包含4个64位的项。
 
-* The cr3 control register contains a 27-bit Page Directory Pointer Table base
-address field. Because PDPTs are stored in the first 4 GB of RAM and aligned to
-a multiple of 32 bytes (25), 27 bits are sufficient to represent the base address of
-such tables.
+* cr3寄存器控制27位页目录指针表基地址。因为PDPT存储在物理内存的第一个4G空间中，而且排列是32字节的倍数（2^5），所以27足够表达这个表的基地址了。
 
-* When mapping linear addresses to 4 KB pages (PS flag cleared in Page Directory entry), the 32 bits of a linear address are interpreted in the following way:
-    - cr3
-        
-        Points to a PDPT
+* 当最小寻址单元是4KB页大小时（页目录项中的PS标志被清除），32位的线性地址按照下面的方式解释：
 
-    - bits 31–30
-        
-        Point to 1 of 4 possible entries in PDPT
+    - cr3 - 指向一个PDPT
 
-    - bits 29–21
-        
-        Point to 1 of 512 possible entries in Page Directory
+    - 位31–30 - 指向PDPT中四个可能项中的一个
 
-    - bits 20–12
-        
-        Point to 1 of 512 possible entries in Page Table
+    - 位29–21 - 指向页目录中的512项中的一个
 
-    - bits 11–0
-        
-        Offset of 4-KB page
+    - 位20–12 - 指向页表中的512项中的一个
 
-* When mapping linear addresses to 2-MB pages (PS flag set in Page Directory entry), the 32 bits of a linear address are interpreted in the following way:
-    - cr3
-        
-        Points to a PDPT
+    - 位11–0 - 4K页中的偏移
 
-    - bits 31–30
-        
-        Point to 1 of 4 possible entries in PDPT
+* 当最小寻址单元是2MB页大小时（页目录项中的PS标志被设置），32位的线性地址按照下面的方式解释：
 
-    - bits 29–21
-        
-        Point to 1 of 512 possible entries in Page Directory
+    - cr3 - 指向一个PDPT
 
-    - bits 20–0
-        
-        Offset of 2-MB page
+    - 位31–30 - 指向PDPT中4项中的一个
 
-To summarize, once cr3 is set, it is possible to address up to 4 GB of RAM. If we
-want to address more RAM, we’ll have to put a new value in cr3 or change the content
-of the PDPT. However, the main problem with PAE is that linear addresses are
-still 32 bits long. This forces kernel programmers to reuse the same linear addresses
-to map different areas of RAM. We’ll sketch how Linux initializes Page Tables when
-PAE is enabled in the later section, “Final kernel Page Table when RAM size is more
-than 4096 MB.” Clearly, PAE does not enlarge the linear address space of a process,
-because it deals only with physical addresses. Furthermore, only the kernel can modify
-the page tables of the processes, thus a process running in User Mode cannot use
-a physical address space larger than 4 GB. On the other hand, PAE allows the kernel
-to exploit up to 64 GB of RAM, and thus to increase significantly the number of processes
-in the system.
+    - 位29–21 - 指向页目录中的512项中的一个
 
-<h3 id="2.4.6">2.4.6 64位架构分页</h3>
+    - 位20–0 - 2M页中的偏移
 
-As we have seen in the previous sections, two-level paging is commonly used by 32-
-bit microprocessors*. Two-level paging, however, is not suitable for computers that
-adopt a 64-bit architecture. Let’s use a thought experiment to explain why:
+总之，一旦设置了cr3，可能的寻址范围达到4GB的RAM。如果我们想要寻址更大的RAM，我们必须改变cr3的值或者改变PDPT中的内容。但是，PAE的问题是，线性空间仍然是32位的。也就是说，每个进程最大的访问空间仍然是4G，这迫使编程者不断使用相同的线性地址访问不同的物理内存区域。我们将会在后面的段落中描述启用PAE，物理内存大于4G的情况下，Linux如何初始化页表。但是，PAE毕竟使内核可以利用的内存达到了64G，这可以显著增加系统中的进程数量。
 
-Start by assuming a standard page size of 4 KB. Because 1 KB covers a range of 210
-addresses, 4 KB covers 212 addresses, so the Offset field is 12 bits. This leaves up to
-52 bits of the linear address to be distributed between the Table and the Directory
-fields. If we now decide to use only 48 of the 64 bits for addressing (this restriction
-leaves us with a comfortable 256 TB address space!), the remaining 48-12 = 36 bits
-will have to be split among Table and the Directory fields. If we now decide to reserve
-18 bits for each of these two fields, both the Page Directory and the Page Tables of
-each process should include 218 entries—that is, more than 256,000 entries.
+<h3 id="2.4.6">2.4.6 64位架构分页机制</h3>
 
-For that reason, all hardware paging systems for 64-bit processors make use of additional paging levels. The number of levels used depends on the type of processor. Table 2-4 summarizes the main characteristics of the hardware paging systems used by some 64-bit platforms supported by Linux. Please refer to the section “Hardware Dependency” in Chapter 1 for a short description of the hardware associated with the platform name.
+正如我们前面讲述的，32位系统通常使用2级页表。但是，2级页表对于采用64位架构的计算机却不合适。我们做一个假想性的实验来解释为什么：
 
-Table 2-4. Paging levels in some 64-bit architectures
+假设标准页大小还是4KB。因为4KB覆盖2^12地址，所以`Offset`域为12位。这还剩余52位线性地址分配给`Table`和`Directory`域。如果只使用64位中的48位进行寻址（这样的话，可以有256TB的地址空间），剩余48-12=36位分配给`Table`和`Directory`域。如果我们给这2个域各保留18位，那么每个进程的页面目录和最后一级页表应该包含2^18项-也就是说，超过256000项。这太耗费内存了。
 
-| Platform name | Page size | Number of address bits used | Number of paging levels | Linear address splitting |
-| --- | --- | --- | --- | --- |
-| alpha  | 8 KB*| 43 | 3 | 10 + 10 + 10 + 13  |
-| ia64   | 4 KB | 39 | 3 | 9 + 9 + 9 + 12     |
-| ppc64  | 4 KB | 41 | 3 | 10 + 10 + 9 + 12   |
-| sh64   | 4 KB | 41 | 3 | 10 + 10 + 9 + 12   |
-| x86_64 | 4 KB | 48 | 4 | 9 + 9 + 9 + 9 + 12 |
+基于上面的原因，64位处理器都使用多级页表。具体依赖于处理器。表2-4总结了Linux支持的64位系统，它们的硬件分页单元的主要特性。
 
-> *This architecture supports different page sizes; we select a typical page size adopted by Linux.
+表2-4. 64位架构中的页表结构
 
-As we will see in the section “Paging in Linux” later in this chapter, Linux succeeds in providing a common paging model that fits most of the supported hardware paging systems.
+| 平台名称 | 页大小 | 使用的地址位数 | 页表数量 | 线性地址分割 |
+| -------- | ------ | -------------- | -------- | ------------ |
+| alpha    | 8 KB*  | 43             | 3        | 10 + 10 + 10 + 13  |
+| ia64     | 4 KB   | 39             | 3        | 9 + 9 + 9 + 12     |
+| ppc64    | 4 KB   | 41             | 3        | 10 + 10 + 9 + 12   |
+| sh64     | 4 KB   | 41             | 3        | 10 + 10 + 9 + 12   |
+| x86_64   | 4 KB   | 48             | 4        | 9 + 9 + 9 + 9 + 12 |
+
+> *该架构支持不同的页大小，在这儿，我们选择Linux采用的典型大小。因为该架构已经不再研发，可以不研究。
+
+在后面的[Linux的分页机制](#2.5)中我们会讲到，Linux设计了一个通用分页模型，适合大部分硬件系统。
 
 <h3 id="2.4.7">2.4.7 硬件Cache</h3>
 
-Today’s microprocessors have clock rates of several gigahertz, while dynamic RAM
-(DRAM) chips have access times in the range of hundreds of clock cycles. This
-means that the CPU may be held back considerably while executing instructions that
-require fetching operands from RAM and/or storing results into RAM.
+今天，微处理器的时钟频率都是几GHz，但是DRAM的时钟频率却不能匹配。时钟频率的不匹配导致从RAM读取数据都会变慢，影响CPU指令的执行效率。
 
-Hardware cache memories were introduced to reduce the speed mismatch between
-CPU and RAM. They are based on the well-known locality principle, which holds
-both for programs and data structures. This states that because of the cyclic structure
-of programs and the packing of related data into linear arrays, addresses close to
-the ones most recently used have a high probability of being used in the near future.
-It therefore makes sense to introduce a smaller and faster memory that contains the
-most recently used code and data. For this purpose, a new unit called the line was
-introduced into the 80 × 86 architecture. It consists of a few dozen contiguous bytes
-that are transferred in burst mode between the slow DRAM and the fast on-chip
-static RAM (SRAM) used to implement caches.
+为了减少CPU和RAM之间的速度不匹配，引入了Cache。Cache的设计遵循局部性原理，由于程序的循环结构和相关数据一般保存成线型数组，接近最近使用的地址有很高的可能性接下来被使用。因此，引入一个小容量、读取速度快的内存，包含最近使用的代码和数据就很有意义。一种新的硬件单元被引入80x86架构，称为`line`。它包含几十个连续的字节，在慢速DRAM和Cache之间以快速模式传输，一般使用快速片上静态RAM（SRAM）实现Cache。
 
-The cache is subdivided into subsets of lines. At one extreme, the cache can be direct mapped, in which case a line in main memory is always stored at the exact same location in the cache. At the other extreme, the cache is fully associative, meaning that any line in memory can be stored at any location in the cache. But most caches are to some degree N-way set associative, where any line of main memory can be stored in any one of N lines of the cache. For instance, a line of memory can be stored in two different lines of a two-way set associative cache.
+Cache被分成若干行，通常称为`Cache line`或者`Cache行`。一种极端情况就是，Cache中的行和内存中的行是一一对应、直接映射的关系。另一种情况是，Cache是全相关的，意味着内存中的任何行可以存储到Cache中的任意行。但是，大部分Cache使用的是N路相关，内存中的任意行可以存储到Cache的N行中的任意一个。比如，一个2路相关的Cache中，内存的一行可以被存储到该Cache中的2个行中的任意一个。
 
-As shown in Figure 2-10, the cache unit is inserted between the paging unit and the
-main memory. It includes both a hardware cache memory and a cache controller. The
-cache memory stores the actual lines of memory. The cache controller stores an array
-of entries, one entry for each line of the cache memory. Each entry includes a tag and
-a few flags that describe the status of the cache line. The tag consists of some bits
-that allow the cache controller to recognize the memory location currently mapped
-by the line. The bits of the memory’s physical address are usually split into three
-groups: the most significant ones correspond to the tag, the middle ones to the cache
-controller subset index, and the least significant ones to the offset within the line.
+如果2-10所示，Cache硬件单元位于分页管理单元和主内存之间，包含一个Cache内存和Cache控制器。Cache内存用来存储来自主内存的实际行。Cache控制器存储着Cache内存中行数，也就是有多少项，使用数组管理。每项包含一个TAG和描述Cache行状态的一些标志。TAG由一些位组成，这些位允许Cache控制器识别当前该行映射的内存位置。内存的物理地址通常分为3组：最高的一些位对应TAG，中间的一些位对应Cache控制器的index，最低的那些位用来标识在行内的偏移量。
 
 <img id="Figure_2-10" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_10.PNG">
 
 图2-10 硬件cache
 
-When accessing a RAM memory cell, the CPU extracts the subset index from the
-physical address and compares the tags of all lines in the subset with the high-order
-bits of the physical address. If a line with the same tag as the high-order bits of the
-address is found, the CPU has a `cache hit`; otherwise, it has a `cache miss`.
+When accessing a RAM memory cell, the CPU extracts the subset index from the physical address and compares the tags of all lines in the subset with the high-order bits of the physical address. If a line with the same tag as the high-order bits of the address is found, the CPU has a `cache hit`; otherwise, it has a `cache miss`.
 
+为了访问RAM内存单元，CPU从物理地址中抽取
 When a cache hit occurs, the cache controller behaves differently, depending on the
 access type. For a read operation, the controller selects the data from the cache line
 and transfers it into a CPU register; the RAM is not accessed and the CPU saves time,
@@ -1290,63 +1207,36 @@ the TLBs are pointing to old data.
 
 <h2 id="2.5">2.5 Linux中的分页机制</h2>
 
-Linux adopts a common paging model that fits both 32-bit and 64-bit architectures. As explained in the earlier section “Paging for 64-bit Architectures,” two paging levels are sufficient for 32-bit architectures, while 64-bit architectures require a higher number of paging levels. Up to version 2.6.10, the Linux paging model consisted of three paging levels. Starting with version 2.6.11, a four-level paging model has been adopted.* The four types of page tables illustrated in Figure 2-12 are called:
+Linux采用了适用于32位和64位架构的通用分页模型。正如在之前的[64位架构分页](#2.4.6)所解释的那样，2级页表对于32位系统而言足够了，而64位系统架构要求更多数量的分级页表。版本2.6.11之前，Linux分页模型由3级页表组成；从2.6.11开始，采用4级页表模型。如图2-12所示，它们分别称为：
 
-* Page Global Directory
-* Page Upper Directory
-* Page Middle Directory
-* Page Table
+* 页全局目录
+* 页上层目录
+* 页中间目录
+* 最后一级页表
 
-The Page Global Directory includes the addresses of several Page Upper Directories,
-which in turn include the addresses of several Page Middle Directories, which in
-turn include the addresses of several Page Tables. Each Page Table entry points to a
-page frame. Thus the linear address can be split into up to five parts. Figure 2-12
-does not show the bit numbers, because the size of each part depends on the computer
-architecture.
+页全局目录包含页上层目录的地址，这些地址又包含页中层目录的地址，这些页中间目录又包含几个页表，而每个页表又指向一个页帧。也就是说，线性地址被分割成5部分。图2-12没有展示这些位，因为每个部分的大小依赖于计算机的架构。
 
 <img id="Figure_2-12" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_12.PNG">
 
 图2-12 linux分页模型
 
-For 32-bit architectures with no Physical Address Extension, two paging levels are sufficient. Linux essentially eliminates the Page Upper Directory and the Page Middle Directory fields by saying that they contain zero bits. However, the positions of the Page Upper Directory and the Page Middle Directory in the sequence of pointers are kept so that the same code can work on 32-bit and 64-bit architectures. The kernel keeps a position for the Page Upper Directory and the Page Middle Directory by setting the number of entries in them to 1 and mapping these two entries into the proper entry of the Page Global Directory.
+对于没有进行PAE物理地址扩展的32位架构来说，2级页表足够了。Linux通过填充0，把页上层目录和页中间目录域给消除了。但本质上，页上层目录和页中间目录还是存在的，所以在32位和64位架构上能运行相同的代码。内核通过设置页上层目录和页中间目录中的项数为1，将其位置保留，并将其映射到页全局目录中。
 
-For 32-bit architectures with the Physical Address Extension enabled, three paging
-levels are used. The Linux’s Page Global Directory corresponds to the 80 × 86’s Page
-Directory Pointer Table, the Page Upper Directory is eliminated, the Page Middle
-Directory corresponds to the 80 × 86’s Page Directory, and the Linux’s Page Table
-corresponds to the 80 × 86’s Page Table.
+对于使能了PAE扩展内存的32位系统，则是使用3级页表结构。Linux的页全局目录对应于80x86的页目录指针表，页上层目录被消除，页中间目录对应80x86的页目录，Linux的页表对应于80x86的页表。
 
-Finally, for 64-bit architectures three or four levels of paging are used depending on
-the linear address bit splitting performed by the hardware (see Table 2-4).
+最后，对于64位架构来说，使用3级页表结构还是4级页表结构，完全依赖于硬件将线性地址分割成几部分。（参见表2-4）
 
-Linux’s handling of processes relies heavily on paging. In fact, the automatic translation
-of linear addresses into physical ones makes the following design objectives
-feasible:
+Linux对进程的处理严重依赖于分页单元。事实上，将线性地址自动转换成物理地址，使下面的目标成为可能：
 
-* Assign a different physical address space to each process, ensuring an efficient protection against addressing errors.
+* 为每个进程分配不同的物理地址空间，确保有效地防止寻址错误。
 
-* Distinguish pages (groups of data) from page frames (physical addresses in main
-memory). This allows the same page to be stored in a page frame, then saved to
-disk and later reloaded in a different page frame. This is the basic ingredient of
-the virtual memory mechanism (see Chapter 17).
+* 区分页（数据）和页帧（内存中的物理地址）。这保证了相同的页被保存在同一个页帧中，然后再写入硬盘中，而后可以再加载到不同的页帧中。这是虚拟物理内存的基本构成要素。（参见[第17章](#17)）
 
-In the remaining part of this chapter, we will refer for the sake of concreteness to the
-paging circuitry used by the 80 × 86 processors.
+在本章的其余部分，为了具体起见，我们将提到80×86处理器使用的分页硬件单元。
 
-As we will see in Chapter 9, each process has its own Page Global Directory and its
-own set of Page Tables. When a process switch occurs (see the section “Process
-Switch” in Chapter 3), Linux saves the cr3 control register in the descriptor of the
-process previously in execution and then loads cr3 with the value stored in the
-descriptor of the process to be executed next. Thus, when the new process resumes
-its execution on the CPU, the paging unit refers to the correct set of Page Tables.
+正如我们将在[第9章](#9)中看到的，每个进程拥有自己的页全局目录和一组页表。当发生进程切换时，Linux保存cr3控制寄存器，其存储在先前执行的进程描述符中；然后把下一个要执行的进程的描述符的值存入cr3寄存器中。然后，新进程继续在CPU上执行，分页单元指向正确的页表。
 
-Mapping linear to physical addresses now becomes a mechanical task, although it is
-still somewhat complex. The next few sections of this chapter are a rather tedious list
-of functions and macros that retrieve information the kernel needs to find addresses
-and manage the tables; most of the functions are one or two lines long. You may
-want to only skim these sections now, but it is useful to know the role of these functions
-and macros, because you’ll see them often in discussions throughout this book.
-
+尽管分页机制很复杂，但是将线性地址映射成物理地址现在变成了一个硬件任务，无需我们操心。我们需要关心的是，如何检索内核查找地址所需的信息，如何操作这些页表。本节后面的部分介绍了这些函数和宏。
 
 <h3 id="2.5.1">2.5.1 线性地址域</h3>
 
@@ -1354,33 +1244,31 @@ and macros, because you’ll see them often in discussions throughout this book.
 
 * PAGE_SHIFT
     
-    Specifies the length in bits of the Offset field; when applied to 80 × 86 processors, it yields the value 12. Because all the addresses in a page must fit in the Offset field, the size of a page on 80 × 86 systems is 212 or the familiar 4,096 bytes; the PAGE_SHIFT of 12 can thus be considered the logarithm base 2 of the total page size. This macro is used by PAGE_SIZE to return the size of the page. Finally, the PAGE_MASK macro yields the value 0xfffff000 and is used to mask all the bits of the Offset field.
+    指定`Offset`域的长度，也就是位数。对于80x86处理器，该宏的值是12。因为一个页中的所有地址必须用`Offset`域能够索引到，所以页的大小就是2^12，也就是4096个字节。PAGE_SIZE会使用该宏返回一个页的大小。PAGE_MASK是0xfffff000，作为`Offset`域的掩码。
 
 * PMD_SHIFT
     
-    The total length in bits of the Offset and Table fields of a linear address; in other words, the logarithm of the size of the area a Page Middle Directory entry can map. The PMD_SIZE macro computes the size of the area mapped by a single entry of the Page Middle Directory—that is, of a Page Table. The PMD_MASK macro is used to mask all the bits of the Offset and Table fields.
+    线性地址`Offset`和`Table`域的位的总长度；换句话说，页中间目录项能够映射的区域的大小。PMD_SIZE宏使用该宏计算出页中间目录项映射区域的大小，也就是一个页表的大小。PMD_MASK宏是`Offset`和`Table`域的掩码。
 
-    When PAE is disabled, PMD_SHIFT yields the value 22 (12 from Offset plus 10 from Table), PMD_SIZE yields 2^22 or 4 MB, and PMD_MASK yields 0xffc00000. Conversely, when PAE is enabled, PMD_SHIFT yields the value 21 (12 from Offset plus 9 from Table), PMD_SIZE yields 2^21 or 2 MB, and PMD_MASK yields 0xffe00000.
+    当PAE禁止时，PMD_SHIFT的值是22（12位的`Offset`和10位的`Table`），PMD_SIZE产生的大小是2^22或4MB，PMD_MASK的值是0xffc00000。相反，如果PAE被使能，PMD_SHIFT的值是21（12位的`Offset`和9位的`Table`），PMD_SIZE产生的大小是2^21或2MB，PMD_MASK的值是0xffe00000。
 
-    Large pages do not make use of the last level of page tables, thus LARGE_PAGE_SIZE, which yields the size of a large page, is equal to PMD_SIZE (2PMD_SHIFT) while LARGE_PAGE_MASK, which is used to mask all the bits of the Offset and Table fields in a large page address, is equal to PMD_MASK.
+    大页不使用最后一级页表，LARGE_PAGE_SIZE是大页的大小，等于PMD_SIZE(2PMD_SHIFT)，同时，LARGE_PAGE_MASK等于PMD_MASK
 
 * PUD_SHIFT
     
-    Determines the logarithm of the size of the area a Page Upper Directory entry can map. The PUD_SIZE macro computes the size of the area mapped by a single entry of the Page Global Directory. The PUD_MASK macro is used to mask all the bits of the Offset, Table, Middle Air, and Upper Air fields.
-
-    On the 80 × 86 processors, PUD_SHIFT is always equal to PMD_SHIFT and PUD_SIZE is equal to 4 MB or 2 MB.
+    确定页上层目录项可以映射的区域大小的对数。PUD_SIZE计算页上层目录中的一项可以映射的区域大小。PUD_MASK是`Table`、`Offset`、`Middle Air`3个域的位掩码。在80x86系统上，PUD_SHIFT总是等于PMD_SHIFT，而PUD_SIZE等于4M或2M。
 
 * PGDIR_SHIFT
     
-    Determines the logarithm of the size of the area that a Page Global Directory entry can map. The PGDIR_SIZE macro computes the size of the area mapped by a single entry of the Page Global Directory. The PGDIR_MASK macro is used to mask all the bits of the Offset, Table, Middle Air, and Upper Air fields.
+    确定页全局目录项能够映射的区域大小的对数。PGDIR_SIZE计算一个页全局目录项映射区域的大小。PGDIR_MASK是对应位`Offset`、`Table`、`Middle Air`和`Upper Air` 域的位掩码。
 
-    When PAE is disabled, PGDIR_SHIFT yields the value 22 (the same value yielded by PMD_SHIFT and by PUD_SHIFT), PGDIR_SIZE yields 2^22 or 4 MB, and PGDIR_MASK yields 0xffc00000. Conversely, when PAE is enabled, PGDIR_SHIFT yields the value 30 (12 from Offset plus 9 from Table plus 9 from Middle Air), PGDIR_SIZE yields 2^30 or 1 GB, and PGDIR_MASK yields 0xc0000000.
+    当PAE禁止时，PGDIR_SHIFT 的值是22（12位的`Offset`和10位的`Table`），PGDIR_SIZE 产生的大小是2^22或4MB，PGDIR_MASK的值是0xffc00000。相反，如果PAE被使能，PGDIR_SHIFT的值是30（12位的`Offset`+9位的`Table`+9位的`Middle Air`），PGDIR_SIZE产生的大小是2^30或1GB，PGDIR_MASK的值是0xc0000000。
 
-* PTRS_PER_PTE, PTRS_PER_PMD, PTRS_PER_PUD, and PTRS_PER_PGD
+* PTRS_PER_PTE、PTRS_PER_PMD、PTRS_PER_PUD和PTRS_PER_PGD
     
-    Compute the number of entries in the Page Table, Page Middle Directory, Page Upper Directory, and Page Global Directory. They yield the values 1,024, 1, 1, and 1,024, respectively, when PAE is disabled; and the values 512, 512, 1, and 4, respectively, when PAE is enabled.
+    分别计算各个表中的项数。当PAE禁止时，分别是1024、1、1和1024当PAE使能时，分别是512、512、1和4。
 
-<h3 id="2.5.2">2.5.2 页表处理</h3>
+<h3 id="2.5.2">2.5.2 处理页表的相关函数</h3>
 
 pte_t, pmd_t, pud_t, and pgd_t describe the format of, respectively, a Page Table, a
 Page Middle Directory, a Page Upper Directory, and a Page Global Directory entry.
@@ -1388,7 +1276,7 @@ They are 64-bit data types when PAE is enabled and 32-bit data types otherwise.
 pgprot_t is another 64-bit (PAE enabled) or 32-bit (PAE disabled) data type that represents
 the protection flags associated with a single entry.
 
-Five type-conversion macros—_ _pte, _ _pmd, _ _pud, _ _pgd, and _ _pgprot—cast an
+Five type-conversion macros—__pte, __pmd, __pud, __pgd, and __pgprot—cast an
 unsigned integer into the required type. Five other type-conversion macros—pte_
 val, pmd_val, pud_val, pgd_val, and pgprot_val—perform the reverse casting from
 one of the four previously mentioned specialized types into an unsigned integer.
@@ -1434,9 +1322,9 @@ The functions listed in Table 2-5 query the current value of any of the flags in
 in a Page Table entry; with the exception of pte_file(), these functions work properly
 only on Page Table entries for which pte_present returns 1.
 
-Table 2-5. Page flag reading functions
+表2-5. 页标志读取函数
 
-| Function name | Description |
+| 函数名称      | 描述        |
 | ------------- | ----------- |
 | pte_user()    | Reads the User/Supervisor flag |
 | pte_read()    | Reads the User/Supervisor flag (pages on the 80 × 86 processor cannot be protected against reading) |
@@ -1448,27 +1336,27 @@ Table 2-5. Page flag reading functions
 
 Another group of functions listed in Table 2-6 sets the value of the flags in a Page Table entry.
 
-Table 2-6. Page flag setting functions
+表2-6. 页标志设置函数
 
-| Function name | Description |
+| 函数名称      | 描述        |
 | ------------- | ----------- |
-| mk_pte_huge() | Sets the Page Size and Present flags of a Page Table entry |
-| pte_wrprotect()    | Clears the Read/Write flag |
-| pte_rdprotect()    | Clears the User/Supervisor flag |
-| pte_exprotect()    | Clears the User/Supervisor flag |
-| pte_mkwrite()    | Sets the Read/Write flag |
-| pte_mkread()    | Sets the User/Supervisor flag |
-| pte_mkexec()    | Sets the User/Supervisor flag |
-| pte_mkclean()    | Clears the Dirty flag |
-| pte_mkdirty()    | Sets the Dirty flag |
-| pte_mkold()    | Clears the Accessed flag (makes the page old) |
-| pte_mkyoung()    | Sets the Accessed flag (makes the page young) |
-| pte_modify(p,v)   | Sets all access rights in a Page Table entry p to a specified value v |
-| ptep_set_wrprotect()    | Like pte_wrprotect(), but acts on a pointer to a Page Table entry |
-| ptep_set_access_flags()    | If the Dirty flag is set, sets the page’s access rights to a specified value and invokes flush_tlb_page() (see the section “Translation Lookaside Buffers (TLB)” later in this chapter) |
-| ptep_mkdirty()    | Like pte_mkdirty() but acts on a pointer to a Page Table entry |
-| ptep_test_and_clear_dirty()    | Like pte_mkclean() but acts on a pointer to a Page Table entry and returns the old value of the flag |
-| ptep_test_and_clear_young()    | Like pte_mkold() but acts on a pointer to a Page Table entry and returnsthe old value of the flag |
+| mk_pte_huge()      | 设置页表项中的Page Size和 Present标志 |
+| pte_wrprotect()    | 清除读写标志 |
+| pte_rdprotect()    | 清除User/Supervisor标志 |
+| pte_exprotect()    | 清除User/Supervisor标志 |
+| pte_mkwrite()      | 设置Read/Write标志 |
+| pte_mkread()       | 设置User/Supervisor标志 |
+| pte_mkexec()       | 设置User/Supervisor标志 |
+| pte_mkclean()      | 清除Dirty标志 |
+| pte_mkdirty()      | 设置Dirty标志 |
+| pte_mkold()        | 清除Accessed标志(使该页变旧) |
+| pte_mkyoung()      | 设置Accessed标志(使该页变年轻) |
+| pte_modify(p,v)    | 设置页表项p为指定的值v |
+| ptep_set_wrprotect()    | 同pte_wrprotect()，但是操作对象是指向页表项的指针 |
+| ptep_set_access_flags() | 如果Dirty标志被设置, 设置一个页的访问权限为指定值并调用 flush_tlb_page() （参考[转换后备缓存-TLB](#2.4.8)） |
+| ptep_mkdirty()                | 同pte_mkdirty()，但是操作对象是指向页表项的指针 |
+| ptep_test_and_clear_dirty()   | 同pte_mkclean()但是操作对象是指向页表项的指针并返回该标志旧值 |
+| ptep_test_and_clear_young()   | 同pte_mkold()但是操作对象是指向页表项的指针并返回该标志旧值 |
 
 Now, let’s discuss the macros listed in Table 2-7 that combine a page address and a
 group of protection flags into a page table entry or perform the reverse operation of
@@ -1477,7 +1365,7 @@ extracting the page address from a page table entry. Notice that some of these m
 
 Table 2-7. Macros acting on Page Table entries
 
-| Function name | Description |
+| 函数名称      | 描述        |
 | ------------- | ----------- |
 | pgd_index(addr) | Yields the index (relative position) of the entry in the Page Global Directory that maps the linear address addr. |
 | pgd_offset(mm, addr) | Receives as parameters the address of a memory descriptor cw (see Chapter 9) and a linear address addr. The macro yields the linear address of the entry in a Page Global Directory that corresponds to the address addr; the Page Global Directory is found through a pointer within the memory descriptor. |
@@ -1518,7 +1406,7 @@ architecture.
 
 Table 2-8. Page allocation functions
 
-| Function name | Description |
+| 函数名称      | 描述        |
 | ------------- | ----------- |
 | pgd_alloc(mm) | Allocates a new Page Global Directory; if PAE is enabled, it also allocates the three children Page Middle Directories that map the User Mode linear addresses. The argument mm (the address of a memory descriptor) is ignored  on the 80x86 architecture. |
 | pgd_free( pgd) | Releases the Page Global Directory at address pgd; if PAE is enabled, it also releases the three Page Middle Directories that map the User Mode linear addresses. |
@@ -1534,99 +1422,64 @@ Table 2-8. Page allocation functions
 
 <h3 id="2.5.3">2.5.3 物理内存布局</h3>
 
-During the initialization phase the kernel must build a physical addresses map that specifies which physical address ranges are usable by the kernel and which are unavailable (either because they map hardware devices’ I/O shared memory or because the corresponding page frames contain BIOS data).
+在初始化阶段，内核必须构建一个物理地址映射，指定哪些物理地址范围是内核可用的，哪些不可用（因为它们映射硬件设备的I/O共享内存，或因为相应的页帧包含BIOS数据）。
 
-The kernel considers the following page frames as *reserved*:
+内核将下列页帧视作保留：
 
-* Those falling in the unavailable physical address ranges
-* Those containing the kernel’s code and initialized data structures
+* 可用物理地址范围之外的页帧
+* 包含内核代码和初始化数据的页帧
 
-A page contained in a reserved page frame can never be dynamically assigned or swapped to disk.
+在保留页帧中的页永远不能动态分配或交换到硬盘中。
 
-As a general rule, the Linux kernel is installed in RAM starting from the physical address 0x00100000—i.e., from the second megabyte. The total number of page frames required depends on how the kernel is configured. A typical configuration yields a kernel that can be loaded in less than 3 MB of RAM.
+一般来说，Linux内核一般从内存的地址0x00100000处开始，也就是说，保留了1MB的空间。具体需要的页帧数量取决于内核大小。通常，内核不大于3M。
 
-Why isn’t the kernel loaded starting with the first available megabyte of RAM? Well, the PC architecture has several peculiarities that must be taken into account. For example:
+为什么内核保留1MB的空间呢？PC架构一些特性需要被考虑。比如：
 
-* Page frame 0 is used by BIOS to store the system hardware configuration detected during the Power-On Self-Test (POST); the BIOS of many laptops, moreover, writes data on this page frame even after the system is initialized.
+* 页帧0是BIOS用来存储开机自检（Power-On Self-Test (POST)）时检测到的系统硬件配置的。更重要的是，很多笔记本电脑即使在初始化完成后，也会将数据写入这个页帧。
 
-* Physical addresses ranging from 0x000a0000 to 0x000fffff are usually reserved to
-BIOS routines and to map the internal memory of ISA graphics cards. This area
-is the well-known hole from 640 KB to 1 MB in all IBM-compatible PCs: the
-physical addresses exist but they are reserved, and the corresponding page
-frames cannot be used by the operating system.
+* 物理地址0x000a0000到0x000fffff保留给BIOS服务程序的，用来映射ISA显卡的内部内存。这个区域是所有IBM兼容的PC中一个众所周知的保留区域，640K到1M地址范围：物理地址存在，但是保留，操作系统不能使用相关的页帧。
 
-* Additional page frames within the first megabyte may be reserved by specific
-computer models. For example, the IBM ThinkPad maps the 0xa0 page frame
-into the 0x9f one.
+* 第一个1M内存中的其它页帧，可能被其它计算机架构保留。比如，IBM的ThinkPad就将0xa0页帧映射到0x9f处。
 
-In the early stage of the boot sequence (see Appendix A), the kernel queries the BIOS
-and learns the size of the physical memory. In recent computers, the kernel also
-invokes a BIOS procedure to build a list of physical address ranges and their corresponding
-memory types.
+在早期的系统引导（boot）中，内核查询BIOS并了解物理内存的大小。在最近的计算机中，内核调用BIOS处理程序构建一个物理地址范围和它们相应内存类型的列表。
 
-Later, the kernel executes the machine_specific_memory_setup() function, which
-builds the physical addresses map (see Table 2-9 for an example). Of course, the kernel
-builds this table on the basis of the BIOS list, if this is available; otherwise the
-kernel builds the table following the conservative default setup: all page frames with
-numbers from 0x9f (LOWMEMSIZE()) to 0x100 (HIGH_MEMORY) are marked as reserved.
+然后，内核执行`machine_specific_memory_setup()`函数，构建物理地址映射（参见表2-9）。当然了，如果BIOS列表可用，内核将以这个列表为基础构建这个映射表；否则，内核使用默认设置构建映射表：从0x9f（LOWMEMSIZE()）到0x100（HIGH_MEMORY）被标记为保留。
 
-Table 2-9. Example of BIOS-provided physical addresses map
+表2-9. BIOS提供的物理地址映射的示例
 
 | Start      | End        | Type   |
 | ---------- | ---------- | ------ |
-| 0x00000000 | 0x0009ffff | Usable |
-| 0x000f0000 | 0x000fffff | Reserved |
-| 0x00100000 | 0x07feffff | Usable |
-| 0x07ff0000 | 0x07ff2fff | ACPI data |
-| 0x07ff3000 | 0x07ffffff | ACPI NVS |
-| 0xffff0000 | 0xffffffff | Reserved |
+| 0x00000000 | 0x0009FFFF | Usable |
+| 0x000F0000 | 0x000FFFFF | Reserved |
+| 0x00100000 | 0x07FEFFFF | Usable |
+| 0x07FF0000 | 0x07FF2FFF | ACPI data |
+| 0x07FF3000 | 0x07FFFFFF | ACPI NVS |
+| 0xFFFF0000 | 0xFFFFFFFF | Reserved |
 
-A typical configuration for a computer having 128 MB of RAM is shown in
-Table 2-9. The physical address range from 0x07ff0000 to 0x07ff2fff stores information
-about the hardware devices of the system written by the BIOS in the POST
-phase; during the initialization phase, the kernel copies such information in a suitable
-kernel data structure, and then considers these page frames usable. Conversely,
-the physical address range of 0x07ff3000 to 0x07ffffff is mapped to ROM chips of the hardware devices. The physical address range starting from 0xffff0000 is marked
-as reserved, because it is mapped by the hardware to the BIOS’s ROM chip (see
-Appendix A). Notice that the BIOS may not provide information for some physical
-address ranges (in the table, the range is 0x000a0000 to 0x000effff). To be on the safe
-side, Linux assumes that such ranges are not usable.
+具有128M内存的计算机，典型的内存布局如表2-9所示。具有128 MB RAM的计算机的典型配置如表2-9所示。物理地址范围从0x07ff0000到0x07ff2fff，它存储有关BIOS在POST阶段写入的系统硬件设备的信息;在初始化阶段，内核将这些信息复制到合适的内核数据结构中，然后认为这些页帧是可用的。相反，从0x07ff3000到0x07ffffff的物理地址范围映射到硬件设备的ROM芯片。从0xffff0000开始的物理地址范围被标记为保留的，因为它被硬件映射到BIOS的ROM芯片(参见附录A)。在该表中，由于BIOS没有提供0x000a0000到0x000effff的信息，为了安全起见，Linux假定这些范围是不可用的。
 
-The kernel might not see all physical memory reported by the BIOS: for instance, the
-kernel can address only 4 GB of RAM if it has not been compiled with PAE support,
-even if a larger amount of physical memory is actually available. The setup_memory( )
-function is invoked right after machine_specific_memory_setup(): it analyzes the table
-of physical memory regions and initializes a few variables that describe the kernel’s
-physical memory layout. These variables are shown in Table 2-10.
+内核可能不会看到BIOS报告的所有物理内存:例如，如果内核没有使用PAE支持进行编译，那么它只能处理4gb RAM，即使实际上有更多的物理内存可用。setup_memory()函数在machine_specific_memory_setup()之后立即调用:它分析物理内存区域表，并初始化几个描述内核物理内存布局的变量。这些变量如表2-10所示。
 
-Table 2-10. Variables describing the kernel’s physical memory layout
+表2-10. 描述内核物理内存布局的变量
 
-| Variable name | Description |
+| 变量名称      | 描述        |
 | ------------- | ----------- |
-| num_physpages | Page frame number of the highest usable page frame |
-| totalram_pages | Total number of usable page frames |
-| min_low_pfn | Page frame number of the first usable page frame after the kernel image in RAM |
-| max_pfn | Page frame number of the last usable page frame |
-| max_low_pfn | Page frame number of the last page frame directly mapped by the kernel (low memory) |
-| totalhigh_pages | Total number of page frames not directly mapped by the kernel (high memory) |
-| highstart_pfn | Page frame number of the first page frame not directly mapped by the kernel |
-| highend_pfn | Page frame number of the last page frame not directly mapped by the kernel |
+| num_physpages     | 最高可用页帧编号 |
+| totalram_pages    | 可用页帧总数 |
+| min_low_pfn       | 内存中内核镜像之后第一个可用的页帧编号 |
+| max_pfn           | 最后一个可用页帧编号 |
+| max_low_pfn       | 内核直接映射的最后一页帧的页帧编号(low memory) |
+| totalhigh_pages   | 内核没有映射的页帧总数 (high memory) |
+| highstart_pfn     | 内核没有映射的第一个页帧编号 |
+| highend_pfn       | 内核没有映射的最后一个页帧编号 |
 
-To avoid loading the kernel into groups of noncontiguous page frames, Linux prefers
-to skip the first megabyte of RAM. Clearly, page frames not reserved by the PC
-architecture will be used by Linux to store dynamically assigned pages.
+因为RAM的前1M空间使用不连续，所以，Linux跳过这一段内存空间。Linux使用硬件架构没有保留的内存空间存储动态分配的页。
 
-Figure 2-13 shows how the first 3 MB of RAM are filled by Linux. We have assumed
-that the kernel requires less than 3 MB of RAM.
+图2-13展示了Linux如何填充前3M的RAM空间。假设内核小于3M。
 
-The symbol _text, which corresponds to physical address 0x00100000, denotes the
-address of the first byte of kernel code. The end of the kernel code is similarly identified
-by the symbol _etext. Kernel data is divided into two groups: initialized and
-uninitialized. The initialized data starts right after _etext and ends at _edata. The
-uninitialized data follows and ends up at _end.
+内核代码从符号`_text`-对应物理地址0x00100000-开始，到符号`_etext`处结束。内核数据分成2部分：初始化数据段和未初始化数据段。初始化数据段从`_etext`之后开始，在`_edata`处结束。未初始化数据段紧随其后，在`_end`处结束。
 
-The symbols appearing in the figure are not defined in Linux source code; they are
-produced while compiling the kernel.*
+上面提到的这些符号在Linux源代码中没有定义，是在编译时产生的。
 
 <img id="Figure_2-13" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_2_13.PNG">
 
@@ -1634,141 +1487,82 @@ produced while compiling the kernel.*
 
 <h3 id="2.5.4">2.5.4 进程页表</h3>
 
-The linear address space of a process is divided into two parts:
+进程的线性地址空间可以分为2部分：
 
-* Linear addresses from 0x00000000 to 0xbfffffff can be addressed when the process runs in either User or Kernel Mode.
+* 线性地址空间0x00000000到0xbfffffff可以被用户空间或内核空间寻址。
 
-* Linear addresses from 0xc0000000 to 0xffffffff can be addressed only when the process runs in Kernel Mode.
+* 线性地址空间0xc0000000到0xffffffff只被内核空间寻址。
 
-When a process runs in User Mode, it issues linear addresses smaller than
-0xc0000000; when it runs in Kernel Mode, it is executing kernel code and the linear
-addresses issued are greater than or equal to 0xc0000000. In some cases, however, the
-kernel must access the User Mode linear address space to retrieve or store data.
+运行在用户模式的进程发出的线性地址小于0xc0000000，运行在内核模式的进程，执行内核代码，发出的线性地址大于0xc0000000。但是，有些情况下，内核可以访问用户模式的线性地址空间，以检索或者存储数据。
 
-The PAGE_OFFSET macro yields the value 0xc0000000; this is the offset in the linear
-address space of a process where the kernel lives. In this book, we often refer directly
-to the number 0xc0000000 instead.
+Linux源代码中使用宏PAGE_OFFSET代表值0xc0000000，这是内核所在进程的线性地址空间的偏移量。在本书中，往往直接使用这个值0xc0000000。
 
-The content of the first entries of the Page Global Directory that map linear
-addresses lower than 0xc0000000 (the first 768 entries with PAE disabled, or the first
-3 entries with PAE enabled) depends on the specific process. Conversely, the remaining
-entries should be the same for all processes and equal to the corresponding
-entries of the master kernel Page Global Directory (see the following section).
+页全局目录中的第一项中的内容映射的小于0xc0000000的线性地址，当然了，这跟具体的进程有关（PAE禁止时，前768项；PAE使能时，前3项）。也就是，运行在用户模式的进程，其全局页表的内容映射小于0xc0000000的地址空间。与此相反，全局页表中剩余的项，对于所有的进程都是一样的，等于相应的主内核页全局目录中的项（参考下一节）。
 
 <h3 id="2.5.5">2.5.5 内核页表</h3>
 
-The kernel maintains a set of page tables for its own use, rooted at a so-called master
-kernel Page Global Directory. After system initialization, this set of page tables is
-never directly used by any process or kernel thread; rather, the highest entries of the
-master kernel Page Global Directory are the reference model for the corresponding
-entries of the Page Global Directories of every regular process in the system.
+The kernel maintains a set of page tables for its own use, rooted at a so-called master kernel Page Global Directory. After system initialization, this set of page tables is never directly used by any process or kernel thread; rather, the highest entries of the master kernel Page Global Directory are the reference model for the corresponding entries of the Page Global Directories of every regular process in the system.
 
-We explain how the kernel ensures that changes to the master kernel Page Global
-Directory are propagated to the Page Global Directories that are actually used by
-processes in the section “Linear Addresses of Noncontiguous Memory Areas” in
-Chapter 8.
+我们将在[第8章 非连续内存区域的线性地址 ](#8)一节中解释内核如何确保将对主内核页全局目录的更改传播到页全局目录，这些页全局目录实际上由进程使用。
 
-We now describe how the kernel initializes its own page tables. This is a two-phase
-activity. In fact, right after the kernel image is loaded into memory, the CPU is still
-running in real mode; thus, paging is not enabled.
+我们现在描述内核如何初始化它自己的页表。这分为2步。事实上，内核镜像刚刚加载到内存后，CPU仍然运行在实时模式，此时，分页单元还没使能。
 
-In the first phase, the kernel creates a limited address space including the kernel’s
-code and data segments, the initial Page Tables, and 128 KB for some dynamic data
-structures. This minimal address space is just large enough to install the kernel in
-RAM and to initialize its core data structures.
+第一步，内核创建有限的地址空间，存储内核代码和数据段，初始页表和存储动态数据结构的128K空间。这个最小的空间正好在RAM中安装内核代码并初始化它的核心数据结构。
 
-In the second phase, the kernel takes advantage of all of the existing RAM and sets
-up the page tables properly. Let us examine how this plan is executed.
+第二步，内核充分利用已有的RAM，正确地建立页表。下面让我们详细讨论这个建立的过程。
 
 <h4 id="2.5.5.1">2.5.5.1 临时内核页表</h4>
 
-A provisional Page Global Directory is initialized statically during kernel compilation,
-while the provisional Page Tables are initialized by the startup_32() assembly
-language function defined in arch/i386/kernel/head.S. We won’t bother mentioning
-the Page Upper Directories and Page Middle Directories anymore, because they are
-equated to Page Global Directory entries. PAE support is not enabled at this stage.
+临时页全局目录在内核编译期间静态初始化，而临时页表在startup_32()汇编函数中初始化，该函数位于 *arch/i386/kernel/head.S*文件中。我们不再提及页上层目录和页中间目录，因为它们等同于页全局目录。在这一阶段，PAE支持还没有使能。
 
-The provisional Page Global Directory is contained in the swapper_pg_dir variable.
-The provisional Page Tables are stored starting from pg0, right after the end of the
-kernel’s uninitialized data segments (symbol _end in Figure 2-13). For the sake of
-simplicity, let’s assume that the kernel’s segments, the provisional Page Tables, and
-the 128 KB memory area fit in the first 8 MB of RAM. In order to map 8 MB of RAM,
-two Page Tables are required.
+临时页全局目录存储在变量`swapper_pg_dir`中。而临时页表存储在pg0页帧开始的物理地址中，其位于内核未初始化数据段结束处之后（[图2-13](Figure_2-13)中的符号`_end`处）。为了简单，我们假设内核的各个段，临时页表和128KB内存区域，都在RAM的前8M空间之内。为了映射这8M的RAM，需要2个页表。
 
-The objective of this first phase of paging is to allow these 8 MB of RAM to be easily
-addressed both in real mode and protected mode. Therefore, the kernel must create a
-mapping from both the linear addresses 0x00000000 through 0x007fffff and the linear
-addresses 0xc0000000 through 0xc07fffff into the physical addresses 0x00000000
-through 0x007fffff. In other words, the kernel during its first phase of initialization
-can address the first 8 MB of RAM by either linear addresses identical to the physical
-ones or 8 MB worth of linear addresses, starting from 0xc0000000.
+第一步的分页目的是允许在实时模式和保护模式下，能够简单地对这8M空间进行寻址。因此，内核必须创建一个映射，将线性地址0x00000000~0x007fffff和线性地址0xc0000000~0xc07fffff都映射到物理地址0x00000000~0x007fffff上。换句话说，内核在初始化的第一步，通过使用与物理地址相同的线性地址或者从0xc0000000开始的8M线性空间访问RAM的前8M空间。
 
-The Kernel creates the desired mapping by filling all the swapper_pg_dir entries with
-zeroes, except for entries 0, 1, 0x300 (decimal 768), and 0x301 (decimal 769); the latter
-two entries span all linear addresses between 0xc0000000 and 0xc07fffff. The 0,
-1, 0x300, and 0x301 entries are initialized as follows:
+内核通过填充`swapper_pg_dir`中的0、1、0x300（768）和0x301（769）这几项，其余位置填充0，来创建想要的映射。后面2项的范围正好是0xc0000000~0xc07fffff。初始化如下：
 
-* The address field of entries 0 and 0x300 is set to the physical address of pg0, while the address field of entries 1 and 0x301 is set to the physical address of the page frame following pg0.
-* The Present, Read/Write, and User/Supervisor flags are set in all four entries.
-* The Accessed, Dirty, PCD, PWD, and Page Size flags are cleared in all four entries.
+* 0和0x300设置为pg0的物理地址，1和0x301设置成pg1的地址
+* 4项的Present、Read/Write和User/Supervisor标志被设置
+* 4项的Accessed、Dirty、PCD、PWD和PS标志被清除
 
-The startup_32( ) assembly language function also enables the paging unit. This is
-achieved by loading the physical address of swapper_pg_dir into the cr3 control register
-and by setting the PG flag of the cr0 control register, as shown in the following
-equivalent code fragment:
+startup_32()汇编函数也会使能分页单元。通过把`swapper_pg_dir`的物理地址写入cr3寄存器并设置cr0寄存器的PG标志实现。代码片段如下：
 
     movl $swapper_pg_dir-0xc0000000, %eax
-    movl %eax, %cr3                         /* set the page table pointer.. */
+    movl %eax, %cr3                         /* 设置页表指针 */
     movl %cr0, %eax
     orl $0x80000000, %eax
-    movl %eax, %cr0                         /* ..and set paging (PG) bit */
+    movl %eax, %cr0                         /* 设置PG标志位 */
 
 <h4 id="2.5.5.2">2.5.5.2 内核页表（RAM < 896M）</h4>
 
-The final mapping provided by the kernel page tables must transform linear
-addresses starting from `0xc0000000` into physical addresses starting from 0.
+由内核页表提供的映射必须能够把从`0xc0000000`开始的线性地址转换成从0开始的物理地址。
 
-The `__pa` macro is used to convert a linear address starting from PAGE_OFFSET to the
-corresponding physical address, while the `__va` macro does the reverse.
+`__pa`能够把一个从PAGE_OFFSET(0xC0000000)开始的线性地址转换成物理地址，而`__va`实现逆操作。都是位于内核空间的转换。
 
-The master kernel Page Global Directory is still stored in `swapper_pg_dir`. It is initialized
-by the `paging_init()` function, which does the following:
+主内核页全局目录仍然在`swapper_pg_dir`变量中，它由`paging_init()`函数进行初始化：
 
-1. Invokes pagetable_init() to set up the Page Table entries properly.
-2. Writes the physical address of swapper_pg_dir in the cr3 control register.
-3. If the CPU supports PAE and if the kernel is compiled with PAE support, sets the PAE flag in the cr4 control register.
-4. Invokes __flush_tlb_all() to invalidate all TLB entries.
+1. 调用pagetable_init()建立页表项；
+2. 写swapper_pg_dir的物理地址到cr3寄存器中；
+3. 如果内核编译选择支持PAE，设置cr4寄存器中的PAE标志；
+4. 调用`__flush_tlb_all()`函数使所有TLB无效。
 
-The actions performed by pagetable_init() depend on both the amount of RAM
-present and on the CPU model. Let’s start with the simplest case. Our computer has
-less than 896 MB* of RAM, 32-bit physical addresses are sufficient to address all the
-available RAM, and there is no need to activate the PAE mechanism. (See the earlier
-section “The Physical Address Extension (PAE) Paging Mechanism.”)
+pagetable_init()函数所做的操作依赖于RAM的数量和CPU模型。让我们从最简单的一种情况说起，假设我们的计算机内存小于896MB，32位的物理地址寻址足够了，没有必要激活PAE功能。
 
-The swapper_pg_dir Page Global Directory is reinitialized by a cycle equivalent to the
-following:
+swapper_pg_dir页全局目录重新初始化，代码片段如下：
 
     pgd = swapper_pg_dir + pgd_index(PAGE_OFFSET); /* 768 */
     phys_addr = 0x00000000;
     while (phys_addr < (max_low_pfn * PAGE_SIZE)) {
         pmd = one_md_table_init(pgd); /* returns pgd itself */
-        set_pmd(pmd, _ _pmd(phys_addr | pgprot_val(_ _pgprot(0x1e3))));
+        set_pmd(pmd, __pmd(phys_addr | pgprot_val(__pgprot(0x1e3))));
         /* 0x1e3 == Present, Accessed, Dirty, Read/Write, Page Size, Global */
         phys_addr += PTRS_PER_PTE * PAGE_SIZE; /* 0x400000 */
         ++pgd;
     }
 
-We assume that the CPU is a recent 80 × 86 microprocessor supporting 4 MB pages
-and “global” TLB entries. Notice that the User/Supervisor flags in all Page Global
-Directory entries referencing linear addresses above 0xc0000000 are cleared, thus
-denying processes in User Mode access to the kernel address space. Notice also that
-the Page Size flag is set so that the kernel can address the RAM by making use of
-large pages (see the section “Extended Paging” earlier in this chapter).
+We assume that the CPU is a recent 80 × 86 microprocessor supporting 4 MB pages and “global” TLB entries. Notice that the User/Supervisor flags in all Page Global Directory entries referencing linear addresses above 0xc0000000 are cleared, thus denying processes in User Mode access to the kernel address space. Notice also that the Page Size flag is set so that the kernel can address the RAM by making use of large pages (see the section “Extended Paging” earlier in this chapter).
 
-The identity mapping of the first megabytes of physical memory (8 MB in our example)
-built by the startup_32() function is required to complete the initialization phase
-of the kernel. When this mapping is no longer necessary, the kernel clears the corresponding
-page table entries by invoking the zap_low_mappings() function.
+The identity mapping of the first megabytes of physical memory (8 MB in our example) built by the startup_32() function is required to complete the initialization phase of the kernel. When this mapping is no longer necessary, the kernel clears the corresponding page table entries by invoking the zap_low_mappings() function.
 
 Actually, this description does not state the whole truth. As we’ll see in the later section
 “Fix-Mapped Linear Addresses,” the kernel also adjusts the entries of Page
@@ -1804,17 +1598,17 @@ initialized by a cycle equivalent to the following:
 
     pgd_idx = pgd_index(PAGE_OFFSET); /* 3 */
     for (i=0; i<pgd_idx; i++)
-        set_pgd(swapper_pg_dir + i, _ _pgd(_ _pa(empty_zero_page) + 0x001));
+        set_pgd(swapper_pg_dir + i, __pgd(__pa(empty_zero_page) + 0x001));
         /* 0x001 == Present */
     pgd = swapper_pg_dir + pgd_idx;
     phys_addr = 0x00000000;
     for (; i<PTRS_PER_PGD; ++i, ++pgd) {
         pmd = (pmd_t *) alloc_bootmem_low_pages(PAGE_SIZE);
-        set_pgd(pgd, _ _pgd(_ _pa(pmd) | 0x001)); /* 0x001 == Present */
+        set_pgd(pgd, __pgd(__pa(pmd) | 0x001)); /* 0x001 == Present */
         if (phys_addr < max_low_pfn * PAGE_SIZE)
             for (j=0; j < PTRS_PER_PMD /* 512 */
                     && phys_addr < max_low_pfn*PAGE_SIZE; ++j) {
-                set_pmd(pmd, _ _pmd(phys_addr | pgprot_val(_ _pgprot(0x1e3))));
+                set_pmd(pmd, __pmd(phys_addr | pgprot_val(__pgprot(0x1e3))));
                 /* 0x1e3 == Present, Accessed, Dirty, Read/Write,  Page Size, Global */
                 phys_addr += PTRS_PER_PTE * PAGE_SIZE; /* 0x200000 */
             }
@@ -1902,7 +1696,7 @@ the index value is never performed at runtime. In fact, FIX_IO_APIC_BASE_0 is a 
 equal to 3, so the compiler can cut away the if statement because its condition
 is false at compile time. Conversely, if the condition is true or the argument of fix_
 to_virt() is not a constant, the compiler issues an error during the linking phase
-because the symbol _ _this_fixmap_does_not_exist is not defined anywhere. Eventually,
+because the symbol __this_fixmap_does_not_exist is not defined anywhere. Eventually,
 the compiler computes 0xfffff000-(3<<PAGE_SHIFT) and replaces the fix_to_
 virt() function call with the constant linear address 0xffffc000.
 
@@ -2062,7 +1856,7 @@ vm_mask field of the memory descriptor. This has two consequences:
 
 * As long as the CPU remains in lazy TLB mode, it will not receive other Interprocessor Interrupts related to TLB flushing.
 
-* If the CPU switches to another process that is using the same set of page tables as the kernel thread that is being replaced, the kernel invokes _ _flush_tlb() to invalidate all non-global TLB entries of the CPU.
+* If the CPU switches to another process that is using the same set of page tables as the kernel thread that is being replaced, the kernel invokes __flush_tlb() to invalidate all non-global TLB entries of the CPU.
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
