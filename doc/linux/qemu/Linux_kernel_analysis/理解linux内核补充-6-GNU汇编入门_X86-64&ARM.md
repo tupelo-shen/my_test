@@ -118,13 +118,7 @@ As you are learning assembly language, take advantage of an existing compiler: w
 
 X86 is a generic term that refers to the series of microprocessors descended from (or compatible with) the Intel 8088 processor used in the original IBM PC, including the 8086, 80286, ’386, ’486, and many others. Each generation of CPUs added new instructions and addressing modes from 8-bit to 16-bit to 32-bit, all while retaining backwards compatibility with old code. A variety of competitors (such as AMD) produced compatible chips that implemented the same instruction set.
 
-However, Intel broke with tradition in the 64-bit generation by introducing
-a new brand (Itanium) and architecture (IA64) that was not backwards
-compatible with old code. Instead, it implemented a new concept
-known as Very Long Instruction Word (VLIW) in which multiple concurrent
-operations were encoded into a single word. This had the potential for
-significant speedups due to instruction-level parallelism but represented
-a break with the past.
+However, Intel broke with tradition in the 64-bit generation by introducing a new brand (Itanium) and architecture (IA64) that was not backwards compatible with old code. Instead, it implemented a new concept known as Very Long Instruction Word (VLIW) in which multiple concurrent operations were encoded into a single word. This had the potential for significant speedups due to instruction-level parallelism but represented a break with the past.
 
 AMDstuck with the old ways and produced a 64-bit architecture (AMD64)
 that was backwards compatible with both Intel and AMD chips. While the
@@ -567,34 +561,13 @@ For your first attempt at building a compiler, your code created will (probably)
 
 <h2 id="4">4 ARM汇编</h2>
 
-The ARM processor architecture has a history almost as long as the X86
-architecture. It originated as the 32-bit Acorn RISC Machine used in the
-Acorn Archimedes personal computer in 1987, and has since evolved into
-a wide-used low-power CPU employed in many embedded and mobile
-systems, now known as the Advanced RISC Machine (ARM). The evolving
-architecture has been implemented by a number of chip vendors working
-from a common architecture definition. The most recent versions of
-the architecture are ARMv7-A (32-bit) and ARMv8-A (64-bit.) This chapter
-will focus on the 32-bit architecture, with some remarks on differences
-in the 64-bit architecture at the end.
+最新的ARM架构是ARMv7-A（32位）和ARMv8-A（64位）。本文着重介绍32位架构，最后讨论一下64位体系架构的差异。
 
-ARM is an example of a Reduced Instruction Set Computer (RISC)
-rather than a Complex Instruction Set Computer (CISC). Compared to
-X86, ARMrelies on a smaller set of instructions which are simpler to pipeline
-or run in parallel, reducing the complexity and energy consumption of the
-chip. ARM is sometimes considered “partially” RISC due to a few exceptions.
-For example, the difference in the time to execute some ARM
-instruction makes the pipeline imperfect, the inclusion of a barrel shifter
-for preprocessing brings forward more complex instructions, and conditional
-execution decreases some of the potential instructions executed and
-lead to less branching instructions so less energy used by the processor.
-We will mainly be focusing on the elements of the instruction set which
-allow us to do the most in a compiler, leaving the more complex aspects
-and optimizations of the programming language for later.
+ARM是一个精简指令计算机（RISC）架构。相比X86，ARM使用更小的指令集，这些指令更易于流水线操作或并行执行，从而降低芯片复杂度和能耗。但由于一些例外，ARM有时候被认为是部分RISC架构。比如，一些ARM指令执行时间的差异使流水线不完美，为预处理而包含的桶形移位器引入了更复杂的指令，还有条件指令减少了一些潜在指令的执行，导致跳转指令的使用减少，从而降低了处理器的能耗。我们侧重于编写编译器常用到的指令，更复杂的内容和程序语言的优化留到以后再研究。
 
 <h3 id="4.1">4.1 寄存器和数据类型</h3>
 
-ARM-32 has a set of 16 general purpose registers, r0-r15, with the following conventions for use:
+32位ARM架构拥有16个通用目的寄存器，r0~r15，使用约定如下所示：
 
 | 名称 | 别名 | 目的 |
 | ---- | ---- | ---- |
@@ -602,48 +575,46 @@ ARM-32 has a set of 16 general purpose registers, r0-r15, with the following con
 | r1   | -    | 通用目的寄存器         |
 | ...  | -    | -                      |
 | r10  | -    | 通用目的寄存器         |
-| r11  | fp   | 栈帧指针，也就是栈顶   |
+| r11  | fp   | 栈帧指针，栈帧起始地址 |
 | r12  | ip   | 内部调用临时寄存器     |
 | r13  | sp   | 栈指针                 |
 | r14  | lr   | 链接寄存器（返回地址） |
 | r15  | pc   | 程序计数器             |
 
-In addition to general purpose registers, there are two registers that cannot be directly accessed: 当前程序状态寄存器(CPSR)和程序状态保存寄存器(SPSR)。These hold the results of comparison operations, as well as privileged data regarding the process state. A user-level program cannot access these directly, but they can be set as a side effect of some operations.
+除了通用目的寄存器，还有2个寄存器：当前程序状态寄存器(CPSR)和程序状态保存寄存器(SPSR)，它们不能被直接访问。这两个寄存器保存着比较运算的结果，以及与进程状态相关的特权数据。用户态程序不能直接访问，但是可以通过一些操作的`副作用`修改它们。
 
-ARM uses the following suffixes to indicate data sizes. Note that these have different meanings than in X86 assembly! If no suffix is given, the assembler assumes an unsigned word operand. Signed types are used to provide appropriate sign-extension when loading a small data type into a larger register. There is no register naming structure for anything below a word.
+ARM使用下面的后缀表示数据大小。它们与X86架构不同！如果没有后缀，汇编器假设操作数是unsigned word类型。有符号类型提供正确的符号位。任何word类型寄存器不会再有细分且被命名的寄存器。
 
-| Suffix | Data Type       | Size              |
+| 后缀   | 数据类型        | 大小              |
 | ------ | --------------- | ----------------- |
-| B      | Byte            | 8 bits     |
-| H      | Halfword        | 16 bits    |
-| W      | WORD            | 32 bits    |
-| -      | Double Word     | 64 bits    |
-| SB     | Signed Byte     | 8 bits     |
-| SH     | Signed Halfword | 16 bits    |
-| SW     | Signed Word     | 32 bits    |
-| -      | Double Word     | 64 bits    |
+| B      | Byte            | 8 位     |
+| H      | Halfword        | 16 位    |
+| W      | WORD            | 32 位    |
+| -      | Double Word     | 64 位    |
+| SB     | Signed Byte     | 8 位     |
+| SH     | Signed Halfword | 16 位    |
+| SW     | Signed Word     | 32 位    |
+| -      | Double Word     | 64 位    |
 
 <h3 id="4.2">4.2 寻址模式</h3>
 
-ARM makes the use of two different classes of instructions to move data between registers and between registers and memory. MOV copies data and constants between registers, while LDR (load) and STR (store) instructions are used to move data between registers and memory.
+与X86不同，ARM使用两种不同的指令分别搬运寄存器之间、寄存器与内存之间的数据。MOV拷贝寄存器之间的数据和常量，而LDR和STR指令拷贝寄存器和内存之间的数据。
 
-The MOV instruction is used to move a known immediate value into a given register or move another register into the first register. In ARM, immediate values are denoted by a #. However, these immediate values must be 16-bits or less. If they are greater, the LDR instruction must be used instead. Most ARM instructions indicate the destination register on the right and the source register on the left. (STR is an exception.) So for moving data between immediate values and registers we would have the following:
+MOV指令可以把一个立即数或者寄存器值搬运到另一个寄存器中。ARM中，用`#`表示立即数，这些立即数必须小于等于16位。如果大于16位，就会使用LDR指令代替。大部分的ARM指令，目的寄存器在左，源寄存器在右。（STR是个例外）。具体格式如下：
 
 | 模式    | 示例       |
 | ------- | ---------- |
 | 立即数  | MOV r0, #3 |
 | 寄存器  | MOV r1, r0 |
 
-The mnemonic letter for each data type can be appended to the MOV instruction
-allowing us to be sure of which is being transferred and how that
-data is being transferred. If not, the assembler assumes an entire word.
+MOV指令后面添加标识数据类型的字母，确定传输的类型和如何传输数据。如果没有指定，汇编器假定为word。
 
-To move values in and out of memory, use the Load (LDR) and Store (STR) instructions, both of which indicate the source or destination register as the first argument, and the source or destination memory address as the second argument. In the simplest case, the address is given by a register and indicated in brackets:
+从内存中搬运数据使用LDR和STR指令，它们把源寄存器和目的寄存器作为第一个参数，要访问的内存地址作为第二个参数。简单情况下，使用寄存器给出地址并用中括号`[]`标记：
 
     LDR Rd, [Ra]
     STR Rs, [Ra]
 
-In this case, Rd denotes the destination register, Rs denotes the source register and Ra denotes the register containing the address. (Note that the memory address must be aligned to the data type: a byte can load a value from any address, a half-word from every even address, and so on.)
+`Rd`，表示目的寄存器；`Rs`，表示源寄存器；`Ra`，表示包含内存地址的寄存器。（必须要注意内存地址的类型，可以使用任何内存地址访问字节数据，使用偶数地址访问半字数据等。）
 
 ARM寻址模式
 
@@ -659,51 +630,38 @@ ARM寻址模式
 | 后索引-立即数           | LDR Rd, [Ra], #4    |
 | 后索引-寄存器           | LDR Rd, [Ra], Ro    |
 
-Both LDR and STR support a variety of addressing modes, shown in above table. First, LDR can be used to load a literal value (or label address) of a full 32-bits into a register. (See the next section for a full explanation of this.) Unlike X86, there is no single instruction that loads a value from a given memory address. To accomplish this, you must first load the address into a register, and then perform a register-indirect load:
+如上表所示，LDR和STR支持多种寻址模式。首先，LDR能够加载一个32位的文本值（或绝对地址）到寄存器。（完整的解释请参考下一段内容）。与X86不同，ARM没有可以从一个内存地址拷贝数据的单指令。为此，首先需要把地址加载到一个寄存器，然后执行一个寄存器间接寻址：
 
     LDR r1, =x
     LDR r2, [r1]
 
-A number of more complex addressing modes are available which facilitate the implementation of pointers, arrays, and structures in high level programs. Pre-indexing modes add a constant (or register) to a base register, and then load from the computed address:
+为了方便高级语言中的指针、数组、和结构体的实现，还有许多其它可用的寻址模式。比如，先索引模式可以添加一个常数（或寄存器）到基址寄存器，然后从计算出的地址加载数据：
 
-    LDR r1, [r2, #4] ;  # Load from address r2 + 4
-    LDR r1, [r2, r3] ;  # Load from address r2 + r3
+    LDR r1, [r2, #4] ;  # 载入地址 = r2 + 4
+    LDR r1, [r2, r3] ;  # 载入地址 = r2 + r3
 
-It is also possible to write-back to the base register by appending a bang (!) character. This indicates that the computed address should be saved in the base register after the address is loaded:
+有时候可能需要在把计算出的地址中的内容读取后，再把该地址写回到基址寄存器中，这可以通过在后面添加感叹号`!`实现。
 
-    LDR r1, [r2, #4]! ; # Load from r2 + 4 then r2 += 4
-    LDR r1, [r2, r3]! ; # Load from r2 + r3 then r2 += r3
+    LDR r1, [r2, #4]! ; # 载入地址 = r2 + 4 然后 r2 += 4
+    LDR r1, [r2, r3]! ; # 载入地址 = r2 + r3 然后 r2 += r3
 
-Post-indexing modes do the same thing, but in the reverse order. First, the load is performed from the base register, then the base register is incremented:
+后索引模式做相同的工作，但是顺序相反。首先根据基址地址执行加载，然后基址地址再加上后面的值：
 
-    LDR r1, [r2], #4 ;  # Load from r2 then r2 += 4
-    LDR r1, [r2], r3 ;  # Load from r2 then r2 += r3
+    LDR r1, [r2], #4 ;  # 载入地址 = r2 然后 r2 += 4
+    LDR r1, [r2], r3 ;  # 载入地址 = r2 然后 r2 += r3
 
-These complex pre-indexing and post-indexing modes make it possible to have single-instruction implementations of idiomatic C operations like `b = a++`. The corresponding modes are also available to the STR instruction.
+通过先索引和后索引模式，可以使用单指令实现像我们经常写的C语句`b = a++`。STR使用方法类似。
 
-Absolute addresses (and other large literals) are somewhat more complicated
-in ARM. Because every instruction must fit into a 32-bit word,
-it is not possible to fit a 32-bit address into an instruction, alongside the
-opcode. Instead, large literals must be stored in a literal pool, which is
-a small region of data inside the code section of the program. A literal
-can be loaded from a pool with a PC-relative load instruction, which can
-reference ±4096 bytes from the loading instruction. This results in several
-small literal pools being scattered throughout the program, so that each
-one is close to the load instruction that uses it.
+在ARM中，绝对地址以及其它长文本更为复杂些。因为每条指令都是32位的，因此不可能将32位的地址和操作码（opcode）一起添加到指令中。因此，长文本存储在一个文本池中，它是程序代码段中一小段数据区域。使用与PC寄存器相关的加载指令，比如LDR，加载文本类型数据，这样的文本池可以引用靠近load指令的±4096个字节数据。这导致有一些小的文本池散落在程序中，由靠近它们的指令使用。
 
-The ARM assembler generally hides this complexity from the user.
-When a label or large literal is prefixed with an equals sign, this indicates
-to the assembler that the marked value should be placed into a literal pool,
-and a corresponding PC-relative instruction emitted instead.
+ARM汇编器隐藏了这些复杂的细节。在绝对地址和长文本的前面加上等号`=`，就代表向汇编器表明，标记的值应该存储在一个文本池中，并使用与PC寄存器相关的指令代替。
 
-For example, the following instructions, which load the address of x
-into r1, then the value of x into r2:
+例如，下面的指令，把x的地址加载到r1中，然后取出x的值，存入r2寄存器中。
 
     LDR r1, =x
     LDR r2, [r1]
 
-Will be expanded into this load of the address of x from an adjacent
-literal pool, followed by loading the value of x:
+下面的代码展开后，将会从相邻的文本池中加载x的地址，然后加载x的值，存入r2寄存器中。也就是，下面的代码与上面的代码是一样的。
 
     LDR r1, .L1
     LDR r2, [r1]
@@ -714,7 +672,7 @@ literal pool, followed by loading the value of x:
 
 <h3 id="4.3">4.3 基本算术运算</h3>
 
-ARM provides three-address arithmetic instructions on registers. The ADD and SUB instructions specify the result register as the first argument, and compute on the second and third arguments. The third operand may be an 8-bit constant, or a register with an optional shift applied. The variants with carry-in enabled will add the C bit of the CPSR to the result. All four take an optional S suffix which will set the condition flags (including carry) on completion.
+ARM的`ADD`和`SUB`指令，使用3个地址作为参数。目的寄存器是第一个参数，第二、三个参数作为操作数。其中第三个参数可以是一个8位的常数，或者带有移位的寄存器。使能进位的加、减法指令，将CPSR寄存器的C标志位写入到结果中。这4条指令如果分别后缀S，代表在完成时是否设置条件标志（包括进位），这是可选的。
 
 | 指令     | 示例       |
 | -------- | ---------- |
@@ -723,7 +681,7 @@ ARM provides three-address arithmetic instructions on registers. The ADD and SUB
 | 减       | SUB Rd, Rm, Rn |
 | 带进位减 | SBC Rd, Rm, Rn |
 
-Multiplication works much the same way, except that multiplying two 32-bit numbers could result in a 64-bit value. The ordinary MUL discards the high bits of the results, while UMULL puts the 64-bit result in two 32-bit registers. The signed variant SMULL will sign extend the high register as needed.
+乘法指令的工作方式与加减指令类似，除了将2个32位的数字相乘能够产生一个64位的值之外。普通的MUL指令舍弃了结果的高位，而UMULL指令把结果分别保存在2个寄存器中。有符号的指令SMULL，在需要的时候会把符号位保存在高寄存器中。
 
 | 指令         | 示例       |
 | ------------ | ---------- |
@@ -731,9 +689,9 @@ Multiplication works much the same way, except that multiplying two 32-bit numbe
 | 无符号长整形 | UMULL RdHi, RdLo, Rm, Rn |
 | 有符号长整形 | SMULL RdHi, RdLo, Rm, Rn |
 
-There is no division instruction in ARM, because it cannot be carried out in a single pipelined cycle. Instead, when division is needed, it is accomplished by invoking an external function in a standard library. This is left as an exercise for the reader.
+ARM没有除法指令，因为它不能再单个流水线周期中执行。因此，需要除法的时候，调用外部标准库中的函数。
 
-The logical instructions are very similar in structure to the arithmetic instructions. We have the bitwise-and, bitwise-or, bitwise-exclusive-or and bitwise-bit-clear, which is the equivalent of a bitwise-and of the first value and the inverted second value. The move-not MVN instruction performs a bitwise-not while moving from one register to another.
+逻辑指令在结构上和算术指令非常相似，如下图所示。特殊的是MVN指令，执行按位取反然后将结果保存到目的寄存器。
 
 | 指令       | 示例       |
 | ---------- | ---------- |
@@ -743,39 +701,39 @@ The logical instructions are very similar in structure to the arithmetic instruc
 | 位置0      | BIC Rd, RM, Rn |
 | 取反并移动 | MVN Rd, Rn |
 
-<h3 id="4.4">4.4 比较和分支</h3>
+<h3 id="4.4">4.4 比较和跳转</h3>
 
-The CMP instruction compares two values and sets the N (negative) and Z (zero) flags in the CPSR, to be read by later instructions. In the case of comparing a register and an immediate value, the immediate must be the second operand:
+比较指令CMP比较2个值，将比较结果写入CPSR寄存器的N（负）和Z（零）标志位，供后面的指令读取使用。如果比较一个寄存器值和立即数，立即数必须作为第二个操作数：
 
     CMP Rd, Rn
     CMP Rd, #imm
 
-ARM分支指令
+另外，也可以在算术指令后面添加`S`标志，以相似的方式更新CPSR寄存器的相应标志位。比如，SUBS指令是两个数相减，保存结果，并更新CPSR。
+
+ARM跳转指令
 
 | 操作码 | 意义         | 操作码 | 意义       |
 | ------ | ------------ | ------ | ---------- |
-| B      | 无条件跳转   | BL     | 跳转并设置lr寄存器为下一条指令 |
-| BX     | 跳转并交换   | BLX    | ---------- |
-| BEQ    | 相等跳转     | BVS    | ---------- |
-| BNE    | 不等跳转     | BVC    | ---------- |
-| BGT    | 大于跳转     | BHI    | ---------- |
-| BGE    | 大于等于跳转 | BHS    | ---------- |
-| BLT    | 小于跳转     | BLO    | ---------- |
-| BLE    | 小于等于跳转 | BLS    | ---------- |
-| BMI    | 负值跳转     | BPL    | ---------- |
+| B      | 无条件跳转   | BL     | 设置lr寄存器为下一条指令的地址并跳转 |
+| BX     | 跳转并切换状态|BLX    | BL+BX指令的组合 |
+| BEQ    | 相等跳转     | BVS    | 溢出标志设置跳转 |
+| BNE    | 不等跳转     | BVC    | 溢出标志清除跳转 |
+| BGT    | 大于跳转     | BHI    | 无符号>跳转 |
+| BGE    | 大于等于跳转 | BHS    | 无符号>=跳转 |
+| BLT    | 小于跳转     | BLO    | 无符号<跳转 |
+| BLE    | 小于等于跳转 | BLS    | 无符号<=跳转 |
+| BMI    | 负值跳转     | BPL    | >= 0跳转 |
 
-In addition, an ”S” can be appended to the arithmetic instructions to update the CPSR in a similar way. For example, SUBS will subtract two values, store the result, and update the CPSR.
+各种跳转指令参考CPSR寄存器中之前的值，如果设置正确就跳到相应的地址（标签表示）执行。无条件跳转指令就是一个简单的`B`。
 
-A variety of branch instructions consult the previously-set values of the CPSR, and then jump to a given label, if the appropriate flags are set. An unconditional branch is specified with simply B.
-
-For example, to count from zero to five:
+比如，从0累加到5：
 
             MOV r0, #0
     loop:   ADD r0, r0, 1
             CMP r0, #5
             BLT loop
 
-And to conditionally assign a global variable y ten if x is greater than 0 and 20 if it is not
+再比如，如果x大于0，则给y赋值为:10；否则，赋值为20：
 
             LDR r0, =x
             LDR r0, [r0]
@@ -790,24 +748,17 @@ And to conditionally assign a global variable y ten if x is greater than 0 and 2
             LDR r1, =y
             STR r0, [r1]
 
-The branch-and-link (BL) instruction, is used to implement function calls. BL sets the link register to be the address of the next instruction, and then jumps to the given label. The link register is then used as the return address at the conclusion of the function. The BX instruction branches to the address given in a register, and is most frequently used to return from a function call by branching to the link register. BLX performs a branch-and-link to the address given by a register, and can be used to invoke function pointers, virtual methods, or any other indirect jump.
+BL指令用来实现函数调用。BL指令设置lr寄存器为下一条指令的地址，然后跳转到给定的标签（比如绝对地址）处执行，并将lr寄存器的值作为函数结束时的返回地址。BX指令跳转到寄存器中给定的地址处，最常用于通过跳转到lr寄存器而从函数调用中返回。
 
-A special feature of the ARM instruction set is conditional execution.
-A 4-bit field in each instruction word indicates one of 16 possible conditions
-that must hold, otherwise the instruction is ignored. The various
-types of conditional branch shown above are simply a plain branch (B) instruction
-with the various conditions applied. The same two letter suffixes
-can be applied to almost any instruction.
+BLX指令执行的动作跟BL指令一样，只是操作对象换成了寄存器中给定的地址值，常用于调用函数指针，虚函数或其它间接跳转的场合。
 
-For example, suppose we have the following code fragment, which
-increments either a or b, depending on which one is smaller:
+ARM指令集的一个重要特性就是条件执行。每条指令中有4位表示16中可能的条件，如果条件不满足，指令被忽略。上面各种类型的跳转指令只是在最单纯的B指令上应用了各种条件而已。这些条件几乎可以应用到任何指令。
+
+例如，假设下面的代码片段，哪个值小就会自加1：
 
     if(a<b) { a++; } else { b++; }
 
-Instead of implementing this as control flow using branches and labels,
-we can simply make each of the two additions conditional upon a previous
-comparison. Whichever condition holds true will be executed, and the
-other skipped. Assuming that a and b are held in r0 and r1 respectively:
+代替使用跳转指令和标签实现这个条件语句，我们可以前面的比较结果对每个加法指令设置条件。无论那个条件满足都被执行，而另一个被忽略。如下面所示（假设a和b分别存储在寄存器r0和r1中）：
 
     CMP r0, r1
     ADDLT r0, r0, #1
@@ -815,91 +766,50 @@ other skipped. Assuming that a and b are held in r0 and r1 respectively:
 
 <h3 id="4.5">4.5 栈</h3>
 
-The stack is an auxiliary data structure used primarily to record the function
-call history of the program along with local variables that do not fit
-in registers. By convention, the stack grows downward from high values to
-low values. The sp register is known as the stack pointer and keeps track
-of the bottom-most item on the stack.
+栈是一种辅助数据结构，主要用来存储函数调用历史以及局部变量。按照约定，栈的增长方向是从髙地址到地地址。`sp`寄存器保存栈指针，用来追踪栈顶内容。
 
-To push the `r0` register onto the stack, we must subtract the size of the
-register from `sp`, and then store `r0` into the location pointed to by `sp`:
+为了把寄存器r0压入栈中，首先，`sp`减去寄存器的大小，然后把`r0`存入`sp`指定的位置：
 
     SUB sp, sp, #4
     STR r0, [sp]
 
-Alternatively, this can be done with a single instruction making use of
-pre-indexing and writeback:
+或者，可以使用一条单指令完成这个操作，如下所示：
 
     STR r0, [sp, #-4]!
 
+这儿，使用了先索引并`write-back`的寻址方式。也就是说，`sp`先减4，然后把`r0`的内容存入`sp-4`指向的地址处，然后再把`sp-4`写入到`sp`中。
+
 ARM调用习惯总结
 
-1. The first four arguments are placed in registers r0, r1, r2 and r3.
-2. Additional arguments are pushed on the stack in reverse order.
-3. The caller must save r0-r3 and r12, if needed.
-4. the caller must always save r14, the link register.
-5. The callee must save r4-r11, if needed.
-6. The result is placed in r0.
+1. 前4个参数存储在r0、r1、r2 和r3中；
+2. 其余的参数按照相反的顺序存入栈中；
+3. 如果需要，调用者必须保存r0-r3和r12；
+4. 调用者必须始终保存r14，即链接寄存器；
+5. 如果需要，被调用者必须保存r4-r11；
+6. 结果存到r0寄存器中。
 
-The PUSH pseudo-instruction accomplishes the same thing, but can
-also move any number of registers (encoded as a bitmask) to the stack.
-Curly braces are used to indicate the list of registers to push:
+PUSH伪指令可以压栈的动作，还可以把任意数量的寄存器压入栈中。使用花括号`{}`列出要压栈的寄存器列表：
 
     PUSH {r0,r1,r2}
 
-Popping a value off the stack involves the opposite:
+出栈的动作正好与压栈的动作相反：
 
     LDR r0, [sp]
     ADD sp, sp, #4
 
-Once again this can be done with a single instruction:
+使用后索引模式
 
     LDR r0, [sp], #4
 
-And, to pop a set of registers all at once:
+使用`POP`指令弹出一组寄存器：
 
     POP {r0,r1,r2}
 
-Unlike X86, any data items ranging from a byte to a double-word can
-be pushed on to the stack, as long as data alignment is respected.
+与X86不同的是，任何数据项(从字节到双word)都可以压入栈，只要遵守数据对齐即可。
 
 <h3 id="4.6">4.6 函数调用</h3>
 
-ARM uses a register calling convention described by the ARM-Thumb
-Procedure Call Standard (ATPCS) [4], which is summarized in Figure 10.9.
-
-To call a function, place the desired arguments in the registers r0-r3,
-save the (current) value of the link register, and then use the BL instruction
-to jump to the function. Upon return, restore the previous value of the link
-register, and examine the result in register r0.
-
-For example, the following C function:
-
-
-    int x=0;
-    int y=10;
-    int main() {
-        x = printf("value: %d\n",y);
-    }
-
-Would become the following in ARM:
-
-    .data
-        x: .word 0
-        y: .word 10
-        S0: .ascii "value: %d\012\000"
-    .text
-        main:
-            LDR r0, =S0         @ Load address of S0
-            LDR r1, =y          @ Load address of y
-            LDR r1, [r1]        @ Load value of y
-            PUSH {ip,lr}        @ Save registers
-            BL printf           @ Call printf
-            POP {ip,lr}         @ Restore registers
-            LDR r1, =x          @ Load address of x
-            STR r0, [r1]        @ Store return value in x
-    .end
-
+《[The ARM-Thumb Procedure Call Standard](http://infocenter.arm.com/help/topic/com.arm.doc.espc0002/ATPCS.pdf.)》描述了ARM的寄存器调用约定，其摘要如下：
 
 > ARM寄存器分配：
 
@@ -918,34 +828,55 @@ Would become the following in ARM:
 | r14  | 链接寄存器 | CALLER saves |
 | r15  | 程序计数器 | 保存在r14    |
 
+为了调用一个函数，把参数存入r0-r3寄存器中，保存lr寄存器中的当前值，然后使用`BL`指令跳转到指定的函数。返回时，恢复lr寄存器的先前值，并检查r0寄存器中的结果。
+
+比如，下面的C语言代码段：
+
+    int x=0;
+    int y=10;
+    int main() {
+        x = printf("value: %d\n",y);
+    }
+
+其编译后的ARM汇编格式为:
+
+    .data
+        x: .word 0
+        y: .word 10
+        S0: .ascii "value: %d\012\000"
+    .text
+        main:
+            LDR r0, =S0         @ 载入S0的地址
+            LDR r1, =y          @ 载入y的地址
+            LDR r1, [r1]        @ 载入y的值
+            PUSH {ip,lr}        @ 保存ip和lr寄存器的值
+            BL printf           @ 调用printf函数
+            POP {ip,lr}         @ 恢复寄存器的值
+            LDR r1, =x          @ 载入x的地址
+            STR r0, [r1]        @ 把返回的结果存入x中
+    .end
+
 <h3 id="4.7">4.7 定义叶子函数</h3>
 
-Because function arguments are passed in registers, it is easy to write a
-leaf function that computes a value without calling any other functions.
-For example, code for the following function:
+因为使用寄存器传递函数参数，所以编写一个不调用其它函数的叶子函数非常简单。比如下面的代码：
 
     square: function integer ( x: integer ) =
     {
         return x*x;
     }
 
-Could be as simple as this:
+它的汇编代码可以非常简单：
 
     .global square
     square:
-            MUL r0, r0, r0  @ multiply argument by itself
-            BX lr           @ return to caller
+            MUL r0, r0, r0  @ 参数本身相乘
+            BX lr           @ 返回调用者
 
-Unfortunately, this won’t work for a function that wants to invoke
-other functions, because we haven’t set up the stack properly. A more
-complex approach is needed for the general case.
+但是，很不幸，对于想要调用其他函数的函数，这样的实现就无法工作，因为我们没有正确建立函数使用的栈。所以，需要一种更为复杂的方法。
 
 <h3 id="4.8">4.8 定义复杂函数</h3>
 
-A complex function must be able to invoke other functions and compute
-expressions of arbitrary complexity, and then return to the caller with the
-original state intact. Consider the following recipe for a function that accepts
-three arguments and uses two local variables:
+A complex function must be able to invoke other functions and compute expressions of arbitrary complexity, and then return to the caller with the original state intact. Consider the following recipe for a function that accepts three arguments and uses two local variables:
 
     func:
             PUSH {fp}           @ save the frame pointer
