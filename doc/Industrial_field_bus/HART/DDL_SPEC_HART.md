@@ -578,17 +578,136 @@ DDL支持整数和浮点数常量以及字符串。
 
 <h1 id="9">9 COMMAND</h1>
 
+语法如下：
+    
+    COMMAND name {
+        NUMBER unsigned-integer;
+        OPERATION operation-type;
+        TRANSACTION integer {
+            REQUEST {
+                data-item, data-item, ...
+            }
+            REPLY {
+                data-item, data-item, ...
+            }
+        }
+        RESPONSE_CODES {
+            value, type, description, help_opt;
+        }
+    }
+
+每个命令必须有一个name，共有4个属性：number， transaction，operation 和 response codes，这4个属性都是必须的。一个COMMAND可以有多个 transaction。
+
+1. NUMBER
+
+    指定HART命令；
+
+2. OPERATION
+
+    指定基于收到的命令，现场设备应该做怎样的操作；
+
+    1. 收到read命令，现场设备返回变量的当前值。
+    2. 收到write命令，现场设备将主机应用程序发送过来的数值设到对应的变量上。
+    3. 收到command命令，现场设备执行特定于设备的动作。
+
 <h2 id="9.1">9.1 事务</h2>
+
+事务指定了命令请求和回复消息的数据域。一个命令可以有多个事务。HART通用命令（修订版4）中的命令4和5，就是多个事务命令的例子。如果命令具有多个事务，每个事务都可以包含一组响应码；还应该在TRANSACTION关键字的后面添加一个事务所占的字节数，方便区分，如果没有指定大小，默认为0.
+
+语法如下：
+
+        TRANSACTION integer_opt {
+            REQUEST {
+                data-item, data-item, ...
+            }
+            REPLY {
+                data-item, data-item, ...
+            }
+            RESPONSE_CODES {
+                response-code, response-code ...
+            }
+        }
+
+一个data-item可以是整数常量或者数据项引用。如果是整数常量，则其值出现在数据域的位置，因为只有1个字节，所以范围为0~255。如果数据项是一个变量，则变量的值出现在数据域。
+
+如果REQUEST的消息为空，可以省略不写，或 `REQUEST {}`。
+
+REPLY不能省略，因为所有reply的消息的数据域必须包含至少一个response code（第一个状态字节）和设备状态（第二个状态字节）。
 
 <h3 id="9.1.1">9.1.1 数据项掩码</h3>
 
+多个变量打包成一个字节的时候，就需要掩码去组装。
+
+数据项掩码的指定方法为：
+
+    data-item < integer >
+
+关于reply和request包中如何移位并打包的规则，可以参考英文文档。
+
+举例：
+
+    REQUEST {
+        x <0xF8>, y <0x07>
+    }
+
+REQUEST的数据有2个变量，需要打包成一个。变量x保留高5位，且y保留低3位。如果x=155和y=5，则传送的字节就是0xDD
+
+掩码必须指定最高位到最低位的所有位，不能有空隙。下面就是一个不正确的例子：
+
+    REQUEST {
+        x <0xF0>, y <0x01>
+    }
+
 <h3 id="9.1.2">9.1.2 数据项限定符</h3>
+
+出现在request和reply中的变量可以使用INDEX和INFO进行限定。使用INDEX指定使用的变量是一个数组中的某一项。使用INFO，表明变量并没有存储在设备中，仅仅是为了通信而使用的信息而已。
+
+下面的代码片段是INFO限定的使用：
+
+    TRANSACTION {
+        REQUEST {
+            units (INFO), x, y
+        }
+        REPLY {
+            units, x, y
+        }
+    }
+
+x,y的值被写入设备，单位是units中指定的单位。该单位可以与设备中或当前显示的单位不一样。也就说，这个单位只是在传输的时候用。常用命令35-写主要的变量范围值就是这种行为。
+
+下面的代码片段是INDEX限定的使用：
+
+    TRANSACTION {
+        REQUEST {
+            code (INDEX), table [code]
+        }
+        REPLY {
+            code, table [code]
+        }
+    }
+
+下面的代码片段是本地index变量的使用：
+
+    TRANSACTION {
+        REQUEST {
+            code (INFO, INDEX), table [code]
+        }
+        REPLY {
+            code, table [code]
+        }
+    }
+
 
 <h2 id="9.2">9.2 响应码</h2>
 
 <h3 id="9.2.1">9.2.1 响应码类型</h3>
 
 <h1 id="10">10 用户接口</h1>
+
+图表是组织和呈现设备数据的有效手段。图和表在数据收集的方法上不同。
+
+
+
 <h1 id="11">11 METHOD</h1>
 <h1 id="12">12 模板</h1>
 <h1 id="13">13 环境</h1>
