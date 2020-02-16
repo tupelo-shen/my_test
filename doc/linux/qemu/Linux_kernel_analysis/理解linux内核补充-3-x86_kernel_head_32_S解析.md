@@ -60,7 +60,8 @@
      * 
      * <理解Linux内核>一书中，指出x86_32：PTRS_PER_PTE=1024,PTRS_PER_PMD=1,PTRS_PER_PUD=1,
      * PTRS_PER_PGD=1024,if语句执行的是PAE功能使能的时候
-     * else语句执行的PAE功能禁止的时候，它们都是计算pages个页需要多少页目录项
+     * else语句执行的PAE功能禁止的时候，
+     * 它们都是计算pages个页需要多少页目录项
      */
 
     #if PTRS_PER_PMD > 1
@@ -79,13 +80,12 @@
      */
     LOWMEM_PAGES = (((2<<31) - __PAGE_OFFSET) >> PAGE_SHIFT)
 
-    /* Enough space to fit pagetables for the low memory linear map */
+    /* 分配足够的空间以存储低地址线性映射的页表 */
     MAPPING_BEYOND_END = PAGE_TABLE_SIZE(LOWMEM_PAGES) << PAGE_SHIFT
 
     /*
-     * Worst-case size of the kernel mapping we need to make:
-     * a relocatable kernel can live anywhere in lowmem, so we need to be able
-     * to map all of lowmem.
+     * 我们需要考虑内核映射最坏情况的大小：
+     * 为了可以在低内存地址任意地方重新加载内核，我们需要映射所有的低地址空间
      */
     KERNEL_PAGES = LOWMEM_PAGES
 
@@ -94,6 +94,14 @@
 
     /*
      * 32-bit kernel entrypoint; only used by the boot CPU.  On entry,
+     * %esi points to the real-mode code as a 32-bit pointer.
+     * CS and DS must be 4 GB flat segments, but we don't depend on
+     * any particular GDT layout, because we load our own as soon as we
+     * can.
+     */
+    /*
+     * 32位内核的入口点；仅由引导CPU使用。在入口点，源索引寄存器%esi
+     * 指向实模式代码。
      * %esi points to the real-mode code as a 32-bit pointer.
      * CS and DS must be 4 GB flat segments, but we don't depend on
      * any particular GDT layout, because we load our own as soon as we

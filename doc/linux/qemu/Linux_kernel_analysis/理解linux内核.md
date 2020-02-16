@@ -783,7 +783,7 @@ There are several types of segments, and thus several types of Segment Descripto
 
 We recall that logical addresses consist of a 16-bit Segment Selector and a 32-bit Offset, and that segmentation registers store only the Segment Selector.
 
-To speed up the translation of logical addresses into linear addresses, the 80 × 86 processor
+To speed up the translation of logical addresses into linear addresses, the 80×86 processor
 provides an additional nonprogrammable register—that is, a register that cannot
 be set by a programmer—for each of the six programmable segmentation
 registers. Each nonprogrammable register contains the 8-byte Segment Descriptor
@@ -1189,7 +1189,7 @@ the write-back strategy is always adopted for writing.
 
 <h3 id="2.4.8">2.4.8 转换后备缓存-TLB</h3>
 
-Besides general-purpose hardware caches, 80 × 86 processors include another cache
+Besides general-purpose hardware caches, 80×86 processors include another cache
 called Translation Lookaside Buffers (TLB) to speed up linear address translation.
 When a linear address is used for the first time, the corresponding physical address is
 computed through slow accesses to the Page Tables in RAM. The physical address is
@@ -1327,7 +1327,7 @@ only on Page Table entries for which pte_present returns 1.
 | 函数名称      | 描述        |
 | ------------- | ----------- |
 | pte_user()    | Reads the User/Supervisor flag |
-| pte_read()    | Reads the User/Supervisor flag (pages on the 80 × 86 processor cannot be protected against reading) |
+| pte_read()    | Reads the User/Supervisor flag (pages on the 80×86 processor cannot be protected against reading) |
 | pte_write()   | Reads the Read/Write flag |
 | pte_exec()    | Reads the User/Supervisor flag (pages on the 80x86 processor cannot be protected against code execution) |
 | pte_dirty()   | Reads the Dirty flag |
@@ -1401,7 +1401,7 @@ these are freed only when the parent Page Global Directory is released.
 When two or three-level paging is used, the Page Upper Directory entry is always
 mapped as a single entry within the Page Global Directory.
 
-As usual, the description of the functions listed in Table 2-8 refers to the 80 × 86
+As usual, the description of the functions listed in Table 2-8 refers to the 80×86
 architecture.
 
 Table 2-8. Page allocation functions
@@ -1560,7 +1560,7 @@ swapper_pg_dir页全局目录重新初始化，代码片段如下：
         ++pgd;
     }
 
-We assume that the CPU is a recent 80 × 86 microprocessor supporting 4 MB pages and “global” TLB entries. Notice that the User/Supervisor flags in all Page Global Directory entries referencing linear addresses above 0xc0000000 are cleared, thus denying processes in User Mode access to the kernel address space. Notice also that the Page Size flag is set so that the kernel can address the RAM by making use of large pages (see the section “Extended Paging” earlier in this chapter).
+We assume that the CPU is a recent 80×86 microprocessor supporting 4 MB pages and “global” TLB entries. Notice that the User/Supervisor flags in all Page Global Directory entries referencing linear addresses above 0xc0000000 are cleared, thus denying processes in User Mode access to the kernel address space. Notice also that the Page Size flag is set so that the kernel can address the RAM by making use of large pages (see the section “Extended Paging” earlier in this chapter).
 
 The identity mapping of the first megabytes of physical memory (8 MB in our example) built by the startup_32() function is required to complete the initialization phase of the kernel. When this mapping is no longer necessary, the kernel clears the corresponding page table entries by invoking the zap_low_mappings() function.
 
@@ -1731,7 +1731,7 @@ following decisions.
 
 * When allocating a large set of data structures, the kernel tries to store each of them in memory in such a way that all cache lines are used uniformly.
 
-Cache synchronization is performed automatically by the 80 × 86 microprocessors, thus the Linux kernel for this kind of processor does not perform any hardware cache flushing. The kernel does provide, however, cache flushing interfaces for processors that do not synchronize caches.
+Cache synchronization is performed automatically by the 80×86 microprocessors, thus the Linux kernel for this kind of processor does not perform any hardware cache flushing. The kernel does provide, however, cache flushing interfaces for processors that do not synchronize caches.
 
 <h4 id="2.5.7.2">2.5.7.2 处理TLB</h4>
 
@@ -1776,7 +1776,7 @@ Table 2-12. TLB-invalidating macros for the Intel Pentium Pro and later processo
 | __flush_tlb_global() | Disables global pages by clearing the PGE flag of cr4, rewrites cr3 register back into itself, and sets again the PGE flag | flush_tlb_all, flush_tlb_kernel_range |
 | __flush_tlb_single(addr) | Executes invlpg assembly language instruction with parameter addr | flush_tlb_page |
 
-Notice that the flush_tlb_pgtables method is missing from Table 2-12: in the 80 × 86
+Notice that the flush_tlb_pgtables method is missing from Table 2-12: in the 80×86
 architecture nothing has to be done when a page table is unlinked from its parent
 table, thus the function implementing this method is empty.
 
@@ -2036,7 +2036,7 @@ Each error code is defined as a macro constant, which yields a corresponding pos
 
 When a User Mode process invokes a system call, the CPU switches to Kernel Mode
 and starts the execution of a kernel function. As we will see in the next section, in the
-80 × 86 architecture a Linux system call can be invoked in two different ways. The net
+80×86 architecture a Linux system call can be invoked in two different ways. The net
 result of both methods, however, is a jump to an assembly language function called
 the *system call handler*.
 
@@ -2144,7 +2144,9 @@ and es:
 <h2 id="1">11.2 创建信号量</h2>
 <h2 id="1">11.3 传递信号量</h2>
 <h2 id="1">11.4 与信号处理相关的系统调用</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="2">12 虚拟文件系统</h1>
 <h2 id="1">12.1 虚拟文件系统的角色</h2>
 <h2 id="1">12.2 VFS中的数据结构</h2>
@@ -2153,39 +2155,51 @@ and es:
 <h2 id="1">12.5 遍历路径</h2>
 <h2 id="1">12.6 VFS系统调用的实现</h2>
 <h2 id="1">12.7 文件加锁</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="2">13 I/O架构和设备驱动</h1>
 <h2 id="1">13.1 I/O架构</h2>
 <h2 id="1">13.2 设备驱动模型</h2>
 <h2 id="1">13.3 设备文件</h2>
 <h2 id="1">13.4 设备驱动</h2>
 <h2 id="1">13.5 字符设备驱动</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="14">14 块设备驱动</h1>
 <h2 id="14.1">14.1 块设备处理</h2>
 <h2 id="14.2">14.2 通用块设备层</h2>
 <h2 id="14.3">14.3 I/O调度器</h2>
 <h2 id="14.4">14.4 块设备驱动</h2>
 <h2 id="14.5">14.5 打开块设备文件</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="15">15 页缓存</h1>
 <h2 id="15.1">15.1 页缓存</h2>
 <h2 id="15.2">15.2 页缓存中存储block块</h2>
 <h2 id="15.3">15.3 更新页到硬盘</h2>
 <h2 id="15.4">15.4 sync()、fsync()、和fdatasync()系统调用</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="16">16 访问文件</h1> 
 <h2 id="16.1">16.1 读写文件</h2> 
 <h2 id="16.2">16.2 内存映射</h2> 
 <h2 id="16.3">16.3 直接I/O传送</h2> 
 <h2 id="16.4">16.4 异步I/O</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="17">17 页帧回收</h1> 
 <h2 id="17.1">17.1 页帧回收算法</h2> 
 <h2 id="17.2">17.2 反向映射</h2> 
 <h2 id="17.3">17.3 实现PFRA</h2> 
 <h2 id="17.4">17.4 交换</h2> 
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="18">18 Ext2和Ext3文件系统</h1> 
 <h2 id="18.1">18.1 Ext2的一般特性</h2> 
 <h2 id="18.2">18.2 Ext2硬盘数据结构</h2> 
@@ -2194,23 +2208,117 @@ and es:
 <h2 id="18.5">18.5 Ext2方法</h2>
 <h2 id="18.6">18.6 管理Ext2硬盘空间</h2> 
 <h2 id="18.7">18.7 Ext3文件系统</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="19">19 进程通信</h1> 
 <h2 id="19.1">19.1 管道</h2> 
 <h2 id="19.2">19.2 FIFO</h2> 
 <h2 id="19.3">19.3 System V IPC</h2> 
-<h2 id="19.4">19.4 POSIX消息队列</h2> 
+<h2 id="19.4">19.4 POSIX消息队列</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="20">20 程序执行</h1> 
 <h2 id="20.1">20.1 可执行文件</h2> 
 <h2 id="20.2">20.2 可执行文件格式</h2> 
 <h2 id="20.3">20.3 执行域</h2> 
 <h2 id="20.4">20.4 exec函数</h2> 
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="21">21 系统启动</h1> 
-<h2 id="21.1">21.1 BIOS</h2> 
+
+This appendix explains what happens right after users switch on their computers—that is, how a Linux kernel image is copied into memory and executed. In short, we discuss how the kernel, and thus the whole system, is “bootstrapped.”
+
+本章主要讲解计算机打开后到底会发生什么-也就是说，内核镜像如何被拷贝到内存上并执行的。
+
+Traditionally, the term bootstrap refers to a person who tries to stand up by pulling his own boots. In operating systems, the term denotes bringing at least a portion of the operating system into main memory and having the processor execute it. It also denotes the initialization of kernel data structures, the creation of some user processes, and the transfer of control to one of them.
+
+所谓`引导`，就是如何把操作系统加载到主内存并让处理器执行它。还要完成内核数据结构的初始化，创建一些进程并将控制权交给其中一个进程。
+
+Computer bootstrapping is a tedious, long task, because initially, nearly every hardware device, including the RAM, is in a random, unpredictable state. Moreover, the bootstrap process is highly dependent on the computer architecture; as usual in this book, we refer to the 80×86 architecture.
+
+计算机引导是一个冗长、复杂的任务，因为几乎所有的硬件，包括RAM，处于一个混乱无序的状态。更重要的是，引导过程严重依赖计算机硬件架构。本书专注于x86架构。
+
+<h2 id="21.1">21.1 BIOS</h2>
+
+The moment after a computer is powered on, it is practically useless because the RAM chips contain random data and no operating system is running. To begin the boot, a special hardware circuit raises the logical value of the RESET pin of the CPU. After RESET is asserted, some registers of the processor (including cs and eip) are set to fixed values, and the code found at physical address `0xfffffff0` is executed. This address is mapped by the hardware to a certain read-only, persistent memory chip that is often called Read-Only Memory (ROM). The set of programs stored in ROM is traditionally called the Basic Input/Output System (BIOS) in the 80×86 architecture, because it includes several interrupt-driven low-level procedures used by all operating systems in the booting phase to handle the hardware devices that make up the computer. Some operating systems, such as Microsoft’s MS-DOS, rely on BIOS to implement most system calls.
+
+Once in protected mode (see the section [“Segmentation in Hardware” in Chapter 2](#2.2)), Linux does not use BIOS any longer, but it provides its own device driver for every hardware device on the computer. In fact, the BIOS procedures must be executed in real mode, so they cannot share functions even if that would be beneficial.
+
+The BIOS uses Real Mode addresses because they are the only ones available when the computer is turned on. A Real Mode address is composed of a *seg* segment and an *off* offset; the corresponding physical address is given by *seg*\*16+*off*. As a result, no Global Descriptor Table, Local Descriptor Table, or paging table is needed by the CPU addressing circuit to translate a logical address into a physical one. Clearly, the code that initializes the GDT, LDT, and paging tables must run in Real Mode.
+
+BIOS使用实模式地址。实模式地址由 *seg*的段地址和 *off*的偏移量组成，所以实际的物理地址就是 *seg*\*16+*off*。没有GDT（全局描述符表）、LDT（局部描述符表）或页表。很明显，运行在实模式的代码需要初始化GDT、LDT和页表。
+
+Linux is forced to use BIOS in the bootstrapping phase, when it must retrieve the kernel image from disk or from some other external device. The BIOS bootstrap procedure essentially performs the following four operations:
+
+如果Linux内核镜像存储在硬盘或者其它外部设备，则必须在引导阶段使用BIOS检索内核。BIOS引导程序主要执行下面4步：
+
+1. Executes a series of tests on the computer hardware to establish which devices are present and whether they are working properly. This phase is often called <font color="blue">Power-On Self-Test (POST)</font>. During this phase, several messages, such as the BIOS version banner, are displayed.
+
+    Recent 80×86, AMD64, and Itanium computers make use of the *Advanced Configuration and Power Interface (ACPI)* standard. The bootstrap code in an ACPI-compliant BIOS builds several tables that describe the hardware devices present in the system. These tables have a vendor-independent format and can be read by the operating system kernel to learn how to handle the devices.
+
+    第一步，完成硬件上电自检测，专业术语称为 *Advanced Configuration and Power Interface (ACPI)*。
+
+2. <font color="blue">Initializes the hardware devices</font>. This phase is crucial in modern PCI-based architectures, because it guarantees that all hardware devices operate without conflicts on the IRQ lines and I/O ports. At the end of this phase, a table of installed PCI devices is displayed.
+    
+    第二步，初始化硬件。这一步对于现代基于PCI的硬件架构非常重要，可以检查IRQ中断线和I/O端口是否有冲突。完成这一步，会建立一个已安装的PCI设备的表。
+
+3. Searches for an operating system to boot. Actually, depending on the BIOS setting, the procedure may try to access (in a predefined, customizable order) the first sector (boot sector) of every floppy disk, hard disk, and CD-ROM in the system.
+    
+    搜索需要引导的操作系统。检索的对象依赖于BIOS的设置，比如软盘、硬盘和CD-ROM中的第一个扇区，也称为引导扇区。
+
+4. As soon as a valid device is found, it copies the contents of its first sector into RAM, starting from physical address 0x00007c00, and then jumps into that address and executes the code just loaded.
+    
+    只要找到合法的设备，就会把第一个扇区的内容拷贝到RAM，从物理地址0x00007c00开始，然后跳转到此地址并开始执行刚刚加载的代码。
+
+The rest of this appendix takes you from the most primitive starting state to the full glory of a running Linux system.
+
+本章余下的部分，将会从最原始的启动阶段到Linux系统运行起来，进行一一阐述。
+
 <h2 id="21.2">21.2 Bootloader</h2> 
+
+The boot loader is the program invoked by the BIOS to load the image of an operating system kernel into RAM. Let’s briefly sketch how boot loaders work in IBM’s PC architecture.
+
+`boot loader`是BIOS为了加载操作系统内核到RAM而调用的程序。让我们简要概括一下在IBM的PC里boot loader是如何工作的。
+
+To boot from a floppy disk, the instructions stored in its first sector are loaded in RAM and executed; these instructions copy all the remaining sectors containing the kernel image into RAM.
+
+为了从软盘引导，存储在它的第一个扇区的代码被加载到RAM并执行；这些代码会被内核镜像加载到RAM中。
+
+Booting from a hard disk is done differently. The first sector of the hard disk, named the Master Boot Record (MBR), includes the partition table* and a small program, which loads the first sector of the partition containing the operating system to be started. Some operating systems, such as Microsoft Windows 98, identify this partition by means of an active flag included in the partition table;† following this approach, only the operating system whose kernel image is stored in the active partition can be booted. As we will see later, Linux is more flexible because it replaces the rudimentary<font color="blue">基本的，初级的</font> program included in the MBR with a  sophisticated program—the “boot loader”—that allows users to select the operating system to be booted.
+
+硬盘引导与软盘引导不太一样。硬盘的第一个扇区，称为`MBR`，包含分区表和一小段程序，它会加载分区中的第一个扇区里的操作系统。一些操作系统，比如Windows 98，会通过分区表中一个激活标志位判断该分区是哪个。使用这种方法，这有把操作系统的内核存储到该激活分区中才能被引导。后面我们还会介绍，Linux实际更为灵活，因为它替换了MBR中的这个简单程序，而使用一个更为复杂的程序，称为`boot loader`，允许用户可以选择将要引导的操作系统。
+
+Kernel images of earlier Linux versions—up to the 2.4 series—included a minimal “boot loader” program in the first 512 bytes; thus, copying a kernel image starting from the first sector made the floppy bootable. On the other hand, kernel images of Linux 2.6 no longer include such boot loader; thus, in order to boot from floppy disk, a suitable boot loader has to be stored in the first disk sector. Nowadays, booting from a floppy is very similar to booting from a hard disk or from a CD-ROM.
+
+早期Linux版本（直到2.4系列）的内核镜像在开始的512字节，包含一个最小的`boot loader`程序；因而，从第一个扇区开始复制内核镜像是可以从软盘启动的。但是，从Linux2.6版本开始，不再包含这样的引导程序；因而为了从软盘引导，必须选择一个合适的引导程序存储在软盘的第一个扇区。如今，从软盘引导和从硬盘或CD-ROM引导非常类似了。
+
+<h2 id="21.2.1">21.2.1 从硬盘引导Linux</h2>
+
+A two-stage boot loader is required to boot a Linux kernel from disk. A well-known Linux boot loader on 80×86 systems is named LInux LOader (LILO). Other boot loaders for 80×86 systems do exist; for instance, the GRand Unified Bootloader (GRUB) is also widely used. GRUB is more advanced than LILO, because it recognizes several disk-based filesystems and is thus capable of reading portions of the boot program from files. Of course, specific boot loader programs exist for all architectures supported by Linux.
+
+从硬盘引导Linux内核，引导程序需要完成两个阶段的工作。x86系统上，一个著名的Linux引导程序叫做
+
+LILO may be installed either on the MBR (replacing the small program that loads the boot sector of the active partition) or in the boot sector of every disk partition. In both cases, the final result is the same: when the loader is executed at boot time, the user may choose which operating system to load.
+
+Actually, the LILO boot loader is too large to fit into a single sector, thus it is broken into two parts. The MBR or the partition boot sector includes a small boot loader, which is loaded into RAM starting from address 0x00007c00 by the BIOS. This small program moves itself to the address 0x00096a00, sets up the Real Mode stack (ranging from 0x00098000 to 0x000969ff), loads the second part of the LILO boot loader into RAM starting from address 0x00096c00, and jumps into it.
+
+In turn, this latter program reads a map of bootable operating systems from disk and offers the user a prompt so she can choose one of them. Finally, after the user has chosen the kernel to be loaded (or let a time-out elapse so that LILO chooses a default), the boot loader may either copy the boot sector of the corresponding partition into RAM and execute it or directly copy the kernel image into RAM.
+
+Assuming that a Linux kernel image must be booted, the LILO boot loader, which relies on BIOS routines, performs essentially the following operations:
+
+1. Invokes a BIOS procedure to display a “Loading” message.
+
+2. Invokes a BIOS procedure to load an initial portion of the kernel image from disk: the first 512 bytes of the kernel image are put in RAM at address 0x00090000, while the code of the setup() function (see below) is put in RAM starting from address 0x00090200.
+
+3. Invokes a BIOS procedure to load the rest of the kernel image from disk and puts the image in RAM starting from either low address 0x00010000 (for small kernel images compiled with `make zImage`) or high address 0x00100000 (for big kernel images compiled with make bzImage). In the following discussion, we say that the kernel image is “loaded low” or “loaded high” in RAM, respectively. Support for big kernel images uses essentially the same booting scheme as the other one, but it places data in different physical memory addresses to avoid problems with the ISA hole mentioned in the section “Physical Memory Layout” in Chapter 2.
+
+4. Jumps to the setup() code.
+    
+    跳转到`setup()`函数。
+
 <h2 id="21.3">21.3 setup()函数</h2> 
 <h2 id="21.4">21.4 setup_32()函数</h2> 
 <h2 id="21.5">21.5 start_kernel()</h2> 
