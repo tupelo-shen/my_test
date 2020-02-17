@@ -126,6 +126,7 @@
 * [21 系统启动](#21)
     - [21.1 BIOS](#21.1)
     - [21.2 Bootloader](#21.2)
+        + [21.2.1 从硬盘引导Linux](#21.2.1)
     - [21.3 setup()函数](#21.3)
     - [21.4 setup_32()函数](#21.4)
     - [21.5 start_kernel()](#21.5)
@@ -222,35 +223,35 @@ from the restrictions and the conditioning imposed by the market, hence it can f
 evolve according to the ideas of its designers (mainly Linus Torvalds). Specifically,
 Linux offers the following advantages over its commercial competitors:
 
-* **Linux is cost-free.** 
+* **Linux是免费的** 
     
     You can install a complete Unix system at no expense other than the hardware (of course).
 
-* **Linux is fully customizable in all its components.**
+* **Linux可完全定制化**
     
     Thanks to the compilation options, you can customize the kernel by selecting only the features really needed. Moreover, thanks to the GPL, you are allowed to freely read and modify the source code of the kernel and of all system programs.
 
-* **Linux runs on low-end, inexpensive hardware platforms.** 
+* **Linux可以运行在低端也不贵的硬件设备上** 
     
     You are able to build a network server using an old Intel 80386 system with 4 MB of RAM.
 
-* **Linux is powerful.**
+* **Linux功能强大**
     
     Linux systems are very fast, because they fully exploit the features of the hardware components. The main Linux goal is efficiency, and indeed many design choices of commercial variants, like the STREAMS I/O subsystem, have been rejected by Linus because of their implied performance penalty.
 
-* **Linux developers are excellent programmers.**
+* **Linux开发者都是及其优秀的**
     
     Linux systems are very stable; they have a very low failure rate and system maintenance time.
 
-* **The Linux kernel can be very small and compact.**
+* **Linux内核可以小而紧凑**
     
     It is possible to fit a kernel image, including a few system programs, on just one 1.44 MB floppy disk. As far as we know, none of the commercial Unix variants is able to boot from a single floppy disk.
 
-* **Linux is highly compatible with many common operating systems.**
+* **Linux与许多常见的系统兼容**
     
     Linux lets you directly mount filesystems for all versions of MS-DOS and Microsoft Windows, SVR4, OS/2, Mac OS X, Solaris, SunOS, NEXTSTEP, many BSD variants, and so on. Linux also is able to operate with many network layers, such as Ethernet (as well as Fast Ethernet, Gigabit Ethernet, and 10 Gigabit Ethernet), Fiber Distributed Data Interface (FDDI), High Performance Parallel Interface (HIPPI), IEEE 802.11 (Wireless LAN), and IEEE 802.15 (Bluetooth). By using suitable libraries, Linux systems are even able to directly run programs written for other operating systems. For example, Linux is able to execute some applications written for MS-DOS, Microsoft Windows, SVR3 and R4, 4.4BSD, SCO Unix, Xenix, and others on the 80x86 platform.
 
-* **Linux is well supported.**
+* **Linux具有良好的支持**
     
     Believe it or not, it may be a lot easier to get patches and updates for Linux than for any proprietary operating system. The answer to a problem often comes back within a few hours after sending a message to some newsgroup or mailing list. Moreover, drivers for Linux are usually available a few weeks after new hardware products have been introduced on the market. By contrast, hardware manufacturers release device drivers for only a few commercial operating systems—usually Microsoft’s. Therefore, all commercial Unix variants run on a restricted subset of hardware components.
 
@@ -495,15 +496,15 @@ be translated automatically into a reference to `p1`.
 
 <h3 id="1.5.3">1.5.3 文件类型</h3>
 
-Unix files may have one of the following types:
+Unix系统具有如下的文件类型：
 
-* Regular file
-* Directory
-* Symbolic link
-* Block-oriented device file
-* Character-oriented device file
-* Pipe and named pipe (also called FIFO)
-* Socket
+* 常规文件
+* 目录
+* 符号链接
+* 块设备文件
+* 字符设备文件
+* 管道和命名管道（也称为FIFO）
+* 套接字（Socket）
 
 The first three file types are constituents of any Unix filesystem. Their implementation is described in detail in Chapter 18.
 
@@ -513,18 +514,11 @@ Pipes and sockets are special files used for interprocess communication (see the
 
 <h3 id="1.5.4">1.5.4 文件描述符和Inode</h3>
 
-Unix makes a clear distinction between the contents of a file and the information
-about a file. With the exception of device files and files of special filesystems, each
-file consists of a sequence of bytes. The file does not include any control information,
-such as its length or an end-of-file (EOF) delimiter.
+Unix makes a clear distinction between the contents of a file and the information about a file. With the exception of device files and files of special filesystems, each file consists of a sequence of bytes. The file does not include any control information, such as its length or an end-of-file (EOF) delimiter.
 
-All information needed by the filesystem to handle a file is included in a data structure
-called an inode. Each file has its own inode, which the filesystem uses to identify
-the file.
+All information needed by the filesystem to handle a file is included in a data structure called an inode. Each file has its own inode, which the filesystem uses to identify the file.
 
-While filesystems and the kernel functions handling them can vary widely from one
-Unix system to another, they must always provide at least the following attributes,
-which are specified in the POSIX standard:
+While filesystems and the kernel functions handling them can vary widely from one Unix system to another, they must always provide at least the following attributes, which are specified in the POSIX standard:
 
 * File type (see the previous section)
 * Number of hard links associated with the file
@@ -685,13 +679,19 @@ When a process is not executing on the CPU, it is waiting for some event. Unix k
 
 This chapter deals with addressing techniques. Luckily, an operating system is not forced to keep track of physical memory all by itself; today’s microprocessors include several hardware circuits to make memory management both more efficient and more robust so that programming errors cannot cause improper accesses to memory outside the program.
 
+本章讲述寻址技术。幸运的是，操作系统不需要自己跟踪管理物理内存。今天的微处理器都包含一些硬件电路，使得内存管理更为高效，也更为健壮，所以，编程错误就不会导致程序外的内存访问不当。
+
 As in the rest of this book, we offer details in this chapter on how 80×86 microprocessors address memory chips and how Linux uses the available addressing circuits. You will find, we hope, that when you learn the implementation details on Linux’s most popular platform you will better understand both the general theory of paging and how to research the implementation on other platforms.
+
+在本书的其余部分，我们将以x86微处理器为例，讲述它如何寻址内存芯片和Linux如何使用这些寻址单元。希望通过讲解这个最为流行的平台上的Linux实现，我们可以理解分页机制的通用理论，并能够将这些理论应用到别的平台上。
 
 This is the first of three chapters related to memory management; [Chapter 8](#8) discusses how the kernel allocates main memory to itself, while [Chapter 9](#9) considers how linear addresses are assigned to processes.
 
+这是关于内存管理相关的3章中的第1章。在[第8章](#8)中讨论内核如何给自身分配内存，而[第9章](#9)如何分配线性地址给进程。
+
 <h2 id="2.1">2.1 内存地址</h2>
 
-程序员通常将内存地址作为访问内存单元内容的方式。但是，对于80x86处理器，必须区分下面3种地址（[ARM处理器是没有逻辑地址这个概念的，也就是说它们指令中的寻址方式是不同的。]()）：
+程序员通常使用内存地址访问内存单元中的内容。但是，对于x86处理器，需要区分下面3种地址（[ARM处理器是没有逻辑地址这个概念的，也就是说它们指令中的寻址方式是不同的。]()）：
 
 1. 逻辑地址
     
@@ -1414,7 +1414,7 @@ Table 2-8. Page allocation functions
 | pud_free(x) | In a two- or three-level paging system, this macro does nothing. |
 | pmd_alloc(mm, pud, addr) | Defined so generic three-level paging systems can allocate a new Page Middle Directory for the linear address addr. If PAE is not enabled, the function simply returns the input parameter pud—that is, the address of the entry in the Page Global Directory. If PAE is enabled, the function returns the linear address of the Page Middle Directory entry that maps the linear address addr. The argument cw is ignored. |
 | pmd_free(x ) | Does nothing, because Page Middle Directories are allocated and deallocated together with their parent Page Global Directory. |
-| pte_alloc_map(mm, pmd, addr) | Receives as parameters the address of a Page Middle Directory entry pmd and a linear address addr, and returns the address of the Page Table entry corresponding to addr. If the Page Middle Directory entry is null, the function allocates a new Page Table by invoking pte_alloc_one( ). If a new Page Table is allocated, the entry corresponding to addr is initialized and the User/Supervisor flag is set. If the Page Table is kept in high memory, the kernel establishes a temporary kernel mapping (see the section “Kernel Mappings of High-Memory Page Frames” in Chapter 8), to be released by pte_unmap. |
+| pte_alloc_map(mm, pmd, addr) | Receives as parameters the address of a Page Middle Directory entry pmd and a linear address addr, and returns the address of the Page Table entry corresponding to addr. If the Page Middle Directory entry is null, the function allocates a new Page Table by invoking pte_alloc_one(). If a new Page Table is allocated, the entry corresponding to addr is initialized and the User/Supervisor flag is set. If the Page Table is kept in high memory, the kernel establishes a temporary kernel mapping (see the section “Kernel Mappings of High-Memory Page Frames” in Chapter 8), to be released by pte_unmap. |
 | pte_alloc_kernel(mm, pmd, addr) | If the Page Middle Directory entry pmd associated with the address addr is null, the function allocates a new Page Table. It then returns the linear address of the Page Table entry associated with addr. Used only for master kernel page tables (see the later section “Kernel Page Tables”). |
 | pte_free( pte) | Releases the Page Table associated with the pte page descriptor pointer. |
 | pte_free_kernel(pte) | Equivalent to pte_free(), but used for master kernel page tables. |
@@ -1793,7 +1793,7 @@ following cases:
 
 
 * When performing a process switch between two regular processes that use the
-same set of page tables (see the section “The schedule( ) Function” in
+same set of page tables (see the section “The schedule() Function” in
 Chapter 7).
 
 * When performing a process switch between a regular process and a kernel
@@ -2235,7 +2235,7 @@ This appendix explains what happens right after users switch on their computers�
 
 Traditionally, the term bootstrap refers to a person who tries to stand up by pulling his own boots. In operating systems, the term denotes bringing at least a portion of the operating system into main memory and having the processor execute it. It also denotes the initialization of kernel data structures, the creation of some user processes, and the transfer of control to one of them.
 
-所谓`引导`，就是如何把操作系统加载到主内存并让处理器执行它。还要完成内核数据结构的初始化，创建一些进程并将控制权交给其中一个进程。
+所谓`引导`，就是如何把操作系统加载到主内存并让处理器执行它。还要完成内核数据结构的初始化，创建一些进程并将控制权交给其中一个的过程。
 
 Computer bootstrapping is a tedious, long task, because initially, nearly every hardware device, including the RAM, is in a random, unpredictable state. Moreover, the bootstrap process is highly dependent on the computer architecture; as usual in this book, we refer to the 80×86 architecture.
 
@@ -2259,7 +2259,7 @@ Linux is forced to use BIOS in the bootstrapping phase, when it must retrieve th
 
     Recent 80×86, AMD64, and Itanium computers make use of the *Advanced Configuration and Power Interface (ACPI)* standard. The bootstrap code in an ACPI-compliant BIOS builds several tables that describe the hardware devices present in the system. These tables have a vendor-independent format and can be read by the operating system kernel to learn how to handle the devices.
 
-    第一步，完成硬件上电自检测，专业术语称为 *Advanced Configuration and Power Interface (ACPI)*。
+    第一步，完成硬件上电自检测，专业术语称为 *Power-On Self-Test (POST)*。
 
 2. <font color="blue">Initializes the hardware devices</font>. This phase is crucial in modern PCI-based architectures, because it guarantees that all hardware devices operate without conflicts on the IRQ lines and I/O ports. At the end of this phase, a table of installed PCI devices is displayed.
     
@@ -2299,29 +2299,249 @@ Kernel images of earlier Linux versions—up to the 2.4 series—included a mini
 
 A two-stage boot loader is required to boot a Linux kernel from disk. A well-known Linux boot loader on 80×86 systems is named LInux LOader (LILO). Other boot loaders for 80×86 systems do exist; for instance, the GRand Unified Bootloader (GRUB) is also widely used. GRUB is more advanced than LILO, because it recognizes several disk-based filesystems and is thus capable of reading portions of the boot program from files. Of course, specific boot loader programs exist for all architectures supported by Linux.
 
-从硬盘引导Linux内核，引导程序需要完成两个阶段的工作。x86系统上，一个著名的Linux引导程序叫做
+从硬盘引导Linux内核，引导程序需要完成两个阶段的工作。x86系统上，一个著名的Linux引导程序叫做`LILO`。还有一些其它的引导程序，比如`GRUB`。它比`LILO`更高级，可以识别几个基于硬盘的文件系统，因此有能力从文件中读取boot程序。当然了，Linux支持的所有架构都有自己特定的引导程序。
 
 LILO may be installed either on the MBR (replacing the small program that loads the boot sector of the active partition) or in the boot sector of every disk partition. In both cases, the final result is the same: when the loader is executed at boot time, the user may choose which operating system to load.
 
+LILO即可以安装在主引导记录`MBR`上（替换加载到激活分区的引导扇区的小引导程序），也可以安装在硬盘分区的引导扇区上。两种情况下，最终结果是一样的：当引导程序执行起来后，用户可以选择需要加载的操作系统。
+
 Actually, the LILO boot loader is too large to fit into a single sector, thus it is broken into two parts. The MBR or the partition boot sector includes a small boot loader, which is loaded into RAM starting from address 0x00007c00 by the BIOS. This small program moves itself to the address 0x00096a00, sets up the Real Mode stack (ranging from 0x00098000 to 0x000969ff), loads the second part of the LILO boot loader into RAM starting from address 0x00096c00, and jumps into it.
+
+实际上，LILO引导程序太大，无法在一个扇区上安装，因而它被分为2部分。MBR或者分区上的引导扇区包含一个小引导程序，它被BIOS加载到RAM，起始地址是0x00007c00。这个小引导程序将自身搬运到地址0x00096a00处，建立实模式堆栈（范围0x00098000~0x000969ff），然后加载LILO引导程序的第2部分到RAM中，起始地址是0x00096c00，然后跳转到该地址并执行。
 
 In turn, this latter program reads a map of bootable operating systems from disk and offers the user a prompt so she can choose one of them. Finally, after the user has chosen the kernel to be loaded (or let a time-out elapse so that LILO chooses a default), the boot loader may either copy the boot sector of the corresponding partition into RAM and execute it or directly copy the kernel image into RAM.
 
+接下来，引导程序的第二部分读取可引导操作系统的映射表，提供给用户可选择的提示。最后，用户选择了要加载的内核之后（如果超时，LILO选择默认），引导程序即可以拷贝相应分区的引导扇区内容到RAM中并执行，也可以直接拷贝内核到RAM中。
+
 Assuming that a Linux kernel image must be booted, the LILO boot loader, which relies on BIOS routines, performs essentially the following operations:
 
+要加载Linux内核镜像，LILO基本上要执行下面几步：
+
 1. Invokes a BIOS procedure to display a “Loading” message.
+    
+    调用BIOS程序显示正在加载的消息。
 
 2. Invokes a BIOS procedure to load an initial portion of the kernel image from disk: the first 512 bytes of the kernel image are put in RAM at address 0x00090000, while the code of the setup() function (see below) is put in RAM starting from address 0x00090200.
+    
+    调用BIOS程序从硬盘加载内核镜像的开始部分：把内核的头512字节存放到RAM地址0x00090000处，同时，把`setup()`函数加载到RAM地址0x00090200处。
 
 3. Invokes a BIOS procedure to load the rest of the kernel image from disk and puts the image in RAM starting from either low address 0x00010000 (for small kernel images compiled with `make zImage`) or high address 0x00100000 (for big kernel images compiled with make bzImage). In the following discussion, we say that the kernel image is “loaded low” or “loaded high” in RAM, respectively. Support for big kernel images uses essentially the same booting scheme as the other one, but it places data in different physical memory addresses to avoid problems with the ISA hole mentioned in the section “Physical Memory Layout” in Chapter 2.
+    
+    调用BIOS程序从硬盘加载内核其余部分：如果内核镜像较小（使用`make zImage`编译），存放到低地址0x00010000处；如果内核镜像较大（使用`make bzImage`编译），则存放到高地址0x00100000处。大内核镜像的引导原理和其它引导基本上是一样的，只是为了避免和ISA空洞（可以查看[物理内存布局](#2.5.3)）产生冲突，把数据放在了不同的物理地址空间上。
 
 4. Jumps to the setup() code.
     
     跳转到`setup()`函数。
 
-<h2 id="21.3">21.3 setup()函数</h2> 
+<h2 id="21.3">21.3 setup()函数</h2>
+
+The code of the `setup()` assembly language function has been placed by the linker at offset 0x200 of the kernel image file. The boot loader can therefore easily locate the code and copy it into RAM, starting from physical address 0x00090200.
+
+汇编函数 `setup()`的代码由链接器将其链接到到内核镜像文件偏移量0x200处。因此，引导程序能够轻松地索引代码并将其拷贝到物理地址0x00090200处。
+
+The `setup()` function must initialize the hardware devices in the computer and set up the environment for the execution of the kernel program. Although the BIOS already initialized most hardware devices, Linux does not rely on it, but reinitializes the devices in its own manner to enhance portability and robustness. `setup()` performs essentially the following operations:
+
+`setup()`函数负责初始化硬件设备，为内核执行提供环境。尽管BIOS已经初始化了大部分硬件，但是为了系统的可移植性和健壮性，Linux按照自己的方式重新初始化硬件设备。`setup()`执行以下步骤：
+
+1. In ACPI-compliant systems, it invokes a BIOS routine that builds a table in RAM describing the layout of the system’s physical memory (the table can be seen in the boot kernel messages by looking for the “BIOS-e820” label). In older systems, it invokes a BIOS routine that just returns the amount of RAM available in the system.
+    
+    遵循ACPI的系统，调用BIOS服务程序在RAM中构建一张关于系统物理地址布局的表（该表可以通过在内核引导信息中搜索`BIOS-e820`字样找到。在较旧的系统上，只是调用BIOS服务程序返回系统中可用的RAM数量。
+
+2. Sets the keyboard repeat delay and rate. (When the user keeps a key pressed past a certain amount of time, the keyboard device sends the corresponding keycode over and over to the CPU.)
+    
+    设置键盘重复计数延时和速率。（当用户按下按键后一段时间，键盘设备就会向CPU连续不断地发送相应的键码。
+
+3. Initializes the video adapter card.
+    
+    初始化视频适配器卡。
+
+4. Reinitializes the disk controller and determines the hard disk parameters.
+    
+    重新初始化硬盘控制器并设置硬盘参数。
+
+5. Checks for an IBM Micro Channel bus (MCA).
+    
+    检查IBM微通道总线（MCA）。
+
+6. Checks for a PS/2 pointing device (bus mouse).
+    
+    检查PS/2所指向的设备。
+
+7. Checks for Advanced Power Management (APM) BIOS support.
+    
+    检查高级电源管理（APM）BIOS支持。
+
+8. If the BIOS supports the *Enhanced Disk Drive Services (EDD)*, it invokes the proper BIOS procedure to build a table in RAM describing the hard disks available in the system. (The information included in the table can be seen by reading the files in the *firmware/edd* directory of the *sysfs* special filesystem.)
+    
+    如果BIOS支持 *Enhanced Disk Drive Services (EDD)*，它会调用正确的BIOS程序构建一张表，用来描述系统中可用的硬盘。（表中的信息可以通过读取 *firmware/edd*和 *sysfs*文件目录下的文件查看。）
+
+9. If the kernel image was loaded low in RAM (at physical address 0x00010000), the function moves it to physical address 0x00001000. Conversely, if the kernel image was loaded high in RAM, the function does not move it. This step is necessary because to be able to store the kernel image on a floppy disk and to reduce the booting time, the kernel image stored on disk is compressed, and the decompression routine needs some free space to use as a temporary buffer following the kernel image in RAM.
+
+    如果内核镜像载入低内存区（物理地址0x00010000），该函数会将其移动到物理地址0x00001000处。相反，如果内核镜像载入高内存区（物理地址0x00100000），该函数不会搬运它。这一步是必要的，因为为了能够在软盘上存储内核镜像，同时也是为了减少引导时间，存储在软盘上的内核镜像被压缩，解压缩服务程序需要一些紧跟在内核镜像后面的空间作为临时缓存。
+
+10. Sets the A20 pin located on the 8042 keyboard controller. The A20 pin is a hack introduced in the 80286-based systems to make physical addresses compatible with those of the ancient 8088 microprocessors. Unfortunately, the A20 pin must be properly set before switching to Protected Mode, otherwise the 21st bit of every physical address will always be regarded as zero by the CPU. Setting the A20 pin is a messy operation.
+    
+    设置A20管脚，用于8042键盘控制器。该管脚的存在是为了和基于80286的系统进行兼容。
+
+11. Sets up a provisional Interrupt Descriptor Table (IDT) and a provisional Global Descriptor Table (GDT).
+    
+    建立临时中段描述表（IDT）和临时GDT（全局描述表）。
+
+12. Resets the floating-point unit (FPU), if any.
+    
+    复位浮点单元（FPU），当然前提是支持的话。
+
+13. Reprograms the Programmable Interrupt Controllers (PIC) to mask all interrupts, except IRQ2 which is the cascading interrupt between the two PICs.
+    
+    重新设置可编程中断控制器（PIC）屏蔽所有中断，除了IRQ2，它是专门用于2个PIC级联的。
+
+14. Switches the CPU from Real Mode to Protected Mode by setting the PE bit in the cr0 status register. The PG bit in the cr0 register is cleared, so paging is still disabled.
+    
+    设置cr0寄存器的PE标志位，切换CPU从实模式到保护模式。同时，cr0寄存器中的PG位被清除，所以此时分页机制仍然是禁止的。
+
+15. Jumps to the startup_32() assembly language function.
+    
+    跳转到汇编函数`startup_32()`处。
+
 <h2 id="21.4">21.4 setup_32()函数</h2> 
-<h2 id="21.5">21.5 start_kernel()</h2> 
+
+There are two different startup_32() functions; the one we refer to here is coded in the `arch/i386/boot/compressed/head.S` file. After `setup()` terminates, the function has been moved either to physical address 0x00100000 or to physical address 0x00001000, depending on whether the kernel image was loaded high or low in RAM.
+
+内核代码中有2个不同的`startup_32()`函数，首先，调用的这个位于`arch/i386/boot/compressed/head.S`文件中。`setup()`函数执行完之后，函数即可以跳转到物理地址0x00100000处，也可以跳转到物理地址0x00001000处，这完全依赖于内核是被加载到高内存区域还是低内存区域。
+
+This function performs the following operations:
+
+这个函数执行的主要内容如下：
+
+1. Initializes the segmentation registers and a provisional stack.
+
+    初始化段寄存器和临时堆栈。
+
+2. Clears all bits in the eflags register.
+    
+    清除`eflags`寄存器中的所有位。
+
+3. Fills the area of uninitialized data of the kernel identified by the `_edata` and `_end` symbols with zeros (see the section “Physical Memory Layout” in Chapter 2).
+
+    将内核中未初始化的数据填充为0，也就是符号`_edata`和`_end`指定的区域（参见[第2章 物理内存分布](#2.5.3)）。
+
+4. Invokes the decompress_kernel() function to decompress the kernel image. The “Uncompressing Linux...” message is displayed first. After the kernel image is decompressed, the “OK, booting the kernel.” message is shown. If the kernel image was loaded low, the decompressed kernel is placed at physical address 0x00100000. Otherwise, if the kernel image was loaded high, the decompressed kernel is placed in a temporary buffer located after the compressed image. The decompressed image is then moved into its final position, which starts at physical address 0x00100000.
+
+    调用解压缩函数`decompress_kernel()`函数解压内核镜像。
+
+    首先，会显示：
+
+        Uncompressing Linux...
+
+    然后，解压缩完成后，显示：
+
+        OK, booting the kernel.
+
+    如果内核镜像被加载到低地址空间，解压缩后的内核被放置到地址0x00100000处。否则，如果内核镜像被加载到高地址空间，解压缩后的内核被放置到压缩内核镜像的后面的临时缓存中。然后，解压缩后的镜像会被移动到最后的位置，也就是开始地址0x00100000处。
+
+5. Jumps to physical address 0x00100000.
+    
+    然后，跳转到物理地址0x00100000处。
+
+The decompressed kernel image begins with another startup_32() function included in the `arch/i386/kernel/head.S` file. Using the same name for both the functions does not create any problems (besides confusing our readers), because both functions are executed by jumping to their initial physical addresses.
+
+解压缩后的内核从另一个`startup_32()`函数开始执行，该函数位于`arch/i386/kernel/head.S`文件中。使用相同的函数名称不会产生问题（可能影响我们阅读代码），因为它们都是跳到各自的初始物理地址处执行。
+
+The second startup_32() function sets up the execution environment for the first Linux process (process 0). The function performs the following operations:
+
+第二个函数`startup_32()`函数建立第一个Linux进程（进程0）的运行环境。函数执行下面的操作：
+
+1. Initializes the segmentation registers with their final values.
+    
+    使用最终的值，初始化段寄存器。
+
+2. Fills the bss segment of the kernel (see the section “Program Segments and Process Memory Regions” in Chapter 20) with zeros.
+    
+    初始化内核的`bss`段为0（参见[第20章 程序段和进程内存区域](#20.1.5)）
+
+3. Initializes the provisional kernel Page Tables contained in `swapper_pg_dir` and `pg0` to identically map the linear addresses to the same physical addresses, as explained in the section “Kernel Page Tables” in Chapter 2.
+
+    初始化包含在`swapper_pg_dir`和`pg0`中的临时内核页表，以便将线性地址映射到相同的物理地址，如[第2章 内核页表](#2.5.5)所解释的那样。
+
+4. Stores the address of the Page Global Directory in the cr3 register, and enables paging by setting the PG bit in the cr0 register.
+
+    保存页全局目录（PGD）地址到cr3寄存器中，通过设置cr0寄存器中的PG标志，使能分页机制。
+
+5. Sets up the Kernel Mode stack for process 0 (see the section “Kernel Threads” in Chapter 3).
+
+    为进程0设定内核模式堆栈（参见[第3章 内核线程](#3.4.1)）。
+
+6. Once again, the function clears all bits in the eflags register.
+
+    再一次，该函数清除`eflags`中的所有位。
+
+7. Invokes `setup_idt()` to fill the IDT with null interrupt handlers (see the section “Preliminary Initialization of the IDT” in Chapter 4).
+
+    调用`setup_idt()`，使用空中断处理函数初始化IDT表（参见[第4章 IDT表的空初始化](#4.4.2)）。
+
+8. Puts the system parameters obtained from the BIOS and the parameters passed to the operating system into the first page frame (see the section “Physical Memory Layout” in Chapter 2).
+
+    把从BIOS获取的系统参数和要传递给操作系统的参数保存到第一个页帧中（参见[第2章 物理内存布局](#2.5.3)）。
+
+9. Identifies the model of the processor.
+
+    识别CPU模型。
+
+10. Loads the `gdtr` and `idtr` registers with the addresses of the GDT and IDT tables.
+
+    把GDT和IDT表的地址保存到`gdtr`和`idtr`寄存器中。
+
+11. Jumps to the start_kernel() function.
+
+    跳转到`start_kernel()`函数。
+
+<h2 id="21.5">21.5 start_kernel()</h2>
+
+The start_kernel() function completes the initialization of the Linux kernel. Nearly every kernel component is initialized by this function; we mention just a few of them:
+
+`start_kernel()`函数完成Linux内核的初始化。内核的各个组成部分几乎都在这个函数中完成初始化，我们只提及它们中的一些。
+
+1. The scheduler is initialized by invoking the sched_init() function (see Chapter 7).
+
+    调用`sched_init()`函数（参见[第7章 进程调度](#7)，初始化调度器`scheduler`。
+
+
+2. The memory zones are initialized by invoking the build_all_zonelists() function (see the section “Memory Zones” in Chapter 8).
+
+    调用`build_all_zonelists()`函数（参见[第8章中的内存区](#8.1.3)），初始化内存区。
+
+3. The Buddy system allocators are initialized by invoking the page_alloc_init() and mem_init() functions (see the section “The Buddy System Algorithm” in Chapter 8).
+    
+    调用`page_alloc_init()`和`mem_init()`函数（参见[第8章中的伙伴系统算法](#8.1.7)），初始化`伙伴系统分配器`。
+
+4. The final initialization of the IDT is performed by invoking trap_init() (see the section “Exception Handling” in Chapter 4) and init_IRQ() (see the section “IRQ data structures” in Chapter 4).
+
+    调用`trap_init()`（[第4章中的异常处理](#4.5)）和`init_IRQ()`函数（[第4章中的IRQ数据结构](#4.6.1.2)）完成`IDT`最终的初始化
+
+5. The `TASKLET_SOFTIRQ` and `HI_SOFTIRQ` are initialized by invoking the softirq_init() function (see the section “Softirqs” in Chapter 4).
+
+    调用`softirq_init()`函数（[第4章中的IRQ数据结构](#4.7.1)）完成`TASKLET_SOFTIRQ`和`HI_SOFTIRQ`的初始化。
+
+6. The system date and time are initialized by the time_init() function (see the section “The Linux Timekeeping Architecture” in Chapter 6).
+
+    调用`time_init()`函数（[第6章中的Linux计时架构](#6.2)）完成系统日期和时间的初始化。
+
+7. The slab allocator is initialized by the kmem_cache_init() function (see the section “General and Specific Caches” in Chapter 8).
+
+    调用`kmem_cache_init()`函数（[第8章中的通用和特定Cache](#8.2.4)）完成`slab`分配器初始化
+
+8. The speed of the CPU clock is determined by invoking the calibrate_delay() function (see the section “Delay Functions” in Chapter 6).
+
+    调用`calibrate_delay()`函数（[第6章中的延时函数](#6.5.3)）决定CPU时钟速率。
+
+9. The kernel thread for process 1 is created by invoking the kernel_thread() function. In turn, this kernel thread creates the other kernel threads and executes the /sbin/init program, as described in the section “Kernel Threads” in Chapter 3.
+
+    进程1的内核线程通过调用`kernel_thread()`函数创建。这个内核线程会以此创建其它内核线程并执行`/sbin/init`程序，如[第3章内核线程这一节](3.4.2)所描述的那样。
+
+Besides the “Linux version 2.6.11...” message, which is displayed right after the beginning of start_kernel(), many other messages are displayed in this last phase, both by the init program and by the kernel threads. At the end, the familiar login prompt appears on the console (or in the graphical screen, if the X Window System is launched at startup), telling the user that the Linux kernel is up and running.
+
+除了`Linux version 2.6.11...`这条提示信息之外，`start_kernel()`函数执行之后，还会显示一些其它的信息，这些信息都是由init程序和内核线程打印的。最后，熟悉的登陆提示信息就会出现在控制台上（或者在图形界面上，如果X Window系统启动的话），告诉用户Linux内核已经启动并正在运行。
+
 <h1 id="22">22 模块化</h1> 
 <h2 id="22.1">22.1 是否选择模块化</h2> 
 <h2 id="22.2">22.2 实现模块</h2> 
