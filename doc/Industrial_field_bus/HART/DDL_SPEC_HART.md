@@ -35,7 +35,18 @@
     - [8.6 二进制大对象](#8.6)
     - [8.7 关系](#8.7)
 * [9 COMMAND](#9)
+    - [9.1 事务](#9.1)
+    - [9.2 响应码](#9.2)
 * [10 用户接口](#10)
+    - [10.1 MENU](#10.1)
+    - [10.2 可编辑显示](#10.2)
+    - [10.3 图像](#10.3)
+    - [10.4 网格](#10.4)
+    - [10.5 Graph](#10.5)
+    - [10.6 波形](#10.6)
+    - [10.7 Chart](#10.7)
+    - [10.8 源](#10.8)
+    - [10.9 坐标](#10.9)
 * [11 METHOD](#11)
 * [12 模板](#12)
 * [13 环境](#13)
@@ -612,7 +623,7 @@ DDL支持整数和浮点数常量以及字符串。
 
 <h2 id="9.1">9.1 事务</h2>
 
-事务指定了命令请求和回复消息的数据域。一个命令可以有多个事务。HART通用命令（修订版4）中的命令4和5，就是多个事务命令的例子。如果命令具有多个事务，每个事务都可以包含一组响应码；还应该在TRANSACTION关键字的后面添加一个事务所占的字节数，方便区分，如果没有指定大小，默认为0.
+事务指定了命令REQUEST和REPLY消息的数据域。一个命令可以有多个事务。HART通用命令（修订版4）中的命令4和5，就是多个事务命令的例子。如果命令具有多个事务，每个事务都可以包含一组响应码；还应该在TRANSACTION关键字的后面添加一个事务所占的字节数，方便区分，如果没有指定大小，默认为0.
 
 语法如下：
 
@@ -704,8 +715,180 @@ x,y的值被写入设备，单位是units中指定的单位。该单位可以与
 
 <h1 id="10">10 用户接口</h1>
 
-图表是组织和呈现设备数据的有效手段。图和表在数据收集的方法上不同。
+Graph、Chart是组织和呈现设备数据的有效手段。图和表在数据收集的方法上不同。
 
+* Graph主要用于表现成块的数据，比如数组。使用波形图构建指定并要可视化的数组数据。
+* Chart主要用于描述某个数据随时间的变化曲线。Chart指定的数据源（一个变量）被周期性的捕获并显示。也就是说，chart记录了某个数据项随时间的历史变化曲线，通过Chart这种结构把这个历史曲线呈现给DDL应用程序。
+* Graph和Chart这两种数据结构的区别正如其英文的区别一样：Graph主要用于表达事物之间存在的关系；而Chart主要用于描述与坐标（对于chart来说，x坐标总是时间t）之间的关系。所以Chart只需要定义Y坐标即可。
+
+> look and feel : 外观和感觉，也就是人机交互体验
+
+虽然DD开发者对数据的表现形式做了很大的控制，但是主机应用程序还是有相当大的自由去控制外观。例如：
+
+* 不能指定Graph和Chart的绝对大小，使用的是相对大小。
+* 虽然坐标轴由DD指定，但是像图例、精度、刻度线和网格是由主机程序选择的。
+* 线的样式是由DD指定。主机应用程序选择实际的颜色、是否虚线，以及背景色和前景色等。
+* 对于Graph，支持平移、缩放和编辑。具体的实现细节是留给由主机应用程序实现的。
+
+本章将会介绍Graph、Chart、Waveform、source和axis结构的语法。简单的数据绘图使用几行DDL代码就可以完成，因为大部分属性都是可选的。对于复杂的设备，也可以按照需求进行复杂的绘图。支持绘图和可视化的语法提供了非常多的功能。
+
+<h2 id="10.1">10.1 MENU</h2>
+
+MENU用于组织方法和数据，允许用户浏览设备配置和控制操作。语法如下：
+
+    MENU name {
+        LABEL constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        STYLE_opt style-specification;
+        ITEMS {
+            menu-item, menu-item, ...
+        }
+        upload-download-actions
+    }
+
+<h2 id="10.2">10.2 可编辑显示</h2>
+
+相当于模式对话框。它把数据和显示信息一起表现给用户，方便编辑设置。EDIT DISPLAY语法如下：
+
+    EDIT_DISPLAY name {
+        LABEL constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        DISPLAY_ITEMS_opt { display-item, display-item, ... }
+        EDIT_ITEMS { edit-item, edit-item, ... }
+        PRE_EDIT_ACTIONS_opt { method, method, ... }
+        POST_EDIT_ACTIONS_opt { method, method, ... }
+    }
+
+EDIT_DISPLAY具有7个属性：LABEL、HELP_opt、VALIDITY_opt、DISPLAY_ITEMS_opt、EDIT_ITEMS、PRE_EDIT_ACTIONS_opt和POST_EDIT_ACTIONS_opt。
+
+LABEL、HELP_opt、VALIDITY_opt 三个通用属性可以参考附录A。
+
+DISPLAY_ITEMS_opt显示项只是给用户呈现信息，不可编辑。通俗的说，就是提示信息。一个显示项类似于使用DISPLAY_VALUE和READ_ONLY进行限定的菜单项。
+
+EDIT_ITEMS编辑项，顾名思义，给用户用来进行设定的接口，用户通过它可以编辑、修改某些变量。一个编辑项类似于使用DISPLAY_VALUE进行限定的菜单项。
+
+一个编辑项可以是一种关系的修改，也可以是一个变量的修改。如果是修改某种关系，那么用户必须检查与这种关系相关的变量。用户不会通知所有变量，但应该验证当前值是合法输入。
+
+<h2 id="10.3">10.3 图像</h2>
+
+IMAGE可以包含在MENU中，更形象地描述DD项和现场设备的操作。
+
+大小限制，单个图像的大小不能超过150K字节（150000），DD中所有的图像大小总和不能超过5000K（5000000）。
+
+IAMGE结构体语法如下：
+
+    IMAGE name {
+        LABEL constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        LINK_opt image-linked-item;
+        PATH " file-specifier";
+    }
+
+    image-linked-item：
+        edit-display-reference
+        menu-reference
+        method-reference
+
+<h3 id="10.3.1">10.3.1 路径PATH</h3>
+
+PATH属性用来指定包含在DD中的源文件，该属性也有可能包含条件。根据条件是否满足以及和当前的语言选择正确的图片。如果条件发生变化，图片也需要重新显示。
+
+为多个语系所用的图片可以通过下面的类似语法指定，具体语法请参考[第7.5.3段](#7.5.3)：
+
+    "|en|english.git|de|german.gif"
+
+
+图像格式：GIF，JPG和PNG。
+
+
+<h3 id="10.3.2">10.3.2 LINK</h3>
+
+LINK等于超链接，使用LINK将一个IMAGE和一个超链接联系起来。LINK可以引用METHOD，MENU，或EDIT_DISPLAY。一旦IMAGE被显示，选择图片就会激活超链接。链接也可能包含条件。
+
+如果MENU被引用，默认类型是STYLE DIALOG。只有类型DIALOG和WINDOW可以指定。
+
+<h2 id="10.4">10.4 网格</h2>
+
+GRID结构用来显示数据集，也就是数据表格化。这类数据可以是现场设备中的数组或列表，或者在主机端使用FILE结构存储的现场设备的数据。
+
+    GRID name {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        HEIGHT_opt display-size-keyword;
+        WIDTH_opt display-size-keyword;
+        ORIENTATION_opt orientation-keyword;
+        VECTORS {
+            { description, value, value, ... },
+            { description, value, value, ... }
+        }
+    }
+
+    value:
+        reference
+        integer
+        floating-constant
+        string-constant
+
+    orientation-keyword: one of
+        HORIZONTAL VERTICAL
+
+<h2 id="10.5">10.5 Graph</h2>
+
+GRAPH也是用来显示数据集的。
+
+语法如下：
+
+    GRAPH name {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        HEIGHT_opt display-size-keyword;
+        WIDTH_opt display-size-keyword;
+        CYCLE_TIME_opt constant-expression;
+        X_AXIS_opt axis-reference;
+        MEMBERS {
+            member-name, waveform-reference, description_opt, help_opt;
+            member-name, waveform-reference, description_opt, help_opt;
+                Note: if help is present, description must be present, too
+        }
+    }
+
+<h3 id="10.5.1">10.5.1 路径PATH</h3>
+
+<h2 id="10.6">10.6 波形</h2>
+
+WAVEFORM描述GRAPH显示的一个数据集。
+
+语法如下：
+
+    WAVEFORM name {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        HANDLING_opt handling-specifier;
+        EMPHASIS_opt boolean-specifier;
+        LINE_TYPE_opt line-type-specifier;
+        LINE_COLOR_opt expression;
+        Y_AXIS_opt axis-reference;
+        KEY_POINTS_opt {
+            X_VALUES { value, value, ... }
+            Y_VALUES { value, value, ... }
+        }
+        TYPE [XY, YT, HORIZONTAL, VERTICAL] {    /* 类型必须支持，其余的属性都是可选的 */
+            waveform-type-attribute, waveform-type-attribute, ... 
+        }
+        INIT_ACTIONS_opt { method-reference, method-reference, ... }
+        REFRESH_ACTIONS_opt { method-reference, method-reference, ... }
+        EXIT_ACTIONS_opt { method-reference, method-reference, ... }
+    }
+
+<h2 id="10.7">10.7 Chart</h2>
+<h2 id="10.8">10.8 源</h2>
+<h2 id="10.9">10.9 坐标</h2>
 
 
 <h1 id="11">11 METHOD</h1>
