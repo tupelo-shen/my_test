@@ -887,12 +887,222 @@ WAVEFORM描述GRAPH显示的一个数据集。
     }
 
 <h2 id="10.7">10.7 Chart</h2>
+
+Chart用来表示一个变量随时间的变化曲线。可以为Chart指定多个源。如源列表中表示的那样，Chart负责从现场设备中获取变量的值。无论是在菜单上显示还是在方法中显示，Chart都会自动更新。
+
+语法如下：
+
+    CHART name {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        HEIGHT_opt display-size-keyword;
+        WIDTH_opt chart-type;
+        TYPE_opt display-size-keyword;
+        LENGTH_opt constant-expression;
+        CYCLE_TIME_opt constant-expression;
+        MEMBERS {
+            member-name, source-reference, description_opt, help_opt;
+            member-name, source-reference, description_opt, help_opt;
+                Note: if help is present, description must be present, too
+        }
+    }
+
+    chart-type: one of
+        GAUGE HORIZONTAL BAR SCOPE STRIP SWEEP VERTICAL_BAR
+
+CHART类型
+
+| 关键字 | 主机数据显示的描述（绘图） |
+| ------ | -------------------------- |
+| STRIP  | 数据可以左右滚动。新数据被添加到Chart的右端，历史数据往左移。旧历史数据从Chart左端滚出 |
+| SWEEP  | 数据从左向右更新，会覆盖历史数据。当绘制到最右端，数据重新从最左端开始绘制。 |
+| SCOPE  | 数据从左向右更新。当绘制到最右端，将所有的数据擦除，数据重新从最左端开始绘制。 |
+| GAUGE  | 一个圆形拨号盘类似的仪表。指针或者箭头随着源数据变化而旋转。最大值、最小值在圆盘的底部，如果数据增加，指针顺时针旋转。 |
+| HORIZONTAL_BAR | 条形图或一条线。它的长度与源数据值成比例关系。Chart的左边显示其原始值（即最小值）|
+| VERTICAL_BAR | 与HORIZONTAL_BAR一样，只是方向是垂直的。|
+
 <h2 id="10.8">10.8 源</h2>
+
+语法如下：
+
+    SOURCE name {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        VALIDITY_opt boolean-specifier;
+        EMPHASIS_opt boolean-specifier;
+        LINE_TYPE_opt line-type-specifier;
+        LINE_COLOR_opt expression;
+        Y_AXIS_opt axis-reference;
+        MEMBERS {
+            member-name, variable-reference, description_opt, help_opt;
+            member-name, variable-reference, description_opt, help_opt;
+                Note: if help is present, description must be present, too
+        }
+        INIT_ACTIONS_opt { method-reference, method-reference, ... }
+        REFRESH_ACTIONS_opt { method-reference, method-reference, ... }
+        EXIT_ACTIONS_opt { method-reference, method-reference, ... }
+    }
+
 <h2 id="10.9">10.9 坐标</h2>
 
+AXIS和CHART或GRAPH有关，用来指定参考坐标的。DD开发者如果想要更复杂的控制时，可以引用一个AXIS结构，而不是用默认值。
+
+    AXIS name {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        MIN_VALUE_opt value-specifier;
+        MAX_VALUE_opt value-specifier;
+        SCALING_opt scaling-string;
+        CONSTANT_UNIT_opt constant-string;
+    }
 
 <h1 id="11">11 METHOD</h1>
+
+为了执行维护、校正、试运行或配置，所有的设备都有标准的操作步骤。METHOD就是用来指定这些操作步骤并确保用户能够执行。
+
+许多HART主机程序（比如，控制器和I/O设备）不支持DD。Method不能用来增强设备的能力或者产生新的数据。换句话说，不应该使用method产生本来应该由现场设备提供的处理或状态。如果这样做的话，会导致数据对所有HART主机应用程序不一致。
+
+语法如下：
+
+    METHOD name ( methods-parameter-list)_opt {
+        LABEL_opt constant-string;
+        HELP_opt constant-string;
+        CLASS_opt class-name & class-name & ... ;
+        VALIDITY_opt boolean-specifier;
+        TYPE_opt type-specifiers
+        DEFINITION {
+            c-code
+        }
+    }
+
+    methods-parameter-list:
+        parameter-declaration
+        methods-parameter-list, parameter-declaration
+
+    parameter-declaration:
+        DD_ITEM itentifier
+        type-specifiers ref-operator_opt identifier
+        type-specifiers identifier [ ]
+
+    ref-operator:
+        &
+
+    type-specifiers:
+        DD_STRING
+        numeric-types
+
+    numeric-types:
+        integers-types
+        unsigned integer-types
+        signed integer-types
+        float
+        double
+
+    integer-types: one of 
+        char int long short
+
+
+每个method必须有一个名称，可以在DD中的任何位置引用该method。有6个属性：LABEL，HELP，VALIDITY，CLASS，DEFINITION，和TYPE。除了DEFINITION是必须的外，其余都是可选的。
+
+DEFINITION指定了由主机应用程序调用的程序。基本上，一个method就是一个被DD主机调用的函数或子程序。比如当一个graph被更新时，执行的REFRESH ACTION方法。DEFINITION定义的程序遵循ANSI C编程标准。
+
+* **环境**（ANSI C第5部分）讨论了method的执行环境，以及method如何和DDL环境的其它部分进行交互。
+
+* **Method定义语言**（ANSI C第6部分）指定了method支持的ANSI C的子集
+
+* **库**（ANSI C第7部分）简要描述了method环境支持的标准库。
+
+<h2 id="11.1">11.1 环境</h2>
+
+[第7章](#7)中所有的语法约定也都适用于Method和Method定义。当开发基于ANSI C标准的DEFINITION程序时，使用DDL源代码字符集（[第7.2节](#7.2)）。在主机应用程序访问和使用DD之前，完成DD源代码的转译，包括预处理命令的执行。
+
+<h3 id="11.1.1">11.1.1 安全</h3>
+
+Method完全在主机应用程序创建的一个 **沙盒**中运行。所有method活动都在这个沙盒中。主机应用程序只必须实现标准库内嵌函数。这些库函数不能启动主机原有程序或者访问外部DLL动态库。也不能直接访问系统本地硬盘。这些限制措施保证了对DD的安全使用和控制对系统资源的访问发生在DD的method内。
+
+概念上，当一个method被调用或触发时创建这样的沙盒。沙盒的生命周期持续到method完成或者被抛弃。
+
+<h3 id="11.1.2">11.1.2 设备数据</h3>
+
+所有VARIABLE和ARRAY对于C代码定义的程序而言都是全局变量。所有的DD变量都可以被直接访问。
+
+主机应用程序中维护着一块 **主设备数据缓存**，它会被持续的更新，保证和设备中的数据一致。当沙盒被创建时，沙盒自身还要维护着一块method数据缓存。为了安全考虑，method操作这块自己的cache，而不是直接操纵主cache。例如，一个method被抛弃，不会反向影响现场设备的配置。
+
+Method在自己的cache修改数据。当SOP决定method设置所有数据的时候，method发送命令去更新现场设备的配置。发送命令write-though-to和read-back-from给现场设备都要通过主cache。这保证了主cache和现场设备中的数据同步。
+
+当method正在操作的时候，它完全控制DD主机程序。正常情况下，除非method发送必要的命令要做什么之外，不会有命令被发送和数据更新。这保证了现场设备可以根据执行SOP所需要被放置在任何操作模式下，而不会产生错误或Alarm。比如，在一些设备中，在校正期间派发无效命令的命令会造成错误发生。
+
+<h3 id="11.1.3">11.1.3 Method类型和参数</h3>
+
+每一个method就是一个函数或程序，而在METHOD结构中不允许使用ANSI C函数，而是使用METHOD函数代替。在上面的语法中，我们已经看到METHOD函数的参数了，它紧跟在METHOD名称后面。这些参数的作用范围仅限于METHOD的DEFINITION中。
+
+这些参数成为了METHOD环境的一部分了，可以像其他ANSI C变量那样使用，除了普通的ANSI C变量，还支持2个DDL特有的参数类型：
+
+* DD_STRING
+* DD_ITEM
+
+这两个类型总是通过引用传递。而符合ANSI-C标准的变量（例如，int，long float）既能引用传递，也能值传递。
+
+可选的TYPE属性，允许METHOD函数返回值。
+
+
+<h3 id="11.1.4">11.1.4 Method数据类型</h3>
+
+
+<h3 id="11.1.5">11.1.5 抛弃处理</h3>
+
+一个method可以被抛弃（也就是不正常终止）。
+
+<h2 id="11.2">11.2 定义语言</h2>
+
+描述了可以使用的ANSI-C子集。
+
+<h2 id="11.3">11.3 库</h2>
+
+method环境不支持标准ANSI-C函数库，因为不管是method还是DDL目的都不是设计成通用编程语言。
+
+能够支持的库有：
+
+1. 设备通信；
+2. HMI和用户接口；
+3. Abort掩码和abort方法管理；
+4. String函数（类似于ANSI C的string.h）；
+5. Math函数（类似于ANSI C的math.h）；
+
+
 <h1 id="12">12 模板</h1>
+
+DDL就是把现场设备模型化的。经常地，在多个设备中存在公共的功能。另外，通过重新配置设备，可以将设备部署在多种应用中。DDL提供了模板功能，允许标准设备模型的使用，也会允许代码重用或者提供标准应用程序的配置。
+
+* IMPORT结构允许重用标准DD；
+* LIKE结构允许重用DD项；
+* TEMPLATE结构允许在DD中可以存在多个配置模板。
+
+<h2 id="12.1">12.1 DD和DD项模板</h2>
+
+<h2 id="12.2">12.2 配置模板</h2>
+
 <h1 id="13">13 环境</h1>
 
+<h2 id="13.1">13.1 概念模型</h2>
+
+<h3 id="13.1.1">13.1.1 现场设备</h3>
+
+每一个DD都必须是一个对应设备（或HART规范）的模型。对于所有HART设备来说，应用层模型和要求都在《Command Summary Specification(HCF_SPEC_099)》开始的系列文档中定义。如果设备足够简单，产生的DD很大程度是相同的，同样的如果设备足够复杂，也就是说满足规范的所有要求的话，产生的DD也是大体相同的。
+
+#### 设备模型
+
+
+
+<h2 id="13.2">13.2 配置设备</h2>
+
+<h2 id="13.2.1">13.2.1 在线配置</h2>
+
+<h2 id="13.2.2">13.2.2 离线配置</h2>
+
+
+<h2 id="13.3">13.3 设备模拟</h2>
+
+比如，Xmtr-DD。
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
