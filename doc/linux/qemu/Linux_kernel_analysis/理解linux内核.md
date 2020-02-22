@@ -37,9 +37,22 @@
 * [3 进程](#3)
     - [3.1 进程、轻量级进程和线程](#3.1)
     - [3.2 进程描述符](#3.2)
+        + [3.2.1 进程状态](#3.2.1)
+        + [3.2.2 识别进程](#3.2.2)
+        + [3.2.3 进程之间关系](#3.2.3)
+        + [3.2.4 如何组织进程](#3.2.4)
+        + [3.2.5 进程资源限制](#3.2.5)
     - [3.3 进程切换](#3.3)
+        + [3.3.1 进程状态](#3.3.1)
+        + [3.3.2 进程状态段](#3.3.2)
+        + [3.3.3 执行进程切换](#3.3.3)
+        + [3.3.4 保存和加载FPU、MMX和XMM寄存器](#3.3.4)
     - [3.4 创建进程](#3.4)
+        + [3.4.1 clone()、fork()和vfork()系统调用](#3.4.1)
+        + [3.4.2 内核线程](#3.4.2)
     - [3.5 销毁进程](#3.5)
+        + [3.5.1 终止进程](#3.5.1)
+        + [3.5.2 移除进程](#3.5.2)
 * [4 中断和异常](#4)
     - [4.1 中断信号的角色](#4.1)
     - [4.2 中断和异常](#4.2)
@@ -661,7 +674,7 @@ Process 2 switches to Kernel Mode and services the interrupt.
 
 <img id="Figure_1-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_1_2.PNG">
 
-图1-2 用户模式和内核模式之间的转换
+图1-2 用户态和内核模式之间的转换
 
 Unix kernels do much more than handle system calls; in fact, kernel routines can be activated in several ways:
 
@@ -794,7 +807,7 @@ The remaining three segmentation registers are general purpose and may refer to 
 
 The `cs` register has another important function: it includes a 2-bit field that specifies the Current Privilege Level (CPL) of the CPU. The value 0 denotes the highest privilege level, while the value 3 denotes the lowest one. Linux uses only levels 0 and 3, which are respectively called Kernel Mode and User Mode.
 
-`cs`寄存器还有另外一个重要功能：在其中，有2位表示CPU当前特权级别（CPL）。值为0，表明具有最高优先级，而值为3，表明最低优先级。Linux只使用优先级0和3，分别称为内核模式和用户模式。
+`cs`寄存器还有另外一个重要功能：在其中，有2位表示CPU当前特权级别（CPL）。值为0，表明具有最高优先级，而值为3，表明最低优先级。Linux只使用优先级0和3，分别称为内核模式和用户态。
 
 <h3 id="2.2.2">2.2.2 段描述符</h3>
 
@@ -941,7 +954,7 @@ Linux2.6版本只有x86架构需要时才使用分段。
 
 All Linux processes running in User Mode use the same pair of segments to address instructions and data. These segments are called *user code segment* and *user data segment*, respectively. Similarly, all Linux processes running in Kernel Mode use the same pair of segments to address instructions and data: they are called *kernel code segment* and *kernel data segment*, respectively. Table 2-3 shows the values of the Segment Descriptor fields for these four crucial segments.
 
-运行在用户模式的所有Linux进程使用一对相同的段寻址指令和数据，它们分别称为用户代码段和用户数据段。相似的，运行在内核模式的所有Linux进程也使用一对相同的段寻址指令和数据，它们分别称为内核代码段和内核数据段。表2-3展示了四个主要Linux段的段描述符的各个位域的值。
+运行在用户态的所有Linux进程使用一对相同的段寻址指令和数据，它们分别称为用户代码段和用户数据段。相似的，运行在内核模式的所有Linux进程也使用一对相同的段寻址指令和数据，它们分别称为内核代码段和内核数据段。表2-3展示了四个主要Linux段的段描述符的各个位域的值。
 
 表2-3 四个主要Linux段的段描述符的各个位域的值
 
@@ -958,7 +971,7 @@ The corresponding Segment Selectors are defined by the macros `__USER_CS`, `__US
 
 Notice that the linear addresses associated with such segments all start at 0 and reach the addressing limit of 2^32 –1. This means that all processes, either in User Mode or in Kernel Mode, may use the same logical addresses.
 
-注意，这些段相关的线性地址总是从0开始的，上限是`2^32 –1`。这意味着，不论是在用户模式还是内核模式，所有的进程使用相同的逻辑地址。
+注意，这些段相关的线性地址总是从0开始的，上限是`2^32 –1`。这意味着，不论是在用户态还是内核模式，所有的进程使用相同的逻辑地址。
 
 Another important consequence of having all segments start at `0x00000000` is that in Linux, logical addresses coincide with linear addresses; that is, the value of the Offset field of a logical address always coincides with the value of the corresponding linear address.
 
@@ -966,11 +979,11 @@ Linux中，让所有的段都从`0x00000000`地址开始的结果就是，逻辑
 
 As stated earlier, the Current Privilege Level of the CPU indicates whether the processor is in User or Kernel Mode and is specified by the `RPL` field of the Segment Selector stored in the `cs` register. Whenever the CPL is changed, some segmentation registers must be correspondingly updated. For instance, when the `CPL` is equal to 3 (User Mode), the `ds` register must contain the Segment Selector of the user data segment, but when the CPL is equal to 0, the `ds` register must contain the Segment Selector of the kernel data segment.
 
-如前所述，CPU当前特权级别表示处理器是在用户模式还是内核模式，其由存储在`cs`段寄存器中的段选择器中的`RPL`位域指定。无论什么时候CPL发生改变，都必须相应地更新段寄存器。例如，当`CPL=3`（用户模式），`ds`寄存器必须包含的是用户数据段的段选择器，但是当`CPL=0`（内核模式），`ds`寄存器必须包含的是内核数据段的段选择器，
+如前所述，CPU当前特权级别表示处理器是在用户态还是内核模式，其由存储在`cs`段寄存器中的段选择器中的`RPL`位域指定。无论什么时候CPL发生改变，都必须相应地更新段寄存器。例如，当`CPL=3`（用户态），`ds`寄存器必须包含的是用户数据段的段选择器，但是当`CPL=0`（内核模式），`ds`寄存器必须包含的是内核数据段的段选择器，
 
 A similar situation occurs for the `ss` register. It must refer to a User Mode stack inside the user data segment when the CPL is 3, and it must refer to a Kernel Mode stack inside the kernel data segment when the CPL is 0. When switching from User Mode to Kernel Mode, Linux always makes sure that the `ss` register contains the Segment Selector of the kernel data segment.
 
-`ss`寄存器的情况也差不多。当PCL=3时，它必须指向用户数据段中的用户模式的栈；当CPL=0时，它必须指向内核数据段中的内核模式的栈。当从用户模式切换到内核模式时，Linux总是保证`ss`寄存器保存的是内核数据段的段选择器。
+`ss`寄存器的情况也差不多。当PCL=3时，它必须指向用户数据段中的用户态的栈；当CPL=0时，它必须指向内核数据段中的内核模式的栈。当从用户态切换到内核模式时，Linux总是保证`ss`寄存器保存的是内核数据段的段选择器。
 
 When saving a pointer to an instruction or to a data structure, the kernel does not need to store the Segment Selector component of the logical address, because the `ss` register contains the current Segment Selector. As an example, when the kernel invokes a function, it executes a `call` assembly language instruction specifying just the Offset component of its logical address; the Segment Selector is implicitly selected as the one referred to by the `cs` register. Because there is just one segment of type “executable in Kernel Mode,” namely the code segment identified by `__KERNEL_CS`, it is sufficient to load `__KERNEL_CS` into `cs` whenever the CPU switches to Kernel Mode. The same argument goes for pointers to kernel data structures (implicitly using the `ds` register), as well as for pointers to user data structures (the kernel explicitly uses the `es` register).
 
@@ -1004,7 +1017,7 @@ The 18 segment descriptors included in each GDT point to the following segments:
 
 * A Task State Segment (TSS), different for each processor in the system. The linear address space corresponding to a TSS is a small subset of the linear address space corresponding to the kernel data segment. The Task State Segments are sequentially stored in the init_tss array; in particular, the Base field of the TSS descriptor for the nth CPU points to the nth component of the init_tss array. The G (granularity) flag is cleared, while the Limit field is set to 0xeb, because the TSS segment is 236 bytes long. The Type field is set to 9 or 11 (available 32-bit TSS), and the DPL is set to 0, because processes in User Mode are not allowed to access TSS segments. You will find details on how Linux uses TSSs in the section “Task State Segment” in Chapter 3.
 
-    任务状态段(TSS)，对于系统中的每个CPU都是不同的。TSS对应的线性地址空间仅仅是内核数据段对应的线性地址空间的一小部分。所有任务状态段(TSS)被连续地存储在init_tss寄存器中；第N个CPU的TSS描述符的Base位域指向init_tss数组的第N部分。G标志被置0，Limit位域被设置位0xeb，因为TSS段的大小就是236字节长；Type位域被设置为9或11（可用的32位TSS）；DPL被设置为0，因为用户模式的进程不允许访问TSS段。将会在第3章的[任务状态段](#3.3.2)一节中详细讲解Linux如何使用TSS。
+    任务状态段(TSS)，对于系统中的每个CPU都是不同的。TSS对应的线性地址空间仅仅是内核数据段对应的线性地址空间的一小部分。所有任务状态段(TSS)被连续地存储在init_tss寄存器中；第N个CPU的TSS描述符的Base位域指向init_tss数组的第N部分。G标志被置0，Limit位域被设置位0xeb，因为TSS段的大小就是236字节长；Type位域被设置为9或11（可用的32位TSS）；DPL被设置为0，因为用户态的进程不允许访问TSS段。将会在第3章的[任务状态段](#3.3.2)一节中详细讲解Linux如何使用TSS。
 
 * A segment including the default Local Descriptor Table (LDT), usually shared by all processes (see the next section).
     
@@ -1034,7 +1047,7 @@ As stated earlier, there is a copy of the GDT for each processor in the system. 
 
 Most Linux User Mode applications do not make use of a Local Descriptor Table, thus the kernel defines a default LDT to be shared by most processes. The default Local Descriptor Table is stored in the `default_ldt` array. It includes five entries, but only two of them are effectively used by the kernel: a call gate for iBCS executables, and a call gate for Solaris/x86 executables (see the section “Execution Domains” in Chapter 20). Call gates are a mechanism provided by 80×86 microprocessors to change the privilege level of the CPU while invoking a predefined function; as we won’t discuss them further, you should consult the Intel documentation for more details.
 
-许多用户模式程序不使用LDT，因而内核定义了一个默认LDT，供大多数进程共享。默认的LDT存储在default_ldt数组中。它包含5项，但是只有2项被内核有效使用：一个用于iBCS可执行文件的调用门，另一个用于Solaris/x86可执行文件的调用门（参见第20章的[执行域](#20.3)一节）。调用门是由x86处理器提供的一种机制，用于调用预定义函数的同时，改变CPU的特权级别。我们先不深入讨论，更多的细节可以参考Intel文档。
+许多用户态程序不使用LDT，因而内核定义了一个默认LDT，供大多数进程共享。默认的LDT存储在default_ldt数组中。它包含5项，但是只有2项被内核有效使用：一个用于iBCS可执行文件的调用门，另一个用于Solaris/x86可执行文件的调用门（参见第20章的[执行域](#20.3)一节）。调用门是由x86处理器提供的一种机制，用于调用预定义函数的同时，改变CPU的特权级别。我们先不深入讨论，更多的细节可以参考Intel文档。
 
 In some cases, however, processes may require to set up their own LDT. This turns out to be useful to applications (such as Wine) that execute segment-oriented Microsoft Windows applications. The `modify_ldt()` system call allows a process to do this.
 
@@ -1046,7 +1059,7 @@ Any custom LDT created by modify_ldt() also requires its own segment. When a pro
 
 User Mode applications also may allocate new segments by means of modify_ldt(); the kernel, however, never makes use of these segments, and it does not have to keep track of the corresponding Segment Descriptors, because they are included in the custom LDT of the process.
 
-用户模式程序也许会通过modify_ldt()分配新段；但是，内核绝不会利用这些段，也不会追踪这些段描述符，因为它们保存在进程的自定义LDT中。
+用户态程序也许会通过modify_ldt()分配新段；但是，内核绝不会利用这些段，也不会追踪这些段描述符，因为它们保存在进程的自定义LDT中。
 
 <h2 id="2.4">2.4 内存分页</h2>
 
@@ -1204,7 +1217,7 @@ The entries of Page Directories and Page Tables have the same structure. Each en
 
 <h3 id="2.4.5">2.4.5 物理地址扩展(PAE)分页机制</h3>
 
-处理器能够访问的RAM数量是受到总线宽度的影响的。从80386到奔腾系列，这些旧英特尔处理器都是使用32位物理地址。理论上，可以使用4GB的RAM；实际上，因为用户模式进程的线性地址要求，内核不能直接寻址超过1GB的RAM，比如，在32位系统上，页上层目录和页中层目录被消除了，这将在[Linux分页机制](#2.5)中提到。
+处理器能够访问的RAM数量是受到总线宽度的影响的。从80386到奔腾系列，这些旧英特尔处理器都是使用32位物理地址。理论上，可以使用4GB的RAM；实际上，因为用户态进程的线性地址要求，内核不能直接寻址超过1GB的RAM，比如，在32位系统上，页上层目录和页中层目录被消除了，这将在[Linux分页机制](#2.5)中提到。
 
 但是，大型服务器需要同时运行成千上万个进程，这往往要求RAM大于4GB。这就要求英特尔扩展32位80x86架构支持的RAM数量。
 
@@ -1648,7 +1661,7 @@ The linear address space of a process is divided into two parts:
 
 When a process runs in User Mode, it issues linear addresses smaller than 0xc0000000; when it runs in Kernel Mode, it is executing kernel code and the linear addresses issued are greater than or equal to 0xc0000000. In some cases, however, the kernel must access the User Mode linear address space to retrieve or store data.
 
-运行在用户模式的进程发出的线性地址小于0xc0000000，运行在内核模式的进程，执行内核代码，发出的线性地址大于0xc0000000。但是，有些情况下，内核可以访问用户模式的线性地址空间，以检索或者存储数据。
+运行在用户态的进程发出的线性地址小于0xc0000000，运行在内核模式的进程，执行内核代码，发出的线性地址大于0xc0000000。但是，有些情况下，内核可以访问用户态的线性地址空间，以检索或者存储数据。
 
 The `PAGE_OFFSET` macro yields the value 0xc0000000; this is the offset in the linear address space of a process where the kernel lives. In this book, we often refer directly to the number 0xc0000000 instead.
 
@@ -1656,7 +1669,9 @@ Linux源代码中使用宏PAGE_OFFSET=0xc0000000，这是内核所在进程的�
 
 The content of the first entries of the Page Global Directory that map linear addresses lower than 0xc0000000 (the first 768 entries with PAE disabled, or the first 3 entries with PAE enabled) depends on the specific process. Conversely, the remaining entries should be the same for all processes and equal to the corresponding entries of the master kernel Page Global Directory (see the following section).
 
-页全局目录中开头的项中映射的线性地址小于0xc0000000（PAE禁止时，是前768项；PAE使能时，是前3项），当然了，这跟具体的进程有关。也就是，运行在用户模式的进程，其全局页表的内容映射小于0xc0000000的地址空间。与此相反，全局页表中剩余的项，对于所有的进程都是一样的，等于相应的主内核页全局目录中的项（参考下一节）。
+页全局目录中开头的项中映射的线性地址小于0xc0000000（PAE禁止时，是前768项；PAE使能时，是前3项），当然了，这跟具体的进程有关。也就是，运行在用户态的进程，其全局页表的内容映射小于0xc0000000的地址空间。与此相反，全局页表中剩余的项，对于所有的进程都是一样的，等于相应的主内核页全局目录中的项（参考下一节）。
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h3 id="2.5.5">2.5.5 内核页表</h3>
 
@@ -1764,7 +1779,7 @@ swapper_pg_dir页全局目录重新初始化，代码片段如下：
 
 We assume that the CPU is a recent 80×86 microprocessor supporting 4 MB pages and “global” TLB entries. Notice that the User/Supervisor flags in all Page Global Directory entries referencing linear addresses above 0xc0000000 are cleared, thus denying processes in User Mode access to the kernel address space. Notice also that the Page Size flag is set so that the kernel can address the RAM by making use of large pages (see the section “Extended Paging” earlier in this chapter).
 
-我们假设CPU是最新的x86处理器，支持4M大小的页和全局的TLB项。引用大于0xc0000000的线性地址的所有页全局目录项中的User/Supervisor标志被清除，阻止用户模式的进程访问内核空间。还要注意，Page Size标志被设置，所以内核可以使用大页访问RAM（查看前面的扩展分页一节）。
+我们假设CPU是最新的x86处理器，支持4M大小的页和全局的TLB项。引用大于0xc0000000的线性地址的所有页全局目录项中的User/Supervisor标志被清除，阻止用户态的进程访问内核空间。还要注意，Page Size标志被设置，所以内核可以使用大页访问RAM（查看前面的扩展分页一节）。
 
 The identity mapping of the first megabytes of physical memory (8 MB in our example) built by the startup_32() function is required to complete the initialization phase of the kernel. When this mapping is no longer necessary, the kernel clears the corresponding page table entries by invoking the zap_low_mappings() function.
 
@@ -1981,91 +1996,322 @@ When a CPU receives an Interprocessor Interrupt related to TLB flushing and veri
 
 The concept of a process is fundamental to any multiprogramming operating system. A process is usually defined as an instance of a program in execution; thus, if 16 users are running vi at once, there are 16 separate processes (although they can share the same executable code). Processes are often called tasks or threads in the Linux source code.
 
+进程的概念是多任务操作系统的基础。一个进程通常是正在执行的程序的一个实例，比如说，如果16个用户同时运行vi编辑器，就会有16个独立的进程（尽管它们共享相同的可执行代码）。在Linux源代码中，进程经常被称为任务或线程。
+
 In this chapter, we discuss static properties of processes and then describe how process switching is performed by the kernel. The last two sections describe how processes can be created and destroyed. We also describe how Linux supports multithreaded applications—as mentioned in Chapter 1, it relies on so-called lightweight processes (LWP).
 
-<h2 id="1">3.1 进程、轻量级进程和线程</h2>
+在本章中，我们将讨论进程的静态属性，然后描述内核如何实施进程切换。最后两节描述进程的创建和销毁。我们还会描述Linux如何支持多线程程序，正如我们在第1章提到的，它依赖与所谓的轻进程（LWP）。
 
-The term “process” is often used with several different meanings. In this book, we
-stick to the usual OS textbook definition: a process is an instance of a program in
-execution. You might think of it as the collection of data structures that fully
-describes how far the execution of the program has progressed.
+<h2 id="3.1">3.1 进程、轻量级进程和线程</h2>
 
-Processes are like human beings: they are generated, they have a more or less significant
-life, they optionally generate one or more child processes, and eventually they
-die. A small difference is that sex is not really common among processes—each process
-has just one parent.
+The term “process” is often used with several different meanings. In this book, we stick to the usual OS textbook definition: a process is an instance of a program in execution. You might think of it as the collection of data structures that fully describes how far the execution of the program has progressed.
 
-From the kernel’s point of view, the purpose of a process is to act as an entity to
-which system resources (CPU time, memory, etc.) are allocated.
+术语"进程"经常被赋予不同的意义。在本书中，我们坚持操作系统教科书中的定义：进程时正在执行程序的实例。你可以认为进程就是一个数据结构的集合，完整地描述了程序执行的进度。
 
-When a process is created, it is almost identical to its parent. It receives a (logical)
-copy of the parent’s address space and executes the same code as the parent, beginning
-at the next instruction following the process creation system call. Although the
-parent and child may share the pages containing the program code (text), they have separate copies of the data (stack and heap), so that changes by the child to a memory
-location are invisible to the parent (and vice versa).
+> <font color="blue">补充：
+> 
+> 现代操作系统的概念中，进程就是线程的容器，线程是内核调度的最小执行单元。一个正在执行的程序可以有多个进程，而进程又可以有多个线程。线程的划分粒度更小，导致并发性更高。另外，进程可以拥有独立的内存单元，而线程共享内存，从而极大提高了程序的运行效率。
+> 
+> </font>
 
-While earlier Unix kernels employed this simple model, modern Unix systems do
-not. They support multithreaded applications—user programs having many relatively
-independent execution flows sharing a large portion of the application data
-structures. In such systems, a process is composed of several user threads (or simply
-threads), each of which represents an execution flow of the process. Nowadays, most
-multithreaded applications are written using standard sets of library functions called
-pthread (POSIX thread) libraries.
+Processes are like human beings: they are generated, they have a more or less significant life, they optionally generate one or more child processes, and eventually they die. A small difference is that sex is not really common among processes—each process has just one parent.
 
-Older versions of the Linux kernel offered no support for multithreaded applications.
-From the kernel point of view, a multithreaded application was just a normal process.
-The multiple execution flows of a multithreaded application were created, handled,
-and scheduled entirely in User Mode, usually by means of a POSIX-compliant
-pthread library.
+进程像极了人类：它们被创造，拥有一个或轻或重的人生，它们可以任意创建一个或多个子进程，最后死亡。一个细微的不同就是，进程没有性别之分，每个进程只有一个父进程。
 
-However, such an implementation of multithreaded applications is not very satisfactory.
-For instance, suppose a chess program uses two threads: one of them controls
-the graphical chessboard, waiting for the moves of the human player and showing
-the moves of the computer, while the other thread ponders the next move of the
-game. While the first thread waits for the human move, the second thread should
-run continuously, thus exploiting the thinking time of the human player. However, if
-the chess program is just a single process, the first thread cannot simply issue a
-blocking system call waiting for a user action; otherwise, the second thread is
-blocked as well. Instead, the first thread must employ sophisticated nonblocking
-techniques to ensure that the process remains runnable.
+From the kernel’s point of view, the purpose of a process is to act as an entity to which system resources (CPU time, memory, etc.) are allocated.
 
-Linux uses lightweight processes to offer better support for multithreaded applications.
-Basically, two lightweight processes may share some resources, like the address
-space, the open files, and so on. Whenever one of them modifies a shared resource,
-the other immediately sees the change. Of course, the two processes must synchronize
-themselves when accessing the shared resource.
+从内核的角度看，进程就是分配系统资源（CPU时间、内存等）的实体单元。
 
-A straightforward way to implement multithreaded applications is to associate a
-lightweight process with each thread. In this way, the threads can access the same set
-of application data structures by simply sharing the same memory address space, the
-same set of open files, and so on; at the same time, each thread can be scheduled
-independently by the kernel so that one may sleep while another remains runnable.
-Examples of POSIX-compliant pthread libraries that use Linux’s lightweight processes
-are LinuxThreads, Native POSIX Thread Library (NPTL), and IBM’s Next
-Generation Posix Threading Package (NGPT).
+When a process is created, it is almost identical to its parent. It receives a (logical) copy of the parent’s address space and executes the same code as the parent, beginning at the next instruction following the process creation system call. Although the parent and child may share the pages containing the program code (text), they have separate copies of the data (stack and heap), so that changes by the child to a memory location are invisible to the parent (and vice versa).
 
-POSIX-compliant multithreaded applications are best handled by kernels that support
-“thread groups.” In Linux a thread group is basically a set of lightweight processes
-that implement a multithreaded application and act as a whole with regards to
+当进程被创建时，几乎与父进程相同。它拷贝父进程的地址空间，执行与父进程一样的代码，从创建进程的系统调用的下一条指令开始执行。尽管父进程和子进程共享代码段，但是它们具有独立的数据拷贝（堆栈），以至于子进程修改内存的某个位置，对父进程是不可见的，等等。
 
-some system calls such as getpid(), kill(), and _exit(). We are going to describe
-them at length later in this chapter.
+While earlier Unix kernels employed this simple model, modern Unix systems do not. They support  multithreaded applications—user programs having many relatively independent execution flows sharing a large portion of the application data structures. In such systems, a process is composed of several user threads (or simply threads), each of which represents an execution flow of the process. Nowadays, most multithreaded applications are written using standard sets of library functions called pthread (POSIX thread) libraries.
 
-<h2 id="1">3.2 进程描述符</h2>
-<h2 id="1">3.3 进程切换</h2>
-<h2 id="1">3.4 创建进程</h2>
-<h2 id="1">3.5 销毁进程</h2>
+早期的Unix内核采用这种简单的模型，但是现代Unix系统已经不是了。它们支持多线程程序：用户程序具有许多相对独立的执行流，它们共享大部分的数据结构。在这样的系统中，进程由多个用户线程组成（或单线程），每个线程代表进程的一个执行流。现在，大多数多线程程序都是使用标准线程库（POSIX-thread）的库函数编写的。
+
+Older versions of the Linux kernel offered no support for multithreaded applications. From the kernel point of view, a multithreaded application was just a normal process. The multiple execution flows of a multithreaded application were created, handled, and scheduled entirely in User Mode, usually by means of a POSIX-compliant pthread library.
+
+旧版本的Linux内核不支持多线程程序。它们认为，从内核的角度看，一个多线程程序就是一个普通的进程。完全可以通过使用与POSIX兼容的pthread库，实现在用户态下创建，处理和调度多线程程序的多个执行流。
+
+However, such an implementation of multithreaded applications is not very satisfactory. For instance, suppose a chess program uses two threads: one of them controls the graphical chessboard, waiting for the moves of the human player and showing the moves of the computer, while the other thread ponders the next move of the game. While the first thread waits for the human move, the second thread should run continuously, thus exploiting the thinking time of the human player. However, if the chess program is just a single process, the first thread cannot simply issue a blocking system call waiting for a user action; otherwise, the second thread is blocked as well. Instead, the first thread must employ sophisticated nonblocking techniques to ensure that the process remains runnable.
+
+但是，这样的多线程程序实现不是很令人满意。比如，假设一个国际象棋游戏程序，使用2个线程：其中的一个线程控制棋盘，等待用户的动作并显示计算机的动作，而另一个线程思考游戏的下一步动作。当第一个线程等待人类用户的动作时，第二个线程还应该继续运行，从而充分利用人类选手的思考时间。但是，如果象棋游戏程序就是一个单进程程序的话，第一个线程不能简单地发出一个阻塞系统调用等待用户动作；否则，第二个线程也被阻塞。除非第一个线程必须采用复杂的非阻塞技术才能保证进程继续运行。
+
+Linux uses lightweight processes to offer better support for multithreaded applications. Basically, two lightweight processes may share some resources, like the address space, the open files, and so on. Whenever one of them modifies a shared resource, the other immediately sees the change. Of course, the two processes must synchronize themselves when accessing the shared resource.
+
+Linux采用轻进程（LWP）的方法提供更好的多线程程序支持。大体上，两个轻进程共享某些资源，像地址空间，打开的文件等等。当一个轻进程修改了某个共享资源，另一个立即能看到变化。当然了，两个轻进程必须在访问共享资源的时候实现同步。
+
+A straightforward way to implement multithreaded applications is to associate a lightweight process with each thread. In this way, the threads can access the same set of application data structures by simply sharing the same memory address space, the same set of open files, and so on; at the same time, each thread can be scheduled independently by the kernel so that one may sleep while another remains runnable. Examples of POSIX-compliant pthread libraries that use Linux’s lightweight processes are LinuxThreads, Native POSIX Thread Library (NPTL), and IBM’s Next Generation Posix Threading Package (NGPT).
+
+实现多线程程序的最直接方式就是将一个轻进程和一个线程关联起来。这种方法，线程们通过共享相同的资源，比如，内存地址空间，打开的文件等，能够访问相同的应用程序的数据结构。同时，每一个线程可以被内核独立调度，这样，当一个线程休眠的时候，另一个仍然可以运行。使用了Linux轻进程技术并与POSIX兼容的pthread库的例子有LinuxThreads、Native POSIX Thread Library (NPTL)和IBM的下一代Posix线程包（NGPT）。
+
+POSIX-compliant multithreaded applications are best handled by kernels that support “thread groups.” In Linux a thread group is basically a set of lightweight processes that implement a multithreaded application and act as a whole with regards to some system calls such as getpid(), kill(), and _exit(). We are going to describe them at length later in this chapter.
+
+与POSIX兼容的多线程程序最好是由支持`线程组`的内核处理。Linux中，线程组基本上是由一组轻进程（LWP）组成的，他们实现一个多线程程序，并作为一个整体，处理一些系统调用诸如getpid()、kill()和_exit()。在本章的后面我们将描述它们。
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
-<h1 id="2">4 中断和异常</h1>
-<h2 id="1">4.1 中断信号的角色</h2>
-<h2 id="1">4.2 中断和异常</h2>
-<h2 id="1">4.3 嵌套中断和异常</h2>
-<h2 id="1">4.4 初始化中断描述符表</h2>
-<h2 id="1">4.5 异常处理</h2>
-<h2 id="1">4.6 中断处理</h2>
-<h2 id="1">4.7 软件中断和Tasklet</h2>
-<h2 id="1">4.8 工作队列</h2>
-<h2 id="1">4.9 中断和异常的返回</h2>
+
+<h2 id="3.2">3.2 进程描述符</h2>
+
+To manage processes, the kernel must have a clear picture of what each process is doing. It must know, for instance, the process’s priority, whether it is running on a CPU or blocked on an event, what address space has been assigned to it, which files it is allowed to address, and so on. This is the role of the process descriptor—a task_struct type structure whose fields contain all the information related to a single process.* As the repository of so much information, the process descriptor is rather complex. In addition to a large number of fields containing process attributes, the process descriptor contains several pointers to other data structures that, in turn, contain pointers to other structures. Figure 3-1 describes the Linux process descriptor schematically.
+
+为了管理进程，内核必须清楚的知道每个进程在做什么。比如，进程优先级，正在CPU上运行还是阻塞在某个事件上，分配给它的进程地址空间，允许访问的文件等等。对于这些，内核使用进程描述符记录这一切，数据结构是task_struct，在这个结构中，包含单个进程的所有信息。包含了这么多信息，进程描述符相当复杂。除了大量包含进程属性的成员之外，还包含了几个指向其它数据结构的指针，进一步，这些其它数据结构又包含指向更多数据结构的指针。图3-1概要性地描述了Linux进程描述符。
+
+The six data structures on the right side of the figure refer to specific resources owned by the process. Most of these resources will be covered in future chapters. This chapter focuses on two types of fields that refer to the process state and to process parent/child relationships.
+
+图中右边的6个数据结构都是进程拥有的具体资源。这些资源的大部分会在后面的章节中覆盖到。本章主要关注两部分，分别是进程状态和父、子进程的关系。
+
+<img id="Figure_3-1" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_1.PNG">
+
+图3-1 Linux进程描述符示意图
+
+<h3 id="3.2.1">3.2.1 进程状态</h3>
+
+As its name implies, the state field of the process descriptor describes what is currently happening to the process. It consists of an array of flags, each of which describes a possible process state. In the current Linux version, these states are mutually exclusive, and hence exactly one flag of state always is set; the remaining flags are cleared. The following are the possible process states:
+
+1. TASK_RUNNING-运行态
+    
+    The process is either executing on a CPU or waiting to be executed.
+
+2. TASK_INTERRUPTIBLE-阻塞态（可中断）
+    
+    The process is suspended (sleeping) until some condition becomes true. Raising a hardware interrupt, releasing a system resource the process is waiting for, or delivering a signal are examples of conditions that might wake up the process (put its state back to TASK_RUNNING).
+
+
+3. TASK_UNINTERRUPTIBLE-阻塞态（不可中断）
+
+    Like TASK_INTERRUPTIBLE, except that delivering a signal to the sleeping process leaves its state unchanged. This process state is seldom used. It is valuable, however, under certain specific conditions in which a process must wait until a given event occurs without being interrupted. For instance, this state may be used when a process opens a device file and the corresponding device driver starts probing for a corresponding hardware device. The device driver must not be interrupted until the probing is complete, or the hardware device could be left in an unpredictable state.
+
+4. TASK_STOPPED-终止态（不可中断）
+    
+    Process execution has been stopped; the process enters this state after receiving a SIGSTOP, SIGTSTP, SIGTTIN, or SIGTTOU signal.
+
+5. TASK_TRACED-跟踪态
+    
+    Process execution has been stopped by a debugger. When a process is being monitored by another (such as when a debugger executes a ptrace() system call to monitor a test program), each signal may put the process in the TASK_TRACED state. 
+
+Two additional states of the process can be stored both in the `state` field and in the `exit_state` field of the process descriptor; as the field name suggests, a process reaches one of these two states only when its execution is terminated:
+
+其实，进程还有2个状态，分别存储在进程描述符的state和exit_state两个成员中；它们都是进程终止后的状态：
+
+1. EXIT_ZOMBIE
+
+    Process execution is terminated, but the parent process has not yet issued a `wait4()` or `waitpid()` system call to return information about the dead process.* Before the wait()-like call is issued, the kernel cannot discard the data contained in the dead process descriptor because the parent might need it. (See the section “Process Removal” near the end of this chapter.)
+
+    僵尸进程标志。进程执行中止，但是父进程还没有发起wait4()或waitpid()系统调用返回关于这个死亡进程的信息。在收到信息之前，内核不能抛弃这个死亡进程描述符中的数据，因为父进程可能还需要。（参见本章最后的[移除进程](#3.5.2)一节）
+
+2. EXIT_DEAD
+
+    The final state: the process is being removed by the system because the parent process has just issued a `wait4()` or `waitpid()` system call for it. Changing its state from EXIT_ZOMBIE to EXIT_DEAD avoids race conditions due to other threads of execution that execute wait()-like calls on the same process (see Chapter 5).
+
+    死亡进程标志。父进程已经发出wait4()或waitpid()系统调用，进程将要被移除。将进程的状态从EXIT_ZOMBIE更改为EXIT_DEAD可以避免竞态条件，因为其他执行的线程也可能给相同的线程发送wait()类似的调用。（见[第5章](#5)）
+
+The value of the `state` field is usually set with a simple assignment. For instance:
+
+改变state的值非常简单，如下所示：
+
+    p->state = TASK_RUNNING;
+
+The kernel also uses the `set_task_state` and `set_current_state` macros: they set the state of a specified process and of the process currently executed, respectively. Moreover, these macros ensure that the assignment operation is not mixed with other instructions by the compiler or the CPU control unit. Mixing the instruction order may sometimes lead to catastrophic results (see Chapter 5).
+
+另外，内核还提供了两个宏set_task_state和set_current_state：分别设定一个指定的进程和当前正在执行的进程。更重要的是，这些宏保证编译器或CPU控制单元，不会将赋值操作和其它指令混合。有时候，混合的指令序会导致灾难性的后果（见[第5章](#5)）。
+
+<h3 id="3.2.2">3.2.2 识别进程</h3>
+
+As a general rule, each execution context that can be independently scheduled must have its own process descriptor; therefore, even lightweight processes, which share a large portion of their kernel data structures, have their own `task_struct` structures.
+
+作为通用规则，每一个可以被独立调度的执行上下文都必须具有自己的进程描述符。因此，即使共享大部分的内核数据结构的轻进程，也都有自己的task_struct结构。
+
+The strict one-to-one correspondence between the process and process descriptor makes the 32-bit address† of the `task_struct` structure a useful means for the kernel to identify processes. These addresses are referred to as process descriptor pointers. Most of the references to processes that the kernel makes are through process descriptor pointers.
+
+On the other hand, Unix-like operating systems allow users to identify processes by means of a number called the Process ID (or PID), which is stored in the `pid` field of the process descriptor. PIDs are numbered sequentially: the PID of a newly created process is normally the PID of the previously created process increased by one. Of course, there is an upper limit on the PID values; when the kernel reaches such limit, it must start recycling the lower, unused PIDs. By default, the maximum PID number is 32,767 (PID_MAX_DEFAULT - 1); the system administrator may reduce this limit by writing a smaller value into the `/proc/sys/kernel/pid_max` file (`/proc` is the mount point of a special filesystem, see the section “Special Filesystems” in Chapter 12). In 64-bit architectures, the system administrator can enlarge the maximum PID number up to 4,194,303.
+
+When recycling PID numbers, the kernel must manage a `pidmap_array` bitmap that denotes which are the PIDs currently assigned and which are the free ones. Because a page frame contains 32,768 bits, in 32-bit architectures the `pidmap_array` bitmap is stored in a single page. In 64-bit architectures, however, additional pages can be added to the bitmap when the kernel assigns a PID number too large for the current bitmap size. These pages are never released.
+
+Linux associates a different PID with each process or lightweight process in the system. (As we shall see later in this chapter, there is a tiny exception on multiprocessor systems.) This approach allows the maximum flexibility, because every execution context in the system can be uniquely identified.
+
+On the other hand, Unix programmers expect threads in the same group to have a common PID. For instance, it should be possible to a send a signal specifying a PID that affects all threads in the group. In fact, the POSIX 1003.1c standard states that all threads of a multithreaded application must have the same PID.
+
+To comply with this standard, Linux makes use of thread groups. The identifier shared by the threads is the PID of the thread group leader, that is, the PID of the first lightweight process in the group; it is stored in the tgid field of the process descriptors. The getpid() system call returns the value of tgid relative to the current process instead of the value of pid, so all the threads of a multithreaded application share the same identifier. Most processes belong to a thread group consisting of a single member; as thread group leaders, they have the tgid field equal to the pid field, thus the getpid() system call works as usual for this kind of process.
+
+Later, we’ll show you how it is possible to derive a true process descriptor pointer efficiently from its respective PID. Efficiency is important because many system calls such as kill() use the PID to denote the affected process.
+
+<h4 id="3.2.2.1">3.2.2.1 处理进程描述符</h4>
+
+Processes are dynamic entities whose lifetimes range from a few milliseconds to months. Thus, the kernel must be able to handle many processes at the same time, and process descriptors are stored in dynamic memory rather than in the memory area permanently assigned to the kernel. For each process, Linux packs two different data structures in a single per-process memory area: a small data structure linked to the process descriptor, namely the thread_info structure, and the Kernel Mode process stack. The length of this memory area is usually 8,192 bytes (two page frames). For reasons of efficiency the kernel stores the 8-KB memory area in two consecutive page frames with the first page frame aligned to a multiple of 213; this may turn out to be a problem when little dynamic memory is available, because the free memory may become highly fragmented (see the section “The Buddy System Algorithm” in Chapter 8). Therefore, in the 80×86 architecture the kernel can be configured at compilation time so that the memory area including stack and thread_info structure spans a single page frame (4,096 bytes).
+
+In the section “Segmentation in Linux” in Chapter 2, we learned that a process in Kernel Mode accesses a stack contained in the kernel data segment, which is different from the stack used by the process in User Mode. Because kernel control paths make little use of the stack, only a few thousand bytes of kernel stack are required. Therefore, 8 KB is ample space for the stack and the `thread_info` structure. However, when stack and `thread_info` structure are contained in a single page frame, the kernel uses a few additional stacks to avoid the overflows caused by deeply nested interrupts and exceptions (see Chapter 4).
+
+Figure 3-2 shows how the two data structures are stored in the 2-page (8 KB) memory area. The `thread_info` structure resides at the beginning of the memory area, and the stack grows downward from the end. The figure also shows that the `thread_info` structure and the `task_struct` structure are mutually linked by means of the fields task and `thread_info`, respectively.
+
+<img id="Figure_3-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_2.PNG">
+
+图3-2 Storing the `thread_info` structure and the process kernel stack in two page frames
+
+The esp register is the CPU stack pointer, which is used to address the stack’s top location. On 80×86 systems, the stack starts at the end and grows toward the beginning of the memory area. Right after switching from User Mode to Kernel Mode, the kernel stack of a process is always empty, and therefore the esp register points to the byte immediately following the stack.
+
+The value of the esp is decreased as soon as data is written into the stack. Because the `thread_info` structure is 52 bytes long, the kernel stack can expand up to 8,140 bytes.
+
+The C language allows the `thread_info` structure and the kernel stack of a process to be conveniently represented by means of the following union construct:
+
+    union thread_union {
+        struct thread_info thread_info;
+        unsigned long stack[2048];          /* 1024 for 4KB stacks */
+    };
+
+The `thread_info` structure shown in Figure 3-2 is stored starting at address 0x015fa000, and the stack is stored starting at address 0x015fc000. The value of the esp register points to the current top of the stack at 0x015fa878.
+
+The kernel uses the `alloc_thread_info` and `free_thread_info` macros to allocate and release the memory area storing a `thread_info` structure and a kernel stack.
+
+<h4 id="3.2.2.2">3.2.2.2 识别当前进程</h4>
+
+The close association between the `thread_info` structure and the Kernel Mode stack just described offers a key benefit in terms of efficiency: the kernel can easily obtain the address of the `thread_info` structure of the process currently running on a CPU from the value of the esp register. In fact, if the thread_union structure is 8 KB (2^13 bytes) long, the kernel masks out the 13 least significant bits of esp to obtain the base address of the `thread_info` structure; on the other hand, if the thread_union structure is 4 KB long, the kernel masks out the 12 least significant bits of esp. This is done by the current_thread_info() function, which produces assembly language instructions like the following:
+
+    movl $0xffffe000,%ecx /* or 0xfffff000 for 4KB stacks */
+    andl %esp,%ecx
+    movl %ecx,p
+
+After executing these three instructions, p contains the thread_info structure pointer of the process running on the CPU that executes the instruction.
+
+Most often the kernel needs the address of the process descriptor rather than the address of the thread_info structure. To get the process descriptor pointer of the process currently running on a CPU, the kernel makes use of the current macro,
+
+which is essentially equivalent to `current_thread_info()->task` and produces assembly language instructions like the following:
+
+    movl $0xffffe000,%ecx /* or 0xfffff000 for 4KB stacks */
+    andl %esp,%ecx
+    movl (%ecx),p
+
+Because the task field is at offset 0 in the thread_info structure, after executing these three instructions p contains the process descriptor pointer of the process running on the CPU.
+
+The current macro often appears in kernel code as a prefix to fields of the process descriptor. For example, current->pid returns the process ID of the process currently running on the CPU.
+
+Another advantage of storing the process descriptor with the stack emerges on multiprocessor systems: the correct current process for each hardware processor can be derived just by checking the stack, as shown previously. Earlier versions of Linux did not store the kernel stack and the process descriptor together. Instead, they were forced to introduce a global static variable called current to identify the process descriptor of the running process. On multiprocessor systems, it was necessary to define current as an array—one element for each available CPU.
+
+<h4 id="3.2.2.3">3.2.2.3 双向链表</h4>
+
+Before moving on and describing how the kernel keeps track of the various processes in the system, we would like to emphasize the role of special data structures that implement doubly linked lists.
+
+For each list, a set of primitive operations must be implemented: initializing the list, inserting and deleting an element, scanning the list, and so on. It would be both a waste of programmers’ efforts and a waste of memory to replicate the primitive operations for each different list.
+
+Therefore, the Linux kernel defines the `list_head` data structure, whose only fields next and prev represent the forward and back pointers of a generic doubly linked list element, respectively. It is important to note, however, that the pointers in a `list_head` field store the addresses of other `list_head` fields rather than the addresses of the whole data structures in which the `list_head` structure is included; see Figure 3-3 (a).
+
+A new list is created by using the `LIST_HEAD`(list_name) macro. It declares a new variable named list_name of type `list_head`, which is a dummy first element that acts as a placeholder for the head of the new list, and initializes the prev and next fields of the `list_head` data structure so as to point to the list_name variable itself; see Figure 3-3 (b).
+
+<img id="Figure_3-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_3.PNG">
+
+图3-3 Doubly linked lists built with `list_head` data structures
+
+Several functions and macros implement the primitives, including those shown in Table 3-1.
+
+Table 3-1. List handling functions and macros
+
+<img id="Figure_3_1_T" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_1_T.PNG">
+
+The Linux kernel 2.6 sports another kind of doubly linked list, which mainly differs from a `list_head` list because it is not circular; it is mainly used for hash tables, where space is important, and finding the the last element in constant time is not. The list head is stored in an hlist_head data structure, which is simply a pointer to the first element in the list (NULL if the list is empty). Each element is represented by an hlist_node data structure, which includes a pointer next to the next element, and a pointer pprev to the next field of the previous element. Because the list is not circular, the pprev field of the first element and the next field of the last element are set to NULL. The list can be handled by means of several helper functions and macros similar to those listed in Table 3-1: hlist_add_head(), hlist_del(), hlist_empty(), hlist_entry, hlist_for_each_entry, and so on.
+
+
+
+<h4 id="3.2.2.4">3.2.2.4 进程列表</h4>
+
+The first example of a doubly linked list we will examine is the process list, a list that links together all existing process descriptors. Each task_struct structure includes a tasks field of type `list_head` whose prev and next fields point, respectively, to the previous and to the next task_struct element.
+
+The head of the process list is the init_task task_struct descriptor; it is the process descriptor of the so-called process 0 or swapper (see the section “Kernel Threads” later in this chapter). The tasks->prev field of init_task points to the tasks field of the process descriptor inserted last in the list.
+
+The SET_LINKS and REMOVE_LINKS macros are used to insert and to remove a process descriptor in the process list, respectively. These macros also take care of the parenthood relationship of the process (see the section “How Processes Are Organized” later in this chapter).
+
+Another useful macro, called for_each_process, scans the whole process list. It is defined as:
+
+    #define for_each_process(p) \
+        for (p=&init_task; (p=list_entry((p)->tasks.next, \
+                                struct task_struct, tasks) \
+                                ) != &init_task; )
+
+The macro is the loop control statement after which the kernel programmer supplies the loop. Notice how the init_task process descriptor just plays the role of list header. The macro starts by moving past init_task to the next task and continues until it reaches init_task again (thanks to the circularity of the list). At each iteration, the variable passed as the argument of the macro contains the address of the currently scanned process descriptor, as returned by the list_entry macro.
+
+<h4 id="3.2.2.5">3.2.2.5 运行态进程列表</h4>
+
+When looking for a new process to run on a CPU, the kernel has to consider only the runnable processes (that is, the processes in the TASK_RUNNING state). 
+
+Earlier Linux versions put all runnable processes in the same list called runqueue. Because it would be too costly to maintain the list ordered according to process priorities, the earlier schedulers were compelled to scan the whole list in order to select the “best” runnable process.
+
+Linux 2.6 implements the runqueue differently. The aim is to allow the scheduler to select the best runnable process in constant time, independently of the number of runnable processes. We’ll defer to Chapter 7 a detailed description of this new kind of runqueue, and we’ll provide here only some basic information.
+
+The trick used to achieve the scheduler speedup consists of splitting the runqueue in many lists of runnable processes, one list per process priority. Each task_struct descriptor includes a run_list field of type list_head. If the process priority is equal to k (a value ranging between 0 and 139), the run_list field links the process descriptor into the list of runnable processes having priority k. Furthermore, on a multiprocessor system, each CPU has its own runqueue, that is, its own set of lists of processes. This is a classic example of making a data structures more complex to improve performance: to make scheduler operations more efficient, the runqueue list has been split into 140 different lists!
+
+As we’ll see, the kernel must preserve a lot of data for every runqueue in the system; however, the main data structures of a runqueue are the lists of process descriptors belonging to the runqueue; all these lists are implemented by a single `prio_array_t` data structure, whose fields are shown in Table 3-2.
+
+Table 3-2. The fields of the `prio_array_t` data structure
+
+<img id="Figure_3_2_T" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_2_T.PNG">
+
+The enqueue_task(p,array) function inserts a process descriptor into a runqueue list; its code is essentially equivalent to:
+
+    list_add_tail(&p->run_list, &array->queue[p->prio]);
+    __set_bit(p->prio, array->bitmap);
+    array->nr_active++;
+    p->array = array;
+
+The prio field of the process descriptor stores the dynamic priority of the process, while the array field is a pointer to the `prio_array_t` data structure of its current runqueue. Similarly, the `dequeue_task(p,array)` function removes a process descriptor from a runqueue list.
+
+
+
+<h3 id="3.2.3">3.2.3 进程之间关系</h3>
+<h4 id="3.2.3.1">3.2.3.1 pidhash表和chained列表</h4>
+<h3 id="3.2.4">3.2.4 如何组织进程</h3>
+<h4 id="3.2.4.1">3.2.4.1 等待队列</h4>
+<h4 id="3.2.4.2">3.2.4.2 处理等待队列</h4>
+<h3 id="3.2.5">3.2.5 进程资源限制</h3>
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
+<h2 id="3.3">3.3 进程切换</h2>
+<h3 id="3.3.1">3.3.1 硬件上下文</h3>
+<h3 id="3.3.2">3.3.2 进程状态段</h3>
+<h4 id="3.3.2.1">3.3.2.1 线程域</h4>
+<h3 id="3.3.3">3.3.3 执行进程切换</h3>
+<h4 id="3.3.3.1">3.3.3.1 switch_to宏</h4>
+<h4 id="3.3.3.1">3.3.3.1 __switch_to()函数</h4>
+<h3 id="3.3.4">3.3.4 保存和加载FPU、MMX和XMM寄存器</h3>
+<h4 id="3.3.4.1">3.3.4.1 保存FPU寄存器</h4>
+<h4 id="3.3.4.2">3.3.4.2 加载FPU寄存器</h4>
+<h4 id="3.3.4.3">3.3.4.3 在内核中使用FPU、MMX和SSE/SSE2单元</h4>
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
+<h2 id="3.4">3.4 创建进程</h2>
+
+<h3 id="3.4.1">3.4.1 clone()、fork()和vfork()系统调用</h3>
+<h4 id="3.4.1.1">3.4.1.1 do_fork()函数</h4>
+<h4 id="3.4.1.2">3.4.1.2 copy_process()函数</h4>
+
+<h3 id="3.4.2">3.4.2 内核线程</h3>
+<h4 id="3.4.2.1">3.4.2.1 创建内核线程</h4>
+<h4 id="3.4.2.2">3.4.2.2 进程0</h4>
+<h4 id="3.4.2.3">3.4.2.3 进程1</h4>
+<h4 id="3.4.2.4">3.4.2.4 其它内核线程</h4>
+
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
+<h2 id="3.5">3.5 销毁进程</h2>
+<h3 id="3.5.1">3.5.1 终止进程</h3>
+<h4 id="3.5.1.1">3.5.1.1 do_group_exit()</h4>
+<h4 id="3.5.1.2">3.5.1.2 do_exit()</h4>
+<h3 id="3.5.2">3.5.2 移除进程</h3>
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
+<h1 id="4">4 中断和异常</h1>
+<h2 id="4.1">4.1 中断信号的角色</h2>
+<h2 id="4.2">4.2 中断和异常</h2>
+<h2 id="4.3">4.3 嵌套中断和异常</h2>
+<h2 id="4.4">4.4 初始化中断描述符表</h2>
+<h2 id="4.5">4.5 异常处理</h2>
+<h2 id="4.6">4.6 中断处理</h2>
+<h2 id="4.7">4.7 软件中断和Tasklet</h2>
+<h2 id="4.8">4.8 工作队列</h2>
+<h2 id="4.9">4.9 中断和异常的返回</h2>
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 <h1 id="2">5 内核同步</h1>
 <h2 id="1">5.1 内核服务如何请求</h2>
