@@ -9,6 +9,8 @@
     - [3.2 第2步：创建工程](#3.2)
         + [3.2.1 工程向导](#3.2.1)
     - [3.6 第6步：生成包](#3.6)
+        + [3.6.1 基础知识](#3.6.1)
+        + [3.6.2 执行生成过程](#3.6.2)
 
 
 ***
@@ -117,9 +119,60 @@ Eclipse菜单中，选择`Window`->`Preferences`就会出现上面的配置界�
     * **List of communication profile support files (*)**
     * **Product URI (for FDI Communication Packages only)**
 
+<h2 id="3.3">3.3 第3步：使用Eclipse中的FDI包工程</h2>
+
+<h3 id="3.3.3">3.3.3 更改工程配置</h3>
+
+按照工程向导创建时，已经写入大部分的工程信息。但是，有时候我们可能会中途更改一下工程信息。比如，添加附加设备类型、附加附件等等。
+
+1. 打开FDI工程编辑器
+    
+    展开eclipse左侧的`Navigator`视图，展开工程。双击`fdi.project`工程文件。`FDI Project Editor`的对话框就会出现在eclipse中心的工作区。
+
+2. 编辑FDI包信息
+
+    FDI工程编辑器提供了两个Tab页供编辑，分别是`FDI Package`和`Device Types`。（其中，`FDI Package`中的`Package Type`和`Package Id`不可修改，写保护）
+
+    结合实际情况进行修改即可。
+
+    <img id="Pic_3_3_3_1" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/Industrial_field_bus/FDI/images/FDI_IDE_USER_GUIDE_3_3_3_1.PNG">
+
+3. 编辑设备类型
+ 
+    技术是有可能在一个FDI包中描述多个设备类型的。每个设备类型都要求一个单独的编译过的二进制EDD文件。
+
+    > FDI技术允许在一个FDI包中描述多个设备类型，但是，在当前版本中，还不支持。因此，一个FDI包只能包含一个设备类型。
+
+    `Device Types`Tab页中的信息，来源于向导创建过程中的`Device Type Interface Information`、`Device Type EDD Information`和`Documents and supported UIPs of the Device Type`。<font color="blue"> 唯一没有给出的信息就是编译后的EDD文件。</font>
+
+    选择`Encoded EDD`：将其指向我们编译EDD中生成的二进制EDD文件的位置即可。一般是`C:\HCF\DDL\Library\000037\371b\0133.fma`。
+
+    > <font color="red">如果不选择对应的编译后的文件，生成包会失败。</font>
+
+    <img id="Pic_3_3_3_2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/Industrial_field_bus/FDI/images/FDI_IDE_USER_GUIDE_3_3_3_2.PNG">
+
 <h2 id="3.5">3.5 第5步：编译EDD</h2>
 
 <h3 id="3.5.1">3.5.1 基础</h3>
 
+EDDL代码必须经过编译，才能被FDI包使用。Tokenizer是其编译器，将其编译成二进制文件。
+
+<h3 id="3.5.2">3.5.2 调用tokenizer</h3>
+
+1. 将工程`Navigator`视图中的`Ant-Script XML`类型文件，拖拽到右下角的`Ant`执行环境中。
+
+2. 展开`Ant-Script`展开后，会看到已经将FDI包的作成步骤按照序号编好了。第1步就是`Tokenize`，执行编译。
+
+3. 双击对应的项，执行操作。
+
+4. 结果会在Console控制台输出。
+
+<h3 id="3.5.3">3.5.3 添加二进制EDD文件到工程中</h3>
+
+打开FDI工程编辑器，将编译后的二进制EDD文件路径添加到相应的项即可。具体参考[第3.3.3节](#3.3.3)。
 
 <h2 id="3.6">3.6 第6步：生成包</h2>
+
+双击Ant脚本执行环境中的第2步，创建包即可。
+
+
