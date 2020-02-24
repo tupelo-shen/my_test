@@ -2125,58 +2125,124 @@ As a general rule, each execution context that can be independently scheduled mu
 
 The strict one-to-one correspondence between the process and process descriptor makes the 32-bit address† of the `task_struct` structure a useful means for the kernel to identify processes. These addresses are referred to as process descriptor pointers. Most of the references to processes that the kernel makes are through process descriptor pointers.
 
+因为进程和进程描述符之间严格遵循一对一原则，所以，可以使用task_struct结构体的32位地址作为标识进程的有用手段。这些地址被称为进程描述符指针。内核对进程的大多数引用都是通过进程描述符指针实现的。
+
 On the other hand, Unix-like operating systems allow users to identify processes by means of a number called the Process ID (or PID), which is stored in the `pid` field of the process descriptor. PIDs are numbered sequentially: the PID of a newly created process is normally the PID of the previously created process increased by one. Of course, there is an upper limit on the PID values; when the kernel reaches such limit, it must start recycling the lower, unused PIDs. By default, the maximum PID number is 32,767 (PID_MAX_DEFAULT - 1); the system administrator may reduce this limit by writing a smaller value into the `/proc/sys/kernel/pid_max` file (`/proc` is the mount point of a special filesystem, see the section “Special Filesystems” in Chapter 12). In 64-bit architectures, the system administrator can enlarge the maximum PID number up to 4,194,303.
+
+另一方面，类Unix操作系统提供了进程ID（PID）作为标识进程的一种手段，其存储在进程描述符的pid成员中。PID按顺序编号：新创建的进程ID通常是在前一个PID的基础上加1得到的结果。当然了，PID值有上限，当内核达到这个上限，它会回滚，重用未使用的PID号。默认情况下，PID的最大值是32767（PID_MAX_DEFAULT-1）；系统管理员可以减小这个值，方法就是写一个较小的值到/proc/sys/kernel/pid_max文件中（/proc是一个特殊文件系统挂载点，可以查看[第12章的特殊文件系统](12.3.1)一节）；在64位系统中，可以把这个值扩大到4194303。
 
 When recycling PID numbers, the kernel must manage a `pidmap_array` bitmap that denotes which are the PIDs currently assigned and which are the free ones. Because a page frame contains 32,768 bits, in 32-bit architectures the `pidmap_array` bitmap is stored in a single page. In 64-bit architectures, however, additional pages can be added to the bitmap when the kernel assigns a PID number too large for the current bitmap size. These pages are never released.
 
+为了重新回收利用PID号，内核必须知道哪些PID被使用，哪些是空闲的，它是通过一个pidmap_array的位图结构进行管理的。因为一个页帧刚好包含32768位，所以在32位架构里，pidmap_array位图被存储在一个单页中。在64位架构中，会添加额外的页到位图中，这样就可以保存更多的PID号。这些页永远不会被释放。
+
 Linux associates a different PID with each process or lightweight process in the system. (As we shall see later in this chapter, there is a tiny exception on multiprocessor systems.) This approach allows the maximum flexibility, because every execution context in the system can be uniquely identified.
+
+Linux为每一个进程或轻进程关联一个不同的PID（在本章的后面，我们可以多处理器系统中有细微的差异）。这种方法带来了最大程度的灵活性，因为系统中每一个执行上下文都可以被唯一标识。
 
 On the other hand, Unix programmers expect threads in the same group to have a common PID. For instance, it should be possible to a send a signal specifying a PID that affects all threads in the group. In fact, the POSIX 1003.1c standard states that all threads of a multithreaded application must have the same PID.
 
+另一方面，Unix编程者可能期望一组线程具有共同的PID。比如，它可能发送信号给指定的PID，而这个PID能够影响组内所有的线程。事实上，POSIX 1003.1c标准声明，多线程程序中的所有线程具有相同的PID。
+
 To comply with this standard, Linux makes use of thread groups. The identifier shared by the threads is the PID of the thread group leader, that is, the PID of the first lightweight process in the group; it is stored in the tgid field of the process descriptors. The getpid() system call returns the value of tgid relative to the current process instead of the value of pid, so all the threads of a multithreaded application share the same identifier. Most processes belong to a thread group consisting of a single member; as thread group leaders, they have the tgid field equal to the pid field, thus the getpid() system call works as usual for this kind of process.
+
+为了遵循这个标准，Linux使用了线程组的概念。所有线程共享的标识符是线程组组长的PID，也就是组内第一个轻进程的PID。它被存储在进程描述符tgid成员中。getpid()系统调用返回当前进程的tgid值而不是pid的值，所以，多线程程序中的所有线程共享同一个标识符。大部分进程属于单个线程构成的线程组；作为线程组的组长，它们的tgid值等于pid值，因而， getpid()系统调用对于这种进程可以正常工作。
 
 Later, we’ll show you how it is possible to derive a true process descriptor pointer efficiently from its respective PID. Efficiency is important because many system calls such as kill() use the PID to denote the affected process.
 
+稍后，我们将展示如何从各自的PID中有效地派生出一个真正的进程描述符。效率非常重要，因为许多系统调用，如kill()都会使用PID通知受影响的进程。
+
+> <font color="blue">读书笔记：
+> 
+> 如何标识进程：
+> 
+> 1. 进程的表示方法有两种：task_struct结构体的地址和进程ID（PID）
+> 2. 为了兼容POSIX，Linux提出了"线程组"的概念，同一个组内的轻进程都具有自己的task_struct结构体，
+> 但是这个组的第一个线程作为组长，获得和进程ID相同的tgid，这样对于系统调用getid()来说，线程组内的
+> 所有线程就具有相同的PID了。
+> 
+> </font>
+
 <h4 id="3.2.2.1">3.2.2.1 处理进程描述符</h4>
 
-Processes are dynamic entities whose lifetimes range from a few milliseconds to months. Thus, the kernel must be able to handle many processes at the same time, and process descriptors are stored in dynamic memory rather than in the memory area permanently assigned to the kernel. For each process, Linux packs two different data structures in a single per-process memory area: a small data structure linked to the process descriptor, namely the thread_info structure, and the Kernel Mode process stack. The length of this memory area is usually 8,192 bytes (two page frames). For reasons of efficiency the kernel stores the 8-KB memory area in two consecutive page frames with the first page frame aligned to a multiple of 213; this may turn out to be a problem when little dynamic memory is available, because the free memory may become highly fragmented (see the section “The Buddy System Algorithm” in Chapter 8). Therefore, in the 80×86 architecture the kernel can be configured at compilation time so that the memory area including stack and thread_info structure spans a single page frame (4,096 bytes).
+Processes are dynamic entities whose lifetimes range from a few milliseconds to months. Thus, the kernel must be able to handle many processes at the same time, and process descriptors are stored in dynamic memory rather than in the memory area permanently assigned to the kernel. For each process, Linux packs two different data structures in a single per-process memory area: a small data structure linked to the process descriptor, namely the `thread_info` structure, and the Kernel Mode process stack. The length of this memory area is usually 8,192 bytes (two page frames). For reasons of efficiency the kernel stores the 8-KB memory area in two consecutive page frames with the first page frame aligned to a multiple of 2^13; this may turn out to be a problem when little dynamic memory is available, because the free memory may become highly fragmented (see the section “The Buddy System Algorithm” in Chapter 8). Therefore, in the 80×86 architecture the kernel can be configured at compilation time so that the memory area including stack and `thread_info` structure spans a single page frame (4,096 bytes).
+
+进程是一个动态的实体，它的生命周期从几毫秒到几个月。因而，内核必须能够同时处理多个进程，且进程描述符应该存储在动态内存区，而不是永久分配给内核的内存区。对于每个进程，Linux在它们的内存区打包了两个不同的数据结构：一个链接到进程描述符的小数据结构，又称为thread_info结构体；和内核态栈。这个区域的长度通常是8192字节（两个页帧）。因为效率的原因，内核分配连续的两个页帧，也就是第一个页帧的地址总是2^13的倍数。但是结果证明，分配小的动态内存时会带来问题，因为空闲的内存变得高度碎片化（参见第8章的[伙伴系统算法](#8.1.7)一节）。<font color="red">因此，在x86架构中，在编译时配置内核，使得包含栈和thread_info结构的内存区域跨越单个页帧（4096字节）。这句话的意思是说，可以从不是2^13的倍数地址分配这种内存吗？？？</font>
 
 In the section “Segmentation in Linux” in Chapter 2, we learned that a process in Kernel Mode accesses a stack contained in the kernel data segment, which is different from the stack used by the process in User Mode. Because kernel control paths make little use of the stack, only a few thousand bytes of kernel stack are required. Therefore, 8 KB is ample space for the stack and the `thread_info` structure. However, when stack and `thread_info` structure are contained in a single page frame, the kernel uses a few additional stacks to avoid the overflows caused by deeply nested interrupts and exceptions (see Chapter 4).
 
-Figure 3-2 shows how the two data structures are stored in the 2-page (8 KB) memory area. The `thread_info` structure resides at the beginning of the memory area, and the stack grows downward from the end. The figure also shows that the `thread_info` structure and the `task_struct` structure are mutually linked by means of the fields task and `thread_info`, respectively.
+在第二章的[Linux分段]()一节中，我们已经了解，内核态访问的包含在内核数据段中的栈，和用户态进程使用的栈是不同的。因为内核的控制路径很少使用栈，只需要几千字节的内核栈。因此，8KB的内存空间对于栈和thread_info结构来说足够了。但是，当栈和thread_info结构包含在单个页帧中时，内核使用一些额外的栈去避免由于深度嵌套中断和异常可能造成的溢出（参见[第4章](#4)）。
+
+Figure 3-2 shows how the two data structures are stored in the 2-page (8 KB) memory area. The `thread_info` structure resides at the beginning of the memory area, and the stack grows downward from the end. The figure also shows that the `thread_info` structure and the `task_struct` structure are mutually linked by means of the fields `task` and `thread_info`, respectively.
+
+图3-2展示了两个数据结构在8KB内存区是如何分布的。thread_info结构位于这块内存的开始，而栈是向下增长的。图中还展示了thread_info和task_struct两个结构之间的相互链接关系，分别通过task和thread_info两个成员实现。
 
 <img id="Figure_3-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_2.PNG">
 
-图3-2 Storing the `thread_info` structure and the process kernel stack in two page frames
+图3-2 thread_info结构和进程内核栈在连续两个页帧的布局
 
-The esp register is the CPU stack pointer, which is used to address the stack’s top location. On 80×86 systems, the stack starts at the end and grows toward the beginning of the memory area. Right after switching from User Mode to Kernel Mode, the kernel stack of a process is always empty, and therefore the esp register points to the byte immediately following the stack.
+The `esp` register is the CPU stack pointer, which is used to address the stack’s top location. On 80×86 systems, the stack starts at the end and grows toward the beginning of the memory area. Right after switching from User Mode to Kernel Mode, the kernel stack of a process is always empty, and therefore the `esp` register points to the byte immediately following the stack.
 
-The value of the esp is decreased as soon as data is written into the stack. Because the `thread_info` structure is 52 bytes long, the kernel stack can expand up to 8,140 bytes.
+esp寄存器是CPU栈指针，用来寻址栈顶位置。x86系统中，栈位于高地址，向下增长。刚刚从用户态切换到内核态时，进程的内核栈总是空的，esp寄存器总是指向紧跟栈后的字节处。
+
+The value of the `esp` is decreased as soon as data is written into the stack. Because the `thread_info` structure is 52 bytes long, the kernel stack can expand up to 8,140 bytes.
+
+只要数据写入栈中，esp的值将会被减。因为thread_info结构体的大小是52个字节，内核栈能够扩展到8140个字节。
 
 The C language allows the `thread_info` structure and the kernel stack of a process to be conveniently represented by means of the following union construct:
 
+使用union联合类型结构实现thread_info和进程内核栈的结构：
+
     union thread_union {
         struct thread_info thread_info;
-        unsigned long stack[2048];          /* 1024 for 4KB stacks */
+        unsigned long stack[2048];          /* 1024是4KB大小 */
     };
 
-The `thread_info` structure shown in Figure 3-2 is stored starting at address 0x015fa000, and the stack is stored starting at address 0x015fc000. The value of the esp register points to the current top of the stack at 0x015fa878.
+The `thread_info` structure shown in Figure 3-2 is stored starting at address 0x015fa000, and the stack is stored starting at address 0x015fc000. The value of the `esp` register points to the current top of the stack at 0x015fa878.
+
+图3-2中，thread_info结构体的开始地址是0x015fa000，栈的开始地址是0x015fc000。esp寄存器的值是指向当前栈顶位置0x015fa878的指针。
 
 The kernel uses the `alloc_thread_info` and `free_thread_info` macros to allocate and release the memory area storing a `thread_info` structure and a kernel stack.
 
-<h4 id="3.2.2.2">3.2.2.2 识别当前进程</h4>
+内核使用alloc_thread_info和free_thread_info两个宏，为thread_info和栈，分配和释放内存区域。
 
-The close association between the `thread_info` structure and the Kernel Mode stack just described offers a key benefit in terms of efficiency: the kernel can easily obtain the address of the `thread_info` structure of the process currently running on a CPU from the value of the esp register. In fact, if the thread_union structure is 8 KB (2^13 bytes) long, the kernel masks out the 13 least significant bits of esp to obtain the base address of the `thread_info` structure; on the other hand, if the thread_union structure is 4 KB long, the kernel masks out the 12 least significant bits of esp. This is done by the current_thread_info() function, which produces assembly language instructions like the following:
+<h4 id="3.2.2.2">3.2.2.2 标识当前进程</h4>
+
+<s>
+The close association between the `thread_info` structure and the Kernel Mode stack just described offers a key benefit in terms of efficiency: the kernel can easily obtain the address of the `thread_info` structure of the process currently running on a CPU from the value of the `esp` register. In fact, if the `thread_union` structure is 8 KB (2^13 bytes) long, the kernel masks out the 13 least significant bits of `esp` to obtain the base address of the `thread_info` structure; on the other hand, if the `thread_union` structure is 4 KB long, the kernel masks out the 12 least significant bits of `esp`. This is done by the `current_thread_info() `function, which produces assembly language instructions like the following:
+
+正如刚刚描述的，thread_info结构和内核栈这种紧密的联系，从效率上讲，提供了一个重要的优点：内核可以轻松从esp指针中获取正在运行进程的thread_info结构的地址。如下面的代码所示，因为thread_union联合体的大小是8K，所以屏蔽掉栈esp寄存器的低13位，就能获取的thread_info的基地址。
+</s>
+
+> <font color="blue">注意：
+>   在2007年的一次更新(2.6.22之后)中加入了stack内核栈指针, 替代了原来的thread_info的指针。
+>   
+>  进程描述符task_struct结构中没有直接指向thread_info结构的指针，而是用一个void指针类型的成员表示，
+>  然后通过类型转换来访问thread_info结构。
+>  
+>  stack指向了内核栈的地址(其实也就是`thread_info`和`thread_union`的地址), 根据上面的描述，很容易
+>  通过类型转换获取`thread_info`的地址。
+>  
+>  相关代码在`include/linux/sched.h`中，如下所示。`task_thread_info` 用于通过`task_struct`来查找其`thread_info`的信息, 只需要一次指针类型转换即可。
+> 
+>       #define task_thread_info(task)  ((struct thread_info *)(task)->stack)
+>       
+>  根据上面的代码，`task_thread_info`实际上是一个宏，在这儿，task是task_struct类型的对象
+>   
+> </font>
+
+<s>
 
     movl $0xffffe000,%ecx /* or 0xfffff000 for 4KB stacks */
     andl %esp,%ecx
     movl %ecx,p
 
-After executing these three instructions, p contains the thread_info structure pointer of the process running on the CPU that executes the instruction.
+After executing these three instructions, p contains the `thread_info` structure pointer of the process running on the CPU that executes the instruction.
 
-Most often the kernel needs the address of the process descriptor rather than the address of the thread_info structure. To get the process descriptor pointer of the process currently running on a CPU, the kernel makes use of the current macro,
+执行完这3条指令后，p就是thread_info结构体的指针。
 
-which is essentially equivalent to `current_thread_info()->task` and produces assembly language instructions like the following:
+Most often the kernel needs the address of the process descriptor rather than the address of the thread_info structure. To get the process descriptor pointer of the process currently running on a CPU, the kernel makes use of the current macro, which is essentially equivalent to `current_thread_info()->task` and produces assembly language instructions like the following:
+
+大部分时候，内核需要的是进程描述符的地址而不是thread_info结构体的地址。为了获取当前正在运行的进程的进程描述符的指针，内核使用current宏，等价于`current_thread_info()->task`，产生的汇编指令跟上面的代码类似。
 
     movl $0xffffe000,%ecx /* or 0xfffff000 for 4KB stacks */
     andl %esp,%ecx
@@ -2184,9 +2250,13 @@ which is essentially equivalent to `current_thread_info()->task` and produces as
 
 Because the task field is at offset 0 in the thread_info structure, after executing these three instructions p contains the process descriptor pointer of the process running on the CPU.
 
+因为task是thread_info结构体的第一个成员，偏移量为0，所以执行完这些指令之后，p就是进程描述符的指针。
+
 The current macro often appears in kernel code as a prefix to fields of the process descriptor. For example, current->pid returns the process ID of the process currently running on the CPU.
 
 Another advantage of storing the process descriptor with the stack emerges on multiprocessor systems: the correct current process for each hardware processor can be derived just by checking the stack, as shown previously. Earlier versions of Linux did not store the kernel stack and the process descriptor together. Instead, they were forced to introduce a global static variable called current to identify the process descriptor of the running process. On multiprocessor systems, it was necessary to define current as an array—one element for each available CPU.
+
+</s>
 
 <h4 id="3.2.2.3">3.2.2.3 双向链表</h4>
 

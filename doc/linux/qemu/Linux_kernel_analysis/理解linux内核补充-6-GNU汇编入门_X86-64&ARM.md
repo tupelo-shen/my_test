@@ -224,13 +224,13 @@ In some cases, you may want to load the address of a variable instead of its val
 
 <h3 id="3.3">3.3 基本算术运算</h3>
 
-You will need four basic arithmetic instructions for your compiler: integer addition, subtraction, multiplication, and division.
+你需要为你的编译器提供四种基本的算术指令：整数加法、减法、乘法和除法。
 
-ADD and SUB have two operands: a source and a destructive target. For example, this instruction:
+ADD和SUB指令有两个操作数：源操作目标和既作源又作目的的操作目标。比如：
 
     ADDQ %rbx, %rax
 
-adds `%rbx` to `%rax`, and places the result in `%rax`, overwriting what might have been there before. This requires a little care, so that you don’t accidentally clobber a value that you might want to use later. For example, you could translate c = a+b+b; like this:
+将%rbx加到%rax上，把结果存入%rax。这必须要小心，以免破坏后面可能还用到的值。比如：`c = a+b+b`这样的语句，转换成汇编语言大概是下面这样：
 
     MOVQ a, %rax
     MOVQ b, %rbx
@@ -238,10 +238,9 @@ adds `%rbx` to `%rax`, and places the result in `%rax`, overwriting what might h
     ADDQ %rbx, %rax
     MOVQ %rax, c
 
-The `IMUL` instruction is a little unusual, because multiplying two 64-bit integers results in a 128-bit integer, in the general case. IMUL takes its argument, multiplies it by the contents of `%rax`, and then places the low 64 bits of the result in `%rax` and the high 64 bits in `%rdx`. (This is implicit: `%rdx` is not mentioned in the instruction.)
+`IMUL`乘法指令有点不一样，因为通常情况下，两个64位的整数会产生一个128位的整数。IMUL指令将第一个操作数乘以rax寄存器中的内容，然后把结果的低64位存入rax寄存器中，高64位存入rdx寄存器。（这里有一个隐含操作，rdx寄存器在指令中并没有提到）
 
-`IMUL`乘法指令有点不一样，
-For example, suppose that you wish to translate c = b*(b+a);, where a, and b, and c are global integers. Here is one possible translation:
+比如，假设这样的表达式`c = b*(b+a)`，将其转换成汇编语言；在这儿，a、b、c都是全局整数。
 
     MOVQ a, %rax
     MOVQ b, %rbx
@@ -249,37 +248,26 @@ For example, suppose that you wish to translate c = b*(b+a);, where a, and b, an
     IMULQ %rbx
     MOVQ %rax, c
 
-The IDIV instruction does the same thing, except backwards: it starts
-with a 128 bit integer value whose low 64 bits are in %rax and high 64 bits
-in %rdx, and divides it by the value given in the instruction. The quotient
-is placed in %rax and the remainder in %rdx. (If you want to implement
-the modulus instruction instead of division, just use the value of %rdx.)
+IDIV指令做相同的操作，除了最后的处理：它把128位整数的低64位存入rax寄存器，高64位存入rdx寄存器，然后除以指令中的第一个操作数。商存入rax寄存器，余数存入rdx寄存器。（如果想要取模指令，只要rdx寄存器的值即可。）
 
-To set up a division, you must make sure that both registers have the
-necessary sign-extended value. If the dividend fits in the lower 64 bits, but
-is negative, then the upper 64 bits must all be ones to complete the twoscomplement
-representation. The CQO instruction serves the very specific
-purpose of sign-extending %rax into %rdx for division.
+为了正确使用除法，必须保证两个寄存器有必要的符号位。如果被除数低64位就可以表示，但是是负数，那么高64位必须都是1，才能完成二进制补码操作。CQO指令可以实现这个特殊目的，将rax寄存器的值的符号位扩展到rdx寄存器中。
 
-For example, to divide a by five:
+比如，一个数被5整除：
 
-    MOVQ a, %rax    # set the low 64 bits of the dividend
-    CQO             # sign-extend %rax into %rdx
-    IDIVQ $5        # divide %rdx:%rax by 5,
-                    # leaving result in %rax
+    MOVQ a, %rax    # 设置被除数的低64位
+    CQO             # 符号位扩展到%rdx
+    IDIVQ $5        # %rdx:%rax除以5,结果保存到%rax
 
-The instructions INC and DEC increment and decrement a register destructively. For example, the statement a = ++b could be translated as:
+自增和自减指令INC、DEC，操作数必须是一个寄存器的值。例如，表达式`a = ++b`转换成汇编语句后：
 
     MOVQ b, %rax
     INCQ %rax
-    MOVQ %rax,b
+    MOVQ %rax, b
     MOVQ %rax, a
 
-The instructions AND, OR, and XOR perform destructive bitwise boolean
-operations on two values. Bitwise means that the operation is applied to
-each individual bit in the operands, and stored in the result.
+指令AND、OR和XOR，提供按位操作。按位操作意味着把操作应用到操作数的每一位，然后保存结果。
 
-So, `AND $0101B $0110B` would yield the result `$0100B`. In a similar way, the NOT instruction inverts each bit in the operand. For example, the bitwise C expression `c = (a & ˜b)`; could be translated like this:
+所以，`AND $0101B $0110B`就会产生结果`$0100B`。同样，NOT指令对操作数的每一位执行取反操作。比如，表达式`c = (a & ˜b)`，可以转换成下面这样的汇编代码：
 
     MOVQ a, %rax
     MOVQ b, %rbx
@@ -287,17 +275,9 @@ So, `AND $0101B $0110B` would yield the result `$0100B`. In a similar way, the N
     ANDQ %rax, %rbx
     MOVQ %rbx, c
 
-Be careful here: these instructions do not implement logical boolean operations
-according to the C representation that you are probably familiar
-with. For example, if you define “false” to be the integer zero, and “true”
-to be any non-zero value. In that case, `$0001` is true, but `NOT $0001B` is
-`$1110B`, which is also true! To implement that correctly, you need to use
-CMP with conditionals described below.2
+这里需要注意的是，算术位操作与逻辑bool操作是不一样的。比如，如果你定义false为整数0，true为非0。在这种情况下，`$0001`是true，而`NOT $0001B`的结果也是true！要想实现逻辑bool操作，需要使用CMP比较指令。
 
-Like the MOV instruction, the various arithmetic instructions can work
-on a variety of addressing modes. However, for your compiler project, you
-will likely find it most convenient to use MOV to load values in and out of
-registers, and then use only registers to perform arithmetic.
+与MOV指令一样，各种算术指令能在不同寻址模式下工作。但是，对于一个编译器项目，使用MOV指令搬运寄存器之间或者寄存器与立即数之间的值，然后仅使用寄存器操作，会更加方便。
 
 <h3 id="3.4">3.4 比较和跳转</h3>
 
