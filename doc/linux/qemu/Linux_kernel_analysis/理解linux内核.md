@@ -2211,6 +2211,7 @@ The kernel uses the `alloc_thread_info` and `free_thread_info` macros to allocat
 The close association between the `thread_info` structure and the Kernel Mode stack just described offers a key benefit in terms of efficiency: the kernel can easily obtain the address of the `thread_info` structure of the process currently running on a CPU from the value of the `esp` register. In fact, if the `thread_union` structure is 8 KB (2^13 bytes) long, the kernel masks out the 13 least significant bits of `esp` to obtain the base address of the `thread_info` structure; on the other hand, if the `thread_union` structure is 4 KB long, the kernel masks out the 12 least significant bits of `esp`. This is done by the `current_thread_info() `function, which produces assembly language instructions like the following:
 
 正如刚刚描述的，thread_info结构和内核栈这种紧密的联系，从效率上讲，提供了一个重要的优点：内核可以轻松从esp指针中获取正在运行进程的thread_info结构的地址。如下面的代码所示，因为thread_union联合体的大小是8K，所以屏蔽掉栈esp寄存器的低13位，就能获取的thread_info的基地址。
+
 </s>
 
 > <font color="blue">注意：
@@ -2262,25 +2263,33 @@ Another advantage of storing the process descriptor with the stack emerges on mu
 
 Before moving on and describing how the kernel keeps track of the various processes in the system, we would like to emphasize the role of special data structures that implement doubly linked lists.
 
+在我们讨论内核如何追踪各种进程之前，我们先来看一个特殊的数据结构，`双向链表`。
+
 For each list, a set of primitive operations must be implemented: initializing the list, inserting and deleting an element, scanning the list, and so on. It would be both a waste of programmers’ efforts and a waste of memory to replicate the primitive operations for each different list.
 
-Therefore, the Linux kernel defines the `list_head` data structure, whose only fields next and prev represent the forward and back pointers of a generic doubly linked list element, respectively. It is important to note, however, that the pointers in a `list_head` field store the addresses of other `list_head` fields rather than the addresses of the whole data structures in which the `list_head` structure is included; see Figure 3-3 (a).
+内核中肯定存在着大量表，方便管理数据。但是对于这些表的每一种操作必须实现为原子操作：初始化、插入/删除元素、遍历列表等等。而为这些表重复实现原子操作，不仅是编程者精力的一种浪费，也会更加消耗内存。
+
+Therefore, the Linux kernel defines the `list_head` data structure, whose only fields `next` and `prev` represent the forward and back pointers of a generic doubly linked list element, respectively. It is important to note, however, that the pointers in a `list_head` field store the addresses of other `list_head` fields rather than the addresses of the whole data structures in which the `list_head` structure is included; see Figure 3-3 (a).
+
+因此，Linux内核定义了`list_head`链表结构，只有2个成员`next`和`prev`指针，分别是链表结构前后元素的索引。但是，值得注意的是，`list_head`里的指针指向的是其它`list_head`结构的地址，而不是包含`list_head`结构的整个数据结构的地址，见图3-3（a）。
 
 A new list is created by using the `LIST_HEAD`(list_name) macro. It declares a new variable named list_name of type `list_head`, which is a dummy first element that acts as a placeholder for the head of the new list, and initializes the prev and next fields of the `list_head` data structure so as to point to the list_name variable itself; see Figure 3-3 (b).
 
+可以使用宏`LIST_HEAD(list_name)`创建新的`list_head`列表，名称是`list_name`。它的第一个元素是空的，其占位符的作用，并初始化`next`和`prev`指针指向自己，见图3-3（b）
+
 <img id="Figure_3-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_3.PNG">
 
-图3-3 Doubly linked lists built with `list_head` data structures
+图3-3 内嵌着`list_head`数据结构的双向链表
 
 Several functions and macros implement the primitives, including those shown in Table 3-1.
 
-Table 3-1. List handling functions and macros
+下表是一些操作函数和宏，实现是原子的。
 
 <img id="Figure_3_1_T" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_1_T.PNG">
 
-The Linux kernel 2.6 sports another kind of doubly linked list, which mainly differs from a `list_head` list because it is not circular; it is mainly used for hash tables, where space is important, and finding the the last element in constant time is not. The list head is stored in an hlist_head data structure, which is simply a pointer to the first element in the list (NULL if the list is empty). Each element is represented by an hlist_node data structure, which includes a pointer next to the next element, and a pointer pprev to the next field of the previous element. Because the list is not circular, the pprev field of the first element and the next field of the last element are set to NULL. The list can be handled by means of several helper functions and macros similar to those listed in Table 3-1: hlist_add_head(), hlist_del(), hlist_empty(), hlist_entry, hlist_for_each_entry, and so on.
+The Linux kernel 2.6 sports another kind of doubly linked list, which mainly differs from a `list_head` list because it is not circular; it is mainly used for hash tables, where space is important, and finding the the last element in constant time is not. The list head is stored in an hlist_head data structure, which is simply a pointer to the first element in the list (NULL if the list is empty). Each element is represented by an hlist_node data structure, which includes a pointer `next` to the next element, and a pointer `pprev` to the `next` field of the previous element. Because the list is not circular, the `pprev` field of the first element and the `next` field of the last element are set to NULL. The list can be handled by means of several helper functions and macros similar to those listed in Table 3-1: hlist_add_head(), hlist_del(), hlist_empty(), hlist_entry, hlist_for_each_entry, and so on.
 
-
+从Linux 2.6版本开始，还支持另外一种双向链表，但它不是环形链表。这种链表有两种数据结构`hlist_head`和`hlist_node`，其主要用于哈希表（hash），空间很重要，但是查找最后一个元素的时间复杂度不是O(1)。`hlist_head`是指向列表中第一个元素的指针
 
 <h4 id="3.2.2.4">3.2.2.4 进程列表</h4>
 
