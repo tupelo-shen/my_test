@@ -17,7 +17,22 @@
     - [7.6 特殊组件](#7.6)
     - [7.7 实例规则](#7.7)
     - [7.8 变量列表规则](#7.8)
-
+* [10 概述](#10)
+    - [<font color="green">10.1 COMMAND</font>](#10.1)
+    - [10.2 RECORD](#10.2)
+    - [10.3 RESPONSE_CODES](#10.3)
+    - [<font color="green">10.4 VARIABLE_LIST</font>](#10.4)
+* [13 概述](#13)
+    - [13.1 BLOCK_A](#13.1)
+    - [13.2 BLOCK_B](#13.2)
+    - [<font color="green">13.3 LIKE</font>](#13.3)
+    - [13.4 IMPORT](#13.4)
+    - [13.5 TEMPLATE](#13.5)
+    - [13.6 COMPONENT](#13.6)
+    - [13.7 COMPONENT_FOLDER](#13.7)
+    - [13.8 COMPONENT_REFERENCE](#13.8)
+    - [13.9 COMPONENT_RELATION](#13.9)
+    - [13.10 INTERFACE](#13.10)
 ***
 
 <h1 id="5">5 EDD和EDDL模型</h1>
@@ -38,24 +53,24 @@ EDD描述了将要显示给用户的信息的管理。但是，这类可视化�
 
 <h2 id="5.3">5.3 EDD概念</h2>
 
-The manufacturer of a device or of an automation system component describes the properties of the device by using the EDDL. The resulting EDD contains information such as:
+设备制造商使用EDDL语言描述设备的属性。产生的EDD应该包含下面的信息：
 
-1. description of the device parameters;
-2. description of parameter dependencies;
-3. logical grouping of the device parameters;
-4. selection and execution of supported device functions;
-5. business logic (programmed functions);
-6. description of the transferred data sets.
+1. 设备参数的描述；
+2. 参数依赖的描述；
+3. 设备参数的逻辑分组；
+4. 支持功能的选择和执行；
+5. 业务逻辑；
+6. 数据集的描述。
 
-Depending on the required usage, the EDD may be physically located
+依据使用场景，EDD可能位于：
 
-1. in a device;
-2. in an external data storage medium such as a compact disk, floppy or a server;
-3. partially distributed in the device and an external storage medium.
+1. 设备中；
+2. 外部存储介质，比如硬盘，软盘或服务器；
+3. 分开存储在设备和外部存储介质中。
 
-EDD supports text strings (common terms, phrases etc.) in more than one language (English, German, French, etc.). Text strings may be stored in separate dictionaries. There may be more than one dictionary for one EDD.
+EDD支持文本字符串（常用术语、短语等），支持多国语（英语、德语、法语等）。文本字符串可以存储在独立的字典中，一个EDD可以有多个字典。
 
-An EDD implementation includes sufficient information about the target device to match a specific EDD to a specific device. Manufacturer, device type, and revision are examples of information that can be used to match a device to a specific EDD.
+EDD实现中包含足够的信息识别设备，比如，制造商、设备类型和版本都是被用来匹配设备的信息。
 
 <h2 id="5.4">5.4 EDD开发过程</h2>
 
@@ -150,7 +165,13 @@ Compatible subsets of EDDL are permitted and may be specified using profiles (fo
 AXIS描述CHART或GRAPH的坐标。（[第11章](#11)）
 
 <h3 id="7.4.3">7.4.3 BLOB</h3>
+
+描述了二进制大对象，用来与设备交互二进制数据的。（见[第9.8节](#9.8)）
+
 <h3 id="7.4.4">7.4.4 BLOCK_A</h3>
+
+BLOCK_A is a logical grouping of CHARACTERISTICS, PARAMETERS, PARAMETER_LISTS, and ITEM_LISTS, see Figure 2. To access one item of BLOCK_A, the instance of the block should be used (see 13.1 and Figure 2).
+
 <h3 id="7.4.5">7.4.5 BLOCK_B</h3>
 <h3 id="7.4.6">7.4.6 CHART</h3>
 <h3 id="7.4.7">7.4.7 COLLECTION</h3>
@@ -172,6 +193,9 @@ AXIS描述CHART或GRAPH的坐标。（[第11章](#11)）
 <h3 id="7.4.23">7.4.23 MWTHOD</h3>
 <h3 id="7.4.24">7.4.24 PLUGIN</h3>
 <h3 id="7.4.25">7.4.25 RECORD</h3>
+
+
+
 <h3 id="7.4.26">7.4.26 REFERENCE_ARRAY</h3>
 <h3 id="7.4.27">7.4.27 Relations</h3>
 <h3 id="7.4.28">7.4.28 RESPONSE_CODES</h3>
@@ -189,5 +213,104 @@ AXIS描述CHART或GRAPH的坐标。（[第11章](#11)）
 <h2 id="7.7">7.7 实例规则</h2>
 
 <h2 id="7.8">7.8 变量列表规则</h2>
+
+<h1 id="10">10 通信结构</h1>
+
+<h2 id="10.1">10.1 COMMAND</h2>
+
+<font color="red"> CS的一个完整概念，FF没有这个概念。其余协议原先部分支持</font>
+
+COMMAND就是把数据映射到通信结构中。COMMAND指定与设备交互的数据。可以写到设备的数据在REQUEST属性中实现。从设备读回来的数据在REPLY属性中。它指定了构建一个通信帧所需要的的各种元素。
+
+> 注意1:通信帧的地址字段使用可选的结构BLOCK、SLOT、SUB_SLOT、NUMBER和INDEX等指定（没有的就算了）。通信帧的类型或者控制字段使用OPERATION结构指定。数据内容在TRANSACTION结构中指定。
+
+数据结构
+
+    COMMAND identifier
+    {
+        API         [integer-constant | reference | integer-expression]<cond> ;
+        BLOCK_B     reference<cond> ;
+        HEADER      string-value<cond>
+        INDEX       [integer-constant | reference | integer-expression]<cond> ;
+        NUMBER      integer-constant ;
+        OPERATION   [COMMAND | READ | WRITE] ;
+        RESPONSE_CODES  { [referenced-response-codes-specifier | response-codes-specifier] }
+        SLOT            [integer-constant | reference | integer-expression]<cond> ;
+        SUB_SLOT        [integer-constant | reference | integer-expression]<cond> ;
+        TRANSACTION [integer]?
+        {
+            REQUEST         { request-item-specifier [, request-item-specifier]* }
+            REPLY           { reply-item-specifier [, reply-item-specifier]* }
+            RESPONSE_CODES  { [referenced-response-codes-specifier | response-codes-specifier] }
+            POST_RQSTRECEIVE_ACTIONS { actions-specifier }
+        }
+    }
+
+<h2 id="10.2">10.2 RECORD</h2>
+
+<font color="red"> 仅FF和ISA100有这个概念。</font>
+
+是用来描述一个通信对象的，包含一组逻辑变量。RECORD中的每一个成员都是一个变量的引用，变量可以是不同的类型。通过RECORD标识符和成员标识符，在EDD的任何地方都可以引用。
+
+数据结构：
+
+    RECORD identifier
+    {
+        LABEL           string-value ;
+        HELP            string-value ;
+        MEMBERS         { members-specifier }
+        PRIVATE         boolean-specifier ;
+        RESPONSE_CODES  referenced-response-codes-specifier ;
+        VALIDITY        boolean-specifier ;
+        VISIBILITY      boolean-specifier ;
+        WRITE_MODE      write-mode-specifier ;
+    }
+
+<h2 id="10.3">10.3 RESPONSE_CODES</h2>
+
+<font color="red"> HART没有这个概念。在HART中，就是COMMAND结构的一个属性，不是一个结构单元，没有标识符，不能被其它结构引用</font>
+
+RESPONSE_CODES指定设备返回的错误信息值，每一个VARIABLE、RECORD、VALUE_ARRAY、VARIABLE_LIST或COMMAND都有自己的一组RESPONSE_CODES.
+
+数据结构：
+
+    RESPONSE_CODES identifier
+    {
+        [[integer , response-code-type , description , [help]?]<cond> ;]+
+    }
+    response-code-type := [DATA_ENTRY_ERROR | DATA_ENTRY_WARNING | MISC_ERROR | MISC_WARNING | MODE_ERROR | PROCESS_ERROR | SUCCESS]
+
+<h2 id="10.4">10.4 VARIABLE_LIST</h2>
+
+<font color="red"> FF和ISA100没有这个概念。</font>
+
+VARIABLE_LIST是一组EDD通信对象（VARIABLE，VALUE_ARRAY或RECORDS）。方便应用程序组织对象而设计的一个结构。VARIABLE_LIST是通过将多个项组成更少的通信对象而优化通信。
+
+数据结构
+
+    VARIABLE_LIST identifier
+    {
+        LABEL string-value ;
+        HELP string-value ;
+        MEMBERS { members-specifier }
+        RESPONSE_CODES referenced-response-codes-specifier ;
+    }
+
+<h1 id="13">13 设备模型</h1>
+
+<h2 id="13.1">13.1 BLOCK_A</h2>
+
+
+<h2 id="13.2">13.2 BLOCK_B</h2>
+
+<h2 id="13.3" ><font color="green">13.3 LIKE</font></h2>
+<h2 id="13.4">13.4 IMPORT</h2>
+<h2 id="13.5">13.5 TEMPLATE</h2>
+<h2 id="13.6">13.6 COMPONENT</h2>
+<h2 id="13.7">13.7 COMPONENT_FOLDER</h2>
+<h2 id="13.8">13.8 COMPONENT_REFERENCE</h2>
+<h2 id="13.9">13.9 COMPONENT_RELATION</h2>
+<h2 id="13.10">13.10 INTERFACE</h2>
+
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
