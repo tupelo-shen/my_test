@@ -2289,17 +2289,25 @@ Several functions and macros implement the primitives, including those shown in 
 
 The Linux kernel 2.6 sports another kind of doubly linked list, which mainly differs from a `list_head` list because it is not circular; it is mainly used for hash tables, where space is important, and finding the the last element in constant time is not. The list head is stored in an hlist_head data structure, which is simply a pointer to the first element in the list (NULL if the list is empty). Each element is represented by an hlist_node data structure, which includes a pointer `next` to the next element, and a pointer `pprev` to the `next` field of the previous element. Because the list is not circular, the `pprev` field of the first element and the `next` field of the last element are set to NULL. The list can be handled by means of several helper functions and macros similar to those listed in Table 3-1: hlist_add_head(), hlist_del(), hlist_empty(), hlist_entry, hlist_for_each_entry, and so on.
 
-从Linux 2.6版本开始，还支持另外一种双向链表，但它不是环形链表。这种链表有两种数据结构`hlist_head`和`hlist_node`，其主要用于哈希表（hash），空间很重要，但是查找最后一个元素的时间复杂度不是O(1)。`hlist_head`是指向列表中第一个元素的指针
+从Linux 2.6版本开始，还支持另外一种双向链表，但它不是环形链表。这种链表有两种数据结构`hlist_head`和`hlist_node`，其主要用于哈希表（hash），空间很重要，但是查找最后一个元素的时间复杂度不是O(1)。`hlist_head`是指向链表表头的指针，如果链表是空的，则其成员first指针等于null。链表中每个元素使用`hlist_node`结构表示，`hlist_node`包含2个指针，指向下一个元素的`next`指针和指向前一个元素的`next`指针的`pprev`指针。由于不是环形结构，链表中第一个元素的`pprev`指针指向表头的`first`指针，最后一个元素的`next`指针设为null。这种hash链表结构也有类似于`list_head`那样的处理函数和宏：hlist_add_head()、hlist_del()、hlist_empty()、hlist_entry、hlist_for_each_entry等等。
 
 <h4 id="3.2.2.4">3.2.2.4 进程列表</h4>
 
-The first example of a doubly linked list we will examine is the process list, a list that links together all existing process descriptors. Each task_struct structure includes a tasks field of type `list_head` whose prev and next fields point, respectively, to the previous and to the next task_struct element.
+The first example of a doubly linked list we will examine is the process list, a list that links together all existing process descriptors. Each `task_struct` structure includes a tasks field of type `list_head` whose `prev` and `next` fields point, respectively, to the previous and to the next task_struct element.
+
+我们将研究的第一个双向链表的结构是进程表，也就是把所有已存在的进程描述符串起来的链表。如果查看linux内核源代码，会发现每一个`task_struct`中都包含`struct list_head`类型的`tasks`成员，它的prev和next指针分别指向前一个和后一个task_struct结构。
 
 The head of the process list is the init_task task_struct descriptor; it is the process descriptor of the so-called process 0 or swapper (see the section “Kernel Threads” later in this chapter). The tasks->prev field of init_task points to the tasks field of the process descriptor inserted last in the list.
 
+该进程链表的头是一个叫`init_task`的进程描述符，它是所谓的进程0或swapper（参见本章后面的"[内核线程](#3.4.2)"一节）的进程描述符。`init_task`的`tasks->prev`指向最后插入该链表的进程描述符的`tasks`成员。
+
 The SET_LINKS and REMOVE_LINKS macros are used to insert and to remove a process descriptor in the process list, respectively. These macros also take care of the parenthood relationship of the process (see the section “How Processes Are Organized” later in this chapter).
 
+内核提供了简单操作进程列表的专用宏`SET_LINKS`和`REMOVE_LINKS`，分别用来插入和删除一个进程描述符。这些宏还负责处理进程的父子关系（参见本章后面的"[进程是如何组织的](#3.2.4)"一节）。
+
 Another useful macro, called for_each_process, scans the whole process list. It is defined as:
+
+其它有用的宏，比如`for_each_process`，遍历整个进程列表。定义如下：
 
     #define for_each_process(p) \
         for (p=&init_task; (p=list_entry((p)->tasks.next, \
@@ -2308,19 +2316,37 @@ Another useful macro, called for_each_process, scans the whole process list. It 
 
 The macro is the loop control statement after which the kernel programmer supplies the loop. Notice how the init_task process descriptor just plays the role of list header. The macro starts by moving past init_task to the next task and continues until it reaches init_task again (thanks to the circularity of the list). At each iteration, the variable passed as the argument of the macro contains the address of the currently scanned process descriptor, as returned by the list_entry macro.
 
+宏展开后，就是一个for循环。可以注意的是，`init_task`进程描述符仅仅是扮演了一个链表表头的作用。该宏就是把`init_task`传递给下一个任务，直到再次转到`init_task`（因为是环形链表）。每一次的迭代过程中，通过宏传递进来的参数`p`都会被`list_entry`宏的值赋值，等于当前扫描到的进程描述符的地址。
+
+> <font color="blue">注意：
+> 
+> 其实，理解了双向链表的操作，对于这一部分的理解就是水到渠成的事了。
+> 
+> </font>
+
 <h4 id="3.2.2.5">3.2.2.5 运行态进程列表</h4>
 
 When looking for a new process to run on a CPU, the kernel has to consider only the runnable processes (that is, the processes in the TASK_RUNNING state). 
 
+当我们要查找将要在CPU上运行的进程时，必须只考虑在运行态的进程（也就是说处于`TASK_RUNNING`状态的进程）
+
 Earlier Linux versions put all runnable processes in the same list called runqueue. Because it would be too costly to maintain the list ordered according to process priorities, the earlier schedulers were compelled to scan the whole list in order to select the “best” runnable process.
+
+早期的linux内核把所有可运行的进程存放在一个称为`runqueue`的链表中。因为按照进程优先级分别组织链表的话，维护成本太高，早期的内核调度器被迫遍历整个链表，以便选出最好的可运行进程。
 
 Linux 2.6 implements the runqueue differently. The aim is to allow the scheduler to select the best runnable process in constant time, independently of the number of runnable processes. We’ll defer to Chapter 7 a detailed description of this new kind of runqueue, and we’ll provide here only some basic information.
 
+从Linux 2.6版本之后的内核实现不同的`runqueue`。目的就是可以在恒定时间内选出最佳的可运行进程，而无关于可运行进程的数量。详细的阐述会在[第7章](#7)介绍，这儿只是提供基本的概念。
+
 The trick used to achieve the scheduler speedup consists of splitting the runqueue in many lists of runnable processes, one list per process priority. Each task_struct descriptor includes a run_list field of type list_head. If the process priority is equal to k (a value ranging between 0 and 139), the run_list field links the process descriptor into the list of runnable processes having priority k. Furthermore, on a multiprocessor system, each CPU has its own runqueue, that is, its own set of lists of processes. This is a classic example of making a data structures more complex to improve performance: to make scheduler operations more efficient, the runqueue list has been split into 140 different lists!
+
+让调度器加速的小技巧就是将可运行的进程按照优先级分割成多个链表，每个链表对应一个优先级。每个`task_struct`结构中包含一个`list_head`类型的`run_list`成员。假设进程优先级等于k（范围0-139），run_list就相当于把具有优先级k的可运行进程连接起来组成一个链表。进一步，如果是多核系统，每个CPU都有自己的runqueue，也就是自己的一组进程链表。这是增加数据结构的复杂度，以提高性能的经典案例：为了是调度器更加高效，将runqueue分割成140个不同的链表！
 
 As we’ll see, the kernel must preserve a lot of data for every runqueue in the system; however, the main data structures of a runqueue are the lists of process descriptors belonging to the runqueue; all these lists are implemented by a single `prio_array_t` data structure, whose fields are shown in Table 3-2.
 
-Table 3-2. The fields of the `prio_array_t` data structure
+正如我们看到的，内核必须为系统中的每一个runqueue保存大量的数据。但是，runqueue中主要的数据结构还是属于它的进程描述符的链表；这些链表是通过一个数组结构prio_array_t实现的。
+
+表 3-2 prio_array_t数据结构的各个成员
 
 <img id="Figure_3_2_T" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_2_T.PNG">
 
@@ -2333,13 +2359,344 @@ The enqueue_task(p,array) function inserts a process descriptor into a runqueue 
 
 The prio field of the process descriptor stores the dynamic priority of the process, while the array field is a pointer to the `prio_array_t` data structure of its current runqueue. Similarly, the `dequeue_task(p,array)` function removes a process descriptor from a runqueue list.
 
+<font color="blue">补充：
 
+这一部分的内容，从原理上来说，新旧内核类似的。但是，在Linux4.4.23版本中，任务优先级已经被分为2组，0-99为实时调度进程优先级；100-139为普通进程优先级（也就是用户态进程）。实时进程的优先级当然要高于普通进程的优先级。
+
+根据这种划分，内核的调度方法也分为了2种：完全公平调度(cfs)和实时调度(rt)。因为它们的调度方法不同，内核为了调度器的统一处理，使用类似于面向对象的概念，抽象出一个调度类(struct sched_class)，声明了统一的回调函数接口。具体的接口则分别由公平调度实例(fair_sched_class)和实时调度实例(rt_sched_class)实现。
+
+数据结构`prio_array_t`已经改成了
+
+    struct rt_prio_array {
+        DECLARE_BITMAP(bitmap, MAX_RT_PRIO+1); /* include 1 bit for delimiter */
+        struct list_head queue[MAX_RT_PRIO];
+    };
+
+对于向runqueue队列中插入一个进程描述符的函数`enqueue_task(p,array)`也已经修改为
+
+    void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);
+
+具体的实现由各个实例实现。
+
+</font>
 
 <h3 id="3.2.3">3.2.3 进程之间关系</h3>
-<h4 id="3.2.3.1">3.2.3.1 pidhash表和chained列表</h4>
+
+我们已经或多或少知道，进程具有父子关系，不仅如此，还有兄弟关系。所以，进程描述符中必须有几个成员是记录这种关系的（P是创建的进程），具体可以参考下表。进程0和1是由内核创建的，后面我们会看到，进程1（init）是所有其它进程的祖先。
+
+表3-3 进程中用来表述父子、兄弟关系的成员
+
+| 成员名称 | 描述 |
+| -------- | ---- |
+| real_parent | 指向创建P，如果不存在指向进程1。（比如，在shell中启动了一个后台进程，然后退出shell，则后台进程的父进程就是init）。|
+| parent      | 指向P的当前父进程。（当子进程结束时，必须发送信号通知的那个进程）；通常等于real_parent。偶尔会有不同的时候，比如当另一个进程发送ptrace()系统调用去监控进程P时（具体可以查看第20章的[执行跟踪](#20.1.5)）。|
+| children    | 包含P创建的所有子进程的列表的表头。|
+| sibling     | 包含指向兄弟关系的进程链表中的下一个元素和前一个元素的指针，这些进程的父进程都是P。|
+
+图3-4 阐述了进程的父子、兄弟关系。进程P0以此创建了P1、P2和P3。继而，进程P3创建了P4。
+
+更进一步讲，进程之间还有其它关系：一个进程可以是进程组的组长或者login会话的组长（参见第一章的进程管理），还可以是线程组的组长（参见本章前面的[标识进程](#3.2.2)），还可以追踪其它进程的执行（参见第20章的[执行跟踪](#20.1.5)）。表3-4列出了描述进程P和其它进程之间关系的数据成员。
+
+表3-4 进程描述符中建立非父子兄弟关系的数据成员
+
+| 成员名称 | 描述 |
+| -------- | ---- |
+| group_leader    | 进程P的进程组组长的进程描述符 |
+| signal->pgrp    | 进程P的进程组组长的PID |
+| tgid            | 进程P的线程组组长的PID |
+| signal->session | 进程P的login会话组组长的PID |
+| ptrace_children | 正在被调试器追踪的进程P的所有子进程的列表的表头 |
+| ptrace_list     | 包含指向正在被调试器追踪所有进程的real_parent列表中的元素的指针，分别指向下一个或者前一个元素。当追踪进程P时使用。|
+
+<h4 id="3.2.3.1">3.2.3.1 PID哈希表和链表</h4>
+
+在多种情况下，内核必须能够根据PID得到进程描述符的指针。比如，kill()系统调用，假设进程P1想要发送给进程P2一个信号，它指定P2进程的PID作为参数调用kill()。内核能够根据PID溯源到进程描述符的指针，然后从P2的进程描述符记录待处理（也就是挂起-pending）信号的数据结构的指针。
+
+Scanning the process list sequentially and checking the `pid` fields of the process descriptors is feasible but rather inefficient. To speed up the search, four hash tables have been introduced. Why multiple hash tables? Simply because the process descriptor includes fields that represent different types of PID (see Table 3-5), and each type of PID requires its own hash table.
+
+表3-5 进程描述符中的四种哈希表以及对应的数据结构
+
+| 哈希表类型 | 成员名称 | 描述 |
+| ---------- | -------- | ---- |
+| PIDTYPE_PID | pid     | 进程PID |
+| PIDTYPE_TGID| tgid    | 线程组组长的PID |
+| PIDTYPE_PGID| pgrp    | 进程组组长的PID |
+| PIDTYPE_SID | session | session组长的PID |
+
+
+The four hash tables are dynamically allocated during the kernel initialization phase, and their addresses are stored in the `pid_hash` array. The size of a single hash table depends on the amount of available RAM; for example, for systems having 512 MB of RAM, each hash table is stored in four page frames and includes 2,048 entries.
+
+The PID is transformed into a table index using the `pid_hashfn` macro, which expands to:
+
+    #define pid_hashfn(x) hash_long((unsigned long) x, pidhash_shift)
+
+The `pidhash_shift` variable stores the length in bits of a table index (11, in our example). The `hash_long()` function is used by many hash functions; on a 32-bit architecture it is essentially equivalent to:
+
+    unsigned long hash_long(unsigned long val, unsigned int bits)
+    {
+        unsigned long hash = val * 0x9e370001UL;
+        return hash >> (32 - bits);
+    }
+
+Because in our example `pidhash_shift` is equal to 11, `pid_hashfn` yields values ranging between 0 and 2^11 − 1 = 2047.
+
+> The Magic Constant
+> 
+> You might wonder where the 0x9e370001 constant (= 2,654,404,609) comes from. This hash function is based on a multiplication of the index by a suitable large number, so that the result overflows and the value remaining in the 32-bit variable can be considered as the result of a modulus operation. Knuth suggested that good results are obtained when the large multiplier is a prime approximately in golden ratio to 2^32 (32 bit being the size of the 80×86’s registers). Now, 2,654,404,609 is a prime near to that can also be easily multiplied by additions and bit shifts, because it is equal to `2^31 + 2^29 - 2^25 + 2^22 - 2^19 – 2^16 + 1` .
+
+As every basic computer science course explains, a hash function does not always ensure a one-to-one correspondence between PIDs and table indexes. Two different PIDs that hash into the same table index are said to be colliding. 
+
+Linux uses chaining to handle colliding PIDs; each table entry is the head of a doubly linked list of colliding process descriptors. Figure 3-5 illustrates a PID hash table with two lists. The processes having PIDs 2,890 and 29,384 hash into the 200th element of the table, while the process having PID 29,385 hashes into the 1,466th element of the table.
+
+Hashing with chaining is preferable to a linear transformation from PIDs to table indexes because at any given instance, the number of processes in the system is usually far below 32,768 (the maximum number of allowed PIDs). It would be a waste of storage to define a table consisting of 32,768 entries, if, at any given instance, most such entries are unused.
+
+The data structures used in the PID hash tables are quite sophisticated, because they must keep track of the relationships between the processes. As an example, suppose that the kernel must retrieve all processes belonging to a given thread group, that is, all processes whose `tgid` field is equal to a given number. Looking in the hash table for the given thread group number returns just one process descriptor, that is, the descriptor of the thread group leader. To quickly retrieve the other processes in the group, the kernel must maintain a list of processes for each thread group. The same situation arises when looking for the processes belonging to a given login session or belonging to a given process group.
+
+<img id="Figure_3_5" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_5.PNG">
+
+Figure 3-5. 一个简单的PID哈希表和链表
+
+The PID hash tables’ data structures solve all these problems, because they allow the definition of a list of processes for any PID number included in a hash table. The core data structure is an array of four `pid` structures embedded in the `pids` field of the process descriptor; the fields of the `pid` structure are shown in Table 3-6.
+
+表3-6 `pid`数据结构的各个成员
+
+| 类型              | 名称      | 描述 |
+| ----------------- | --------- | ---- |
+| int               | nr        | PID值 |
+| struct hlist_node | pid_chain | 用于hash表中的链表结构中，用于指向下一个和前一个元素 |
+| struct list_head  | pid_list  | 每个PID表的头 |
+
+Figure 3-6 shows an example based on the PIDTYPE_TGID hash table. The second entry of the pid_hash array stores the address of the hash table, that is, the array of hlist_head structures representing the heads of the chain lists. In the chain list rooted at the 71st entry of the hash table, there are two process descriptors corresponding to the PID numbers 246 and 4,351 (double-arrow lines represent a couple of forward and backward pointers). The PID numbers are stored in the `nr` field of the `pid` structure embedded in the process descriptor (by the way, because the thread group number coincides with the PID of its leader, these numbers also are stored in the `pid` field of the process descriptors). Let us consider the per-PID list of the thread group 4,351: the head of the list is stored in the `pid_list` field of the process descriptor included in the hash table, while the links to the next and previous elements of the per-PID list also are stored in the pid_list field of each list element.
+
+图3-6展示了一个基于PIDTYPE_TGID类型的哈希表的示例。pid_hash数组中的第2项存储着该哈希表的地址，也就是hlist_head类型的数组结构，用于保存具有相同tpid值的链表的表头。tgid哈希表的第71项出来的分链表中，有PID分别为246和4351的进程描述符。
+
+<img id="Figure_3_6" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_6.PNG">
+
+图3-6 PID哈希表
+
+下面的函数和宏用来处理PID哈希表：
+
+* do_each_task_pid(nr, type, task)
+* while_each_task_pid(nr, type, task)
+
+    遍历与nr指定的PID相关的每一个PID列表，type是哈希表类型，task指向当前刚被遍历过的进程描述符。
+
+* find_task_by_pid_type(type, nr)
+    
+    type类型的哈希表中查找PID等于nr的进程。函数返回匹配的进程描述符指针，如果不匹配返回NULL。
+
+* find_task_by_pid(nr)
+
+    作用等同于find_task_by_pid_type(PIDTYPE_PID, nr)。
+
+* attach_pid(task, type, nr)
+
+    往类型为type的PID哈希表中插入进程描述符，task指向要插入的进程描述符，nr是PID哈希表的索引。如果已经有一个PID等于nr的进程描述符在哈希表中了，则将task插入到该PID对应的链表中。
+
+* detach_pid(task, type)
+    
+    Removes the process descriptor pointed to by task from the per-PID list of type type to which the descriptor belongs. If the per-PID list does not become empty, the function terminates. Otherwise, the function removes the process descriptor from the hash table of type type; finally, if the PID number does not occur in any other hash table, the function clears the corresponding bit in the PID bitmap, so that the number can be recycled.
+
+* next_thread(task)
+    
+    Returns the process descriptor address of the lightweight process that follows task in the hash table list of type PIDTYPE_TGID. Because the hash table list is circular, when applied to a conventional process the macro returns the descriptor address of the process itself.
+
 <h3 id="3.2.4">3.2.4 如何组织进程</h3>
+
+The runqueue lists group all processes in a TASK_RUNNING state. When it comes to grouping processes in other states, the various states call for different types of treatment, with Linux opting for one of the choices shown in the following list.
+
+* Processes in a TASK_STOPPED, EXIT_ZOMBIE, or EXIT_DEAD state are not linked in specific lists. There is no need to group processes in any of these three states, because stopped, zombie, and dead processes are accessed only via PID or via linked lists of the child processes for a particular parent.
+
+* Processes in a TASK_INTERRUPTIBLE or TASK_UNINTERRUPTIBLE state are subdivided into many classes, each of which corresponds to a specific event. In this case, the process state does not provide enough information to retrieve the process quickly, so it is necessary to introduce additional lists of processes. These are called wait queues and are discussed next.
+
 <h4 id="3.2.4.1">3.2.4.1 等待队列</h4>
+
+Wait queues have several uses in the kernel, particularly for interrupt handling, process synchronization, and timing. Because these topics are discussed in later chapters, we’ll just say here that a process must often wait for some event to occur, such as for a disk operation to terminate, a system resource to be released, or a fixed interval of time to elapse. Wait queues implement conditional waits on events: a process wishing to wait for a specific event places itself in the proper wait queue and relinquishes control. Therefore, a wait queue represents a set of sleeping processes, which are woken up by the kernel when some condition becomes true.
+
+Wait queues are implemented as doubly linked lists whose elements include pointers to process descriptors. Each wait queue is identified by a wait queue head, a data structure of type `wait_queue_head_t`:
+
+    struct __wait_queue_head {
+        spinlock_t lock;
+        struct list_head task_list;
+    };
+    typedef struct __wait_queue_head wait_queue_head_t;
+
+Because wait queues are modified by interrupt handlers as well as by major kernel functions, the doubly linked lists must be protected from concurrent accesses, which could induce unpredictable results (see Chapter 5). Synchronization is achieved by the `lock` spin lock in the wait queue head. The `task_list` field is the head of the list of waiting processes.
+
+Elements of a wait queue list are of type `wait_queue_t`:
+
+    struct __wait_queue {
+        unsigned int        flags;
+        struct task_struct  *task;
+        wait_queue_func_t   func;
+        struct list_head    task_list;
+    };
+    typedef struct __wait_queue wait_queue_t;
+
+Each element in the wait queue list represents a sleeping process, which is waiting for some event to occur; its descriptor address is stored in the `task` field. The `task_list` field contains the pointers that link this element to the list of processes waiting for the same event.
+
+However, it is not always convenient to wake up all sleeping processes in a wait
+queue. For instance, if two or more processes are waiting for exclusive access to
+some resource to be released, it makes sense to wake up just one process in the wait
+queue. This process takes the resource, while the other processes continue to sleep.
+(This avoids a problem known as the “thundering herd,” with which multiple processes
+are wakened only to race for a resource that can be accessed by one of them,
+with the result that remaining processes must once more be put back to sleep.)
+
+Thus, there are two kinds of sleeping processes: exclusive processes (denoted by the
+value 1 in the flags field of the corresponding wait queue element) are selectively
+woken up by the kernel, while nonexclusive processes (denoted by the value 0 in the
+flags field) are always woken up by the kernel when the event occurs. A process
+waiting for a resource that can be granted to just one process at a time is a typical
+exclusive process. Processes waiting for an event that may concern any of them are
+nonexclusive. Consider, for instance, a group of processes that are waiting for the
+termination of a group of disk block transfers: as soon as the transfers complete, all
+waiting processes must be woken up. As we’ll see next, the func field of a wait queue
+element is used to specify how the processes sleeping in the wait queue should be
+woken up.
+
+
+
 <h4 id="3.2.4.2">3.2.4.2 处理等待队列</h4>
+
+A new wait queue head may be defined by using the DECLARE_WAIT_QUEUE_HEAD(name)
+macro, which statically declares a new wait queue head variable called name and initializes
+its lock and task_list fields. The init_waitqueue_head() function may be
+used to initialize a wait queue head variable that was allocated dynamically.
+
+The init_waitqueue_entry(q,p) function initializes a wait_queue_t structure q as follows:
+
+    q->flags = 0;
+    q->task = p;
+    q->func = default_wake_function;
+
+The nonexclusive process p will be awakened by default_wake_function(), which is a
+simple wrapper for the try_to_wake_up() function discussed in Chapter 7.
+
+Alternatively, the DEFINE_WAIT macro declares a new wait_queue_t variable and initializes
+it with the descriptor of the process currently executing on the CPU and the
+address of the autoremove_wake_function() wake-up function. This function invokes
+default_wake_function() to awaken the sleeping process, and then removes the wait
+queue element from the wait queue list. Finally, a kernel developer can define a custom
+awakening function by initializing the wait queue element with the init_
+waitqueue_func_entry() function.
+
+Once an element is defined, it must be inserted into a wait queue. The add_wait_
+queue() function inserts a nonexclusive process in the first position of a wait queue
+list. The add_wait_queue_exclusive() function inserts an exclusive process in the last
+position of a wait queue list. The remove_wait_queue() function removes a process
+from a wait queue list. The waitqueue_active() function checks whether a given wait
+queue list is empty.
+
+A process wishing to wait for a specific condition can invoke any of the functions
+shown in the following list.
+
+* The sleep_on() function operates on the current process:
+
+        void sleep_on(wait_queue_head_t *wq)
+        {
+            wait_queue_t wait;
+            init_waitqueue_entry(&wait, current);
+            current->state = TASK_UNINTERRUPTIBLE;
+            add_wait_queue(wq,&wait); /* wq points to the wait queue head */
+            schedule();
+            remove_wait_queue(wq, &wait);
+        }
+
+    The function sets the state of the current process to TASK_UNINTERRUPTIBLE and inserts it into the specified wait queue. Then it invokes the scheduler, which resumes the execution of another process. When the sleeping process is awakened, the scheduler resumes execution of the sleep_on() function, which removes the process from the wait queue.
+
+* The interruptible_sleep_on() function is identical to sleep_on(), except that it
+sets the state of the current process to TASK_INTERRUPTIBLE instead of setting it to
+TASK_UNINTERRUPTIBLE, so that the process also can be woken up by receiving a
+signal.
+
+* The sleep_on_timeout() and interruptible_sleep_on_timeout() functions are
+similar to the previous ones, but they also allow the caller to define a time interval
+after which the process will be woken up by the kernel. To do this, they
+invoke the schedule_timeout() function instead of schedule() (see the section
+“An Application of Dynamic Timers: the nanosleep() System Call” in
+Chapter 6).
+
+* The prepare_to_wait(), prepare_to_wait_exclusive(), and finish_wait() functions,
+introduced in Linux 2.6, offer yet another way to put the current process
+to sleep in a wait queue. Typically, they are used as follows:
+
+        DEFINE_WAIT(wait);
+        prepare_to_wait_exclusive(&wq, &wait, TASK_INTERRUPTIBLE);
+                                    /* wq is the head of the wait queue */
+        ...
+        if (!condition)
+            schedule();
+        finish_wait(&wq, &wait);
+
+    The prepare_to_wait() and prepare_to_wait_exclusive() functions set the process
+state to the value passed as the third parameter, then set the exclusive flag in
+the wait queue element respectively to 0 (nonexclusive) or 1 (exclusive), and
+finally insert the wait queue element wait into the list of the wait queue head wq.
+
+    As soon as the process is awakened, it executes the finish_wait() function,
+which sets again the process state to TASK_RUNNING (just in case the awaking condition
+becomes true before invoking schedule()), and removes the wait queue
+element from the wait queue list (unless this has already been done by the wakeup
+function).
+
+* The wait_event and wait_event_interruptible macros put the calling process to
+sleep on a wait queue until a given condition is verified. For instance, the wait_
+event(wq,condition) macro essentially yields the following fragment:
+
+        DEFINE_WAIT(__wait);
+        for (;;) {
+            prepare_to_wait(&wq, &__wait, TASK_UNINTERRUPTIBLE);
+            if (condition)
+                break;
+            schedule();
+        }
+        finish_wait(&wq, &__wait);
+
+A few comments on the functions mentioned in the above list: the sleep_on()-like
+functions cannot be used in the common situation where one has to test a condition
+and atomically put the process to sleep when the condition is not verified; therefore,
+because they are a well-known source of race conditions, their use is discouraged.
+Moreover, in order to insert an exclusive process into a wait queue, the kernel must
+make use of the prepare_to_wait_exclusive() function (or just invoke add_wait_
+queue_exclusive() directly); any other helper function inserts the process as nonexclusive.
+Finally, unless DEFINE_WAIT or finish_wait() are used, the kernel must remove
+the wait queue element from the list after the waiting process has been awakened.
+
+The kernel awakens processes in the wait queues, putting them in the TASK_RUNNING
+state, by means of one of the following macros: wake_up, wake_up_nr, wake_up_all,
+wake_up_interruptible, wake_up_interruptible_nr, wake_up_interruptible_all,
+wake_up_interruptible_sync, and wake_up_locked. One can understand what each of
+these nine macros does from its name:
+
+* All macros take into consideration sleeping processes in the TASK_INTERRUPTIBLE state; if the macro name does not include the string “interruptible,” sleeping processes in the TASK_UNINTERRUPTIBLE state also are considered.
+
+* All macros wake all nonexclusive processes having the required state (see the previous bullet item).
+
+* The macros whose name include the string “nr” wake a given number of exclusive processes having the required state; this number is a parameter of the macro. The macros whose names include the string “all” wake all exclusive processes having the required state. Finally, the macros whose names don’t include “nr” or “all” wake exactly one exclusive process that has the required state.
+
+* The macros whose names don’t include the string “sync” check whether the priority of any of the woken processes is higher than that of the processes currently running in the systems and invoke schedule() if necessary. These checks are not made by the macro whose name includes the string “sync”; as a result, execution of a high priority process might be slightly delayed.
+
+
+* The wake_up_locked macro is similar to wake_up, except that it is called when the spin lock in wait_queue_head_t is already held.
+
+For instance, the wake_up macro is essentially equivalent to the following code fragment:
+
+    void wake_up(wait_queue_head_t *q)
+    {
+        struct list_head *tmp;
+        wait_queue_t *curr;
+        
+        list_for_each(tmp, &q->task_list) {
+            curr = list_entry(tmp, wait_queue_t, task_list);
+            if (curr->func(curr, TASK_INTERRUPTIBLE|TASK_UNINTERRUPTIBLE,
+                    0, NULL) && curr->flags)
+                break;
+        }
+    }
+
+The `list_for_each` macro scans all items in the `q->task_list` doubly linked list, that is, all processes in the wait queue. For each item, the `list_entry` macro computes the address of the corresponding `wait_queue_t` variable. The `func` field of this variable stores the address of the wake-up function, which tries to wake up the process identified by the `task` field of the wait queue element. If a process has been effectively awakened (the function returned 1) and if the process is exclusive (curr->flags equal to 1), the loop terminates. Because all nonexclusive processes are always at the beginning of the doubly linked list and all exclusive processes are at the end, the function always wakes the nonexclusive processes and then wakes one exclusive process, if any exists.*
+
 <h3 id="3.2.5">3.2.5 进程资源限制</h3>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
