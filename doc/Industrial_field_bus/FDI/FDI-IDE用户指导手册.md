@@ -2,7 +2,7 @@
 
 * [3 FDI包](#3)
     - [3.1 第1步：配置EDDL编译器](#3.1)
-        + [3.1.1 基础](#3.1.1)
+        + [3.1.1 编译器背景知识](#3.1.1)
         + [3.1.2 FF编译器](#3.1.2)
         + [3.1.3 HART编译器](#3.1.3)
         + [3.1.4 PROFIBUS/PROFINET编译器](#3.1.4)
@@ -19,13 +19,13 @@
 
 <h2 id="3.1">3.1 第一步：配置EDDL编译器</h2>
 
-<h3 id="3.1.1">3.1.1 基础</h3>
+<h3 id="3.1.1">3.1.1 编译器背景知识</h3>
 
-EDDL code representing the device functions and parameters must be tokenized before it can be used in the context of an FDI Package. Tokenizing is a kind of compilation of EDDL code, linking libraries and so on into a binary format. FDI defines a unified binary format for all EDDs used in FDI Packages. The FDI Package IDE and its Tokenizers are capable to generate FDI Binary Format EDDs as well as legacy binary format EDDs.
+EDDL代码必须经过编译才能在FDI包中使用。编译就是指把EDDL代码链接到各个库文件，并编译成二进制文件的过程。FDI定义了要在FDI包中使用的所有EDD的统一格式。FDI-IDE和Tokenizer不仅能够生成FDI二进制格式的EDD，也能产生之前已有的二进制格式的EDD。
 
-For each communication protocol, a separate tokenizer is required, which has protocol specific knowledge that is required to create the final binary version of the EDD from EDDL sources.
+对于每一种通信协议，都有特定的Tokenizer，它能根据协议特有的知识产生最终版本的二进制EDD。
 
-A tokenizer is a software product in a defined folder structure. During the lifecycle of a communication protocol, updates of this tokenizer may be required for bug fixes and feature extensions.
+Tokenizer是一个软件，它的目录结构是定义好的。对于每个特定版本的通信协议，都可能发生Tokenizer的升级更新，以修复bug和实现功能扩展。
 
 > <font color="red">Warning</font>
 >

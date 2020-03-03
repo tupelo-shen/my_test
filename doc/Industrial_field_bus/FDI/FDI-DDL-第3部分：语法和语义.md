@@ -312,5 +312,9 @@ VARIABLE_LIST是一组EDD通信对象（VARIABLE，VALUE_ARRAY或RECORDS）。�
 <h2 id="13.9">13.9 COMPONENT_RELATION</h2>
 <h2 id="13.10">13.10 INTERFACE</h2>
 
+<h1 id="15">15 重定义</h1>
+
+<h2 id="15.1">15.1 概述</h2>
+
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
