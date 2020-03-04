@@ -2412,7 +2412,7 @@ The prio field of the process descriptor stores the dynamic priority of the proc
 
 在多种情况下，内核必须能够根据PID得到进程描述符的指针。比如，kill()系统调用，假设进程P1想要发送给进程P2一个信号，它指定P2进程的PID作为参数调用kill()。内核能够根据PID溯源到进程描述符的指针，然后从P2的进程描述符记录待处理（也就是挂起-pending）信号的数据结构的指针。
 
-Scanning the process list sequentially and checking the `pid` fields of the process descriptors is feasible but rather inefficient. To speed up the search, four hash tables have been introduced. Why multiple hash tables? Simply because the process descriptor includes fields that represent different types of PID (see Table 3-5), and each type of PID requires its own hash table.
+顺序扫描进程列表，逐个检查进程描述符的pid成员，这当然是可行的，但却不是最有效的。为了加速查找过程，内核引入了4个哈希表。为什么是4个哈希表呢？这当然是因为进程描述符的PID有4类，如表3-5所示，每一种PID对应一个哈希表。
 
 表3-5 进程描述符中的四种哈希表以及对应的数据结构
 
@@ -2423,14 +2423,13 @@ Scanning the process list sequentially and checking the `pid` fields of the proc
 | PIDTYPE_PGID| pgrp    | 进程组组长的PID |
 | PIDTYPE_SID | session | session组长的PID |
 
+4个哈希表都是在内核初始化阶段动态分配，它们的地址存储在pid_hash的数组中。哈希表的大小依赖于RAM的数量。比如，系统的RAM位512M，每一个哈希表被存储在4个页帧中，大约是2048项（4*4*1024/4/2=2048）。
 
-The four hash tables are dynamically allocated during the kernel initialization phase, and their addresses are stored in the `pid_hash` array. The size of a single hash table depends on the amount of available RAM; for example, for systems having 512 MB of RAM, each hash table is stored in four page frames and includes 2,048 entries.
-
-The PID is transformed into a table index using the `pid_hashfn` macro, which expands to:
+使用pid_hashfn宏将PID值转换成哈希表的索引值，其定义为：
 
     #define pid_hashfn(x) hash_long((unsigned long) x, pidhash_shift)
 
-The `pidhash_shift` variable stores the length in bits of a table index (11, in our example). The `hash_long()` function is used by many hash functions; on a 32-bit architecture it is essentially equivalent to:
+其中，pidhash_shift参数是哈希表索引所占的位数，在我们的例子中需要2048项，也就是2^11，所以pidhash_shift=11。hash_long()函数被许多哈希函数使用；对于32位架构等于：
 
     unsigned long hash_long(unsigned long val, unsigned int bits)
     {
@@ -2438,25 +2437,25 @@ The `pidhash_shift` variable stores the length in bits of a table index (11, in 
         return hash >> (32 - bits);
     }
 
-Because in our example `pidhash_shift` is equal to 11, `pid_hashfn` yields values ranging between 0 and 2^11 − 1 = 2047.
+因为在我们的示例中，pidhash_shift等于11，所以pid_hashfn宏产生的值永远落在0-2047这个区间内。
 
-> The Magic Constant
+> 魔幻常数
 > 
-> You might wonder where the 0x9e370001 constant (= 2,654,404,609) comes from. This hash function is based on a multiplication of the index by a suitable large number, so that the result overflows and the value remaining in the 32-bit variable can be considered as the result of a modulus operation. Knuth suggested that good results are obtained when the large multiplier is a prime approximately in golden ratio to 2^32 (32 bit being the size of the 80×86’s registers). Now, 2,654,404,609 is a prime near to that can also be easily multiplied by additions and bit shifts, because it is equal to `2^31 + 2^29 - 2^25 + 2^22 - 2^19 – 2^16 + 1` .
+> 在上面的代码中，你肯定会想0x9e370001UL这个值是如何得来的。hash函数通常是索引值乘以一个合适的大数，因此，结果会溢出，将其余下的值存入32位的变量，这个变量可以看做是求模运算的结果。Knuth认为，选取一段数值范围中黄金比例的质数为这个大数是最合适的。所以，0-2^23之间的黄金比例附近最合适的质数，我们选取0x9e370001UL，它还可以方便地被加、减法，还有移位实现。因为它等于`2^31 + 2^29 - 2^25 + 2^22 - 2^19 – 2^16 + 1`。
 
-As every basic computer science course explains, a hash function does not always ensure a one-to-one correspondence between PIDs and table indexes. Two different PIDs that hash into the same table index are said to be colliding. 
+正如计算机科学课程中所讲的，哈希函数是无法保证PID和哈希表索引之间的一对一关系的。两个PID对应哈希表中的同一个索引，就成为 *冲突*。
 
-Linux uses chaining to handle colliding PIDs; each table entry is the head of a doubly linked list of colliding process descriptors. Figure 3-5 illustrates a PID hash table with two lists. The processes having PIDs 2,890 and 29,384 hash into the 200th element of the table, while the process having PID 29,385 hashes into the 1,466th element of the table.
+为了解决这个冲突问题，Linux决定使用一个双向链表存储这些冲突的PID，把这个双向链表的表头存入哈希表中，通过这种方法，完美地解决了这个冲突。图3-5，展示了一个带有两个双向链表的PID哈希表：PID为2890和29384的进程都被存入到哈希表的第200个元素处的双向链表中，而PID为29385的进程被装入到了哈希表的第1466个元素里。
 
-Hashing with chaining is preferable to a linear transformation from PIDs to table indexes because at any given instance, the number of processes in the system is usually far below 32,768 (the maximum number of allowed PIDs). It would be a waste of storage to define a table consisting of 32,768 entries, if, at any given instance, most such entries are unused.
+这种带链表的哈希表优于从PID到表索引的线性转换，这是因为，对于任何给定的32位系统中，进程的数量通常远少于32768个（最大允许进程数）。如果定义一个32768项的表，这对于内存空间都是一种浪费，因为大部分项根本没用。
 
-The data structures used in the PID hash tables are quite sophisticated, because they must keep track of the relationships between the processes. As an example, suppose that the kernel must retrieve all processes belonging to a given thread group, that is, all processes whose `tgid` field is equal to a given number. Looking in the hash table for the given thread group number returns just one process descriptor, that is, the descriptor of the thread group leader. To quickly retrieve the other processes in the group, the kernel must maintain a list of processes for each thread group. The same situation arises when looking for the processes belonging to a given login session or belonging to a given process group.
+当然了，实际用在PID哈希表中的数据结构非常复杂，因为它们要跟踪进程之间的各种关系。比如，假设内核需要检索属于某个线程组的所有进程，也就是所有的进程其tgid成员都等于某个相同的进程ID。如果根据这个给定的线程组ID，也就是线程组组长的PID，遍历整个PID哈希表，仅是返回一个进程描述符，也就是线程组组长的进程描述符。那为了快速检索整个线程组的所有进程，内核就需要为每个线程组维护一个进程表。对于寻找一个给定的login会话组或者进程组中的所有进程，道理是一样的。
 
 <img id="Figure_3_5" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_5.PNG">
 
 Figure 3-5. 一个简单的PID哈希表和链表
 
-The PID hash tables’ data structures solve all these problems, because they allow the definition of a list of processes for any PID number included in a hash table. The core data structure is an array of four `pid` structures embedded in the `pids` field of the process descriptor; the fields of the `pid` structure are shown in Table 3-6.
+PID哈希表的数据结构就解决了这所有的问题，因为它允许给包含在哈希表中的任何一个PID定义一个进程表。核心数据结构就是在进程描述符的pids成员中嵌入4个pid成员结构，组成一个数组，数组每个成员对应一种哈希表。每个pid成员的数据成员如表3-6所示：
 
 表3-6 `pid`数据结构的各个成员
 
@@ -2466,7 +2465,7 @@ The PID hash tables’ data structures solve all these problems, because they al
 | struct hlist_node | pid_chain | 用于hash表中的链表结构中，用于指向下一个和前一个元素 |
 | struct list_head  | pid_list  | 每个PID表的头 |
 
-Figure 3-6 shows an example based on the PIDTYPE_TGID hash table. The second entry of the pid_hash array stores the address of the hash table, that is, the array of hlist_head structures representing the heads of the chain lists. In the chain list rooted at the 71st entry of the hash table, there are two process descriptors corresponding to the PID numbers 246 and 4,351 (double-arrow lines represent a couple of forward and backward pointers). The PID numbers are stored in the `nr` field of the `pid` structure embedded in the process descriptor (by the way, because the thread group number coincides with the PID of its leader, these numbers also are stored in the `pid` field of the process descriptors). Let us consider the per-PID list of the thread group 4,351: the head of the list is stored in the `pid_list` field of the process descriptor included in the hash table, while the links to the next and previous elements of the per-PID list also are stored in the pid_list field of each list element.
+我们用下面的图3-6，展示一个类型为PIDTYPE_TGID的哈希表。pid_hash数组的第二项存储着哈希表的地址，也就是由hlist_head结构的组成的一个数组，这个数组存储着链表的表头。开始于哈希表第71项的链表，存储着2个进程描述符，其PID分别是246和4351，使用双向链表表示。这些PID值存储在进程描述符的pid结构成员的nr成员中（顺便说一下，因为线程组的ID和它的组长的PID相同，所以这些值也是线程组的ID）。接下来，我们看一个线程组4351，它对应着一组链表：链表的头被存储在进程描述符的pid_list结构成员中，通过pid_list结构的next和prev指针分别指向该链表的下一个和前一个元素。通过这种方式，我们就实现了检索某个线程组中的所有进程。其它3类哈希表的检索与此类似，就不再一一展开了。
 
 图3-6展示了一个基于PIDTYPE_TGID类型的哈希表的示例。pid_hash数组中的第2项存储着该哈希表的地址，也就是hlist_head类型的数组结构，用于保存具有相同tpid值的链表的表头。tgid哈希表的第71项出来的分链表中，有PID分别为246和4351的进程描述符。
 
@@ -2495,11 +2494,12 @@ Figure 3-6 shows an example based on the PIDTYPE_TGID hash table. The second ent
 
 * detach_pid(task, type)
     
-    Removes the process descriptor pointed to by task from the per-PID list of type type to which the descriptor belongs. If the per-PID list does not become empty, the function terminates. Otherwise, the function removes the process descriptor from the hash table of type type; finally, if the PID number does not occur in any other hash table, the function clears the corresponding bit in the PID bitmap, so that the number can be recycled.
+    从类型为type的PID列表中删除task指向的进程描述符。执行完删除操作后，如果PID链表没有变为空，则函数执行中止；否则，该函数还会从类型为type的哈希表中删除对应的进程描述符。
 
 * next_thread(task)
     
-    Returns the process descriptor address of the lightweight process that follows task in the hash table list of type PIDTYPE_TGID. Because the hash table list is circular, when applied to a conventional process the macro returns the descriptor address of the process itself.
+    返回类型为PIDTYPE_TGID的哈希表中紧跟在task之后的轻进程的进程描述符地址。因为链表是环形的，如果是作用到常规进程上，该宏返回进程本身的描述符地址。
+
 
 <h3 id="3.2.4">3.2.4 如何组织进程</h3>
 
