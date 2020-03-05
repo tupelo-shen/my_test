@@ -216,7 +216,7 @@ When Linus Torvalds wrote the first kernel, he referred to some classical books 
 The following list describes how Linux competes against some well-known commercial Unix kernels:
 
 * Monolithic kernel
-    
+
     It is a large, complex do-it-yourself program, composed of several logically different components. In this, it is quite conventional; most commercial Unix variants are monolithic. (Notable exceptions are the Apple Mac OS X and the GNU Hurd operating systems, both derived from the Carnegie-Mellon’s Mach, which follow a microkernel approach.)
 
 * Compiled and statically linked traditional Unix kernels
@@ -224,7 +224,7 @@ The following list describes how Linux competes against some well-known commerci
     Most modern kernels can dynamically load and unload some portions of the kernel code (typically, device drivers), which are usually called modules. Linux’s support for modules is very good, because it is able to automatically load and unload modules on demand. Among the main commercial Unix variants, only the SVR4.2 and Solaris kernels have a similar feature.
 
 * 内核线程
-    
+
     Some Unix kernels, such as Solaris and SVR4.2/MP, are organized as a set of kernel threads. A kernel thread is an execution context that can be independently scheduled; it may be associated with a user program, or it may run only some kernel functions. Context switches between kernel threads are usually much less expensive than context switches between ordinary processes, because the former usually operate on a common address space. Linux uses kernel threads in a very limited way to execute a few kernel functions periodically; however, they do not represent the basic execution context abstraction. (That’s the topic of the next item.)
 
 * 支持多线程应用程序
@@ -232,61 +232,53 @@ The following list describes how Linux competes against some well-known commerci
     Most modern operating systems have some kind of support for multithreaded applications—that is, user programs that are designed in terms of many relatively independent execution flows that share a large portion of the application data structures. A multithreaded user application could be composed of many lightweight processes (LWP), which are processes that can operate on a common address space, common physical memory pages, common opened files, and so on. Linux defines its own version of lightweight processes, which is different from the types used on other systems such as SVR4 and Solaris. While all the commercial Unix variants of LWPare based on kernel threads, Linux regards lightweight processes as the basic execution context and handles them via the nonstandard `clone()` system call.
 
 * 可抢占式内核
-    
+
     When compiled with the “Preemptible Kernel” option, Linux 2.6 can arbitrarily interleave execution flows while they are in privileged mode. Besides Linux 2.6, a few other conventional, general-purpose Unix systems, such as Solaris and Mach 3.0, are fully preemptive kernels. SVR4.2/MP introduces some fixed preemption points as a method to get limited preemption capability.
 
 * 支持多处理器
-    
+
     Several Unix kernel variants take advantage of multiprocessor systems. Linux 2.6 supports symmetric multiprocessing (SMP) for different memory models, including NUMA: the system can use multiple processors and each processor can handle any task—there is no discrimination among them. Although a few parts of the kernel code are still serialized by means of a single “big kernel lock,” it is fair to say that Linux 2.6 makes a near optimal use of SMP.
 
 * 文件系统
-    
+
     Linux’s standard filesystems come in many flavors. You can use the plain old Ext2 filesystem if you don’t have specific needs. You might switch to Ext3 if you want to avoid lengthy filesystem checks after a system crash. If you’ll have to deal with many small files, the ReiserFS filesystem is likely to be the best choice. Besides Ext3 and ReiserFS, several other journaling filesystems can be used in Linux; they include IBM AIX’s Journaling File System (JFS) and Silicon Graphics IRIX’s XFS filesystem. Thanks to a powerful object-oriented Virtual File System technology (inspired by Solaris and SVR4), porting a foreign filesystem to Linux is generally easier than porting to other kernels.
 
 * STREAMS
-    
+
     Linux has no analog to the STREAMS I/O subsystem introduced in SVR4, although it is included now in most Unix kernels and has become the preferred interface for writing device drivers, terminal drivers, and network protocols.
 
-This assessment suggests that Linux is fully competitive nowadays with commercial
-operating systems. Moreover, Linux has several features that make it an exciting
-operating system. Commercial Unix kernels often introduce new features to gain a
-larger slice of the market, but these features are not necessarily useful, stable, or productive.
-As a matter of fact, modern Unix kernels tend to be quite bloated. By contrast,
-Linux—together with the other open source operating systems—doesn’t suffer
-from the restrictions and the conditioning imposed by the market, hence it can freely
-evolve according to the ideas of its designers (mainly Linus Torvalds). Specifically,
-Linux offers the following advantages over its commercial competitors:
+This assessment suggests that Linux is fully competitive nowadays with commercial operating systems. Moreover, Linux has several features that make it an exciting operating system. Commercial Unix kernels often introduce new features to gain a larger slice of the market, but these features are not necessarily useful, stable, or productive. As a matter of fact, modern Unix kernels tend to be quite bloated. By contrast, Linux—together with the other open source operating systems—doesn’t suffer from the restrictions and the conditioning imposed by the market, hence it can freely evolve according to the ideas of its designers (mainly Linus Torvalds). Specifically, Linux offers the following advantages over its commercial competitors:
 
-* **Linux是免费的** 
-    
+* **Linux是免费的**
+
     You can install a complete Unix system at no expense other than the hardware (of course).
 
 * **Linux可完全定制化**
-    
+
     Thanks to the compilation options, you can customize the kernel by selecting only the features really needed. Moreover, thanks to the GPL, you are allowed to freely read and modify the source code of the kernel and of all system programs.
 
-* **Linux可以运行在低端也不贵的硬件设备上** 
-    
+* **Linux可以运行在低端也不贵的硬件设备上**
+
     You are able to build a network server using an old Intel 80386 system with 4 MB of RAM.
 
 * **Linux功能强大**
-    
+
     Linux systems are very fast, because they fully exploit the features of the hardware components. The main Linux goal is efficiency, and indeed many design choices of commercial variants, like the STREAMS I/O subsystem, have been rejected by Linus because of their implied performance penalty.
 
 * **Linux开发者都是及其优秀的**
-    
+
     Linux systems are very stable; they have a very low failure rate and system maintenance time.
 
 * **Linux内核可以小而紧凑**
-    
+
     It is possible to fit a kernel image, including a few system programs, on just one 1.44 MB floppy disk. As far as we know, none of the commercial Unix variants is able to boot from a single floppy disk.
 
 * **Linux与许多常见的系统兼容**
-    
+
     Linux lets you directly mount filesystems for all versions of MS-DOS and Microsoft Windows, SVR4, OS/2, Mac OS X, Solaris, SunOS, NEXTSTEP, many BSD variants, and so on. Linux also is able to operate with many network layers, such as Ethernet (as well as Fast Ethernet, Gigabit Ethernet, and 10 Gigabit Ethernet), Fiber Distributed Data Interface (FDDI), High Performance Parallel Interface (HIPPI), IEEE 802.11 (Wireless LAN), and IEEE 802.15 (Bluetooth). By using suitable libraries, Linux systems are even able to directly run programs written for other operating systems. For example, Linux is able to execute some applications written for MS-DOS, Microsoft Windows, SVR3 and R4, 4.4BSD, SCO Unix, Xenix, and others on the 80x86 platform.
 
 * **Linux具有良好的支持**
-    
+
     Believe it or not, it may be a lot easier to get patches and updates for Linux than for any proprietary operating system. The answer to a problem often comes back within a few hours after sending a message to some newsgroup or mailing list. Moreover, drivers for Linux are usually available a few weeks after new hardware products have been introduced on the market. By contrast, hardware manufacturers release device drivers for only a few commercial operating systems—usually Microsoft’s. Therefore, all commercial Unix variants run on a restricted subset of hardware components.
 
 With an estimated installed base of several tens of millions, people who are used to certain features that are standard under other operating systems are starting to expect the same from Linux. In that regard, the demand on Linux developers is also increasing. Luckily, though, Linux has evolved under the close direction of Linus and his subsystem maintainers to accommodate the needs of the masses.
@@ -296,7 +288,7 @@ With an estimated installed base of several tens of millions, people who are use
 Linux tries to maintain a neat distinction between hardware-dependent and hardware-independent source code. To that end, both the arch and the include directories include 23 subdirectories that correspond to the different types of hardware platforms supported. The standard names of the platforms are:
 
 * alpha
-    
+
     Hewlett-Packard’s Alpha workstations (originally Digital, then Compaq; no longer manufactured)
 
 * arm, arm26
@@ -308,23 +300,23 @@ Linux tries to maintain a neat distinction between hardware-dependent and hardwa
     “Code Reduced Instruction Set” CPUs used by Axis in its thin-servers, such as web cameras or development boards
 
 * frv
-    
+
     Embedded systems based on microprocessors of the Fujitsu’s FR-V family
 
 * h8300
-    
+
     Hitachi h8/300 and h8S RISC 8/16-bit microprocessors
 
 * i386
-    
+
     IBM-compatible personal computers based on 80x86 microprocessors
 
 * ia64
-    
+
     Workstations based on the Intel 64-bit Itanium microprocessor
 
 * m32r
-    
+
     Computers based on the Renesas M32R family of microprocessors
 
 * m68k, m68knommu
@@ -348,19 +340,19 @@ Linux tries to maintain a neat distinction between hardware-dependent and hardwa
     IBM ESA/390 and zSeries mainframes
 
 * sh, sh64
-    
+
     Embedded systems based on SuperH microprocessors developed by Hitachi and STMicroelectronics
 
 * sparc, sparc64
-    
+
     Workstations based on Sun Microsystems SPARC and 64-bit Ultra SPARC microprocessors
 
 * um
-    
+
     User Mode Linux, a virtual platform that allows developers to run a kernel in User Mode
 
 * v850
-    
+
     NEC V850 microcontrollers that incorporate a 32-bit RISC core based on the Harvard architecture
 
 * x86_64
@@ -575,15 +567,15 @@ The potential users of a file fall into three classes:
 There are three types of access rights—`read`, `write`, and `execute`—for each of these three classes. Thus, the set of access rights associated with a file consists of nine different binary flags. Three additional flags, called `suid` (Set User ID), `sgid` (Set Group ID), and `sticky`, define the file mode. These flags have the following meanings when applied to executable files:
 
 * suid
-    
+
     A process executing a file normally keeps the User ID (UID) of the process owner. However, if the executable file has the suid flag set, the process gets the UID of the file owner.
 
 * sgid
-    
+
     A process executing a file keeps the user group ID of the process group. However, if the executable file has the sgid flag set, the process gets the user group ID of the file.
 
 * sticky
-    
+
     An executable file with the sticky flag set corresponds to a request to the kernel to keep the program in memory after its execution terminates.
 
 When a file is created by a process, its owner ID is the UID of the process. Its owner user group ID can be either the process group ID of the creator process or the user group ID of the parent directory, depending on the value of the sgid flag of the parent directory.
@@ -617,7 +609,7 @@ The three parameters have the following meanings:
     Denotes the pathname (relative or absolute) of the file to be opened.
 
 * flag
-    
+
     Specifies how the file must be opened (e.g., read, write, read/write, append). It also can specify whether a nonexisting file should be created.
 
 * mode
@@ -730,19 +722,19 @@ Programmers casually refer to a memory address as the way to access the contents
 程序员通常使用内存地址访问内存单元中的内容。但是，对于x86处理器，需要区分下面3种地址（[ARM处理器是没有逻辑地址这个概念的，也就是说它们指令中的寻址方式是不同的。]()）：
 
 1. 逻辑地址
-    
+
     Included in the machine language instructions to specify the address of an operand or of an instruction. This type of address embodies the well-known 80×86 segmented architecture that forces MS-DOS and Windows programmers to divide their programs into segments. Each logical address consists of a segment and an offset (or displacement) that denotes the distance from the start of the segment to the actual address.
 
     在机器语言指令中用来指定算子或指令的地址。这类地址加强了x86架构的分段架构，但迫使基于MS-DOS和Windows系统编程的程序员将他们的程序也分段。每个逻辑地址由一个段地址和偏移量组成，偏移量描述段地址偏离实际物理地址的距离。
 
 2. 线性地址（也被称为虚拟地址）
-    
+
     A single 32-bit unsigned integer that can be used to address up to 4 GB—that is, up to 4,294,967,296 memory cells. Linear addresses are usually represented in hexadecimal notation; their values range from 0x00000000 to 0xffffffff.
 
     32位系统的寻址空间是4GB，也就是寻址范围是0x00000000到0xffffffff。
 
 3. 物理地址
-    
+
     Used to address memory cells in memory chips. They correspond to the electrical signals sent along the address pins of the microprocessor to the memory bus. Physical addresses are represented as 32-bit or 36-bit unsigned integers.
 
     用来描述实际物理内存芯片的地址空间。也就是说，这些地址是发送到内存总线上的电信号。物理地址可以是32位，也可以是36位。
@@ -783,19 +775,19 @@ Three of the six segmentation registers have specific purposes:
 
 其中3个寄存器具有特定的用途：
 
-* cs 
-    
+* cs
+
     The code segment register, which points to a segment containing program instructions
 
     代码段寄存器，指向包含程序指令的段。
 
-* ss 
-    
+* ss
+
     The stack segment register, which points to a segment containing the current program stack
 
     栈的段寄存器，指向包含当前程序栈的段。
 
-* ds 
+* ds
 
     The data segment register, which points to a segment containing global and static data
 
@@ -842,13 +834,13 @@ There are several types of segments, and thus several types of Segment Descripto
 有几种类型的段，就有几种类型的段描述符。下面的列表展示了Linux中使用比较广发的类型：
 
 * *代码段描述符*
-    
+
     Indicates that the Segment Descriptor refers to a code segment; it may be included either in the GDT or in the LDT. The descriptor has the S flag set (nonsystem segment).
 
     表明该段描述符指向一个代码段；即可以包含在GDT，也可以包含在LDT。S标志置1，表示这是代码段。
 
 * *数据段描述符*
-    
+
     Indicates that the Segment Descriptor refers to a data segment; it may be included either in the GDT or in the LDT. The descriptor has the S flag set. Stack segments are implemented by means of generic data segments.
 
     表明该段描述符指向一个数据段；即可以包含在GDT，也可以包含在LDT。S标志置1，表示这是数据段。栈段就是通过通用数据段实现的。
@@ -860,7 +852,7 @@ There are several types of segments, and thus several types of Segment Descripto
     表明该段描述符指向一个任务状态段（TSS），也就是说，该段是用来保存处理器各个寄存器的内容的（第3章的[任务状态段](#3.3.2)）；它只能出现在GDT中。相应的`Type`位域使用值11或9，依赖于相应的进程现在是否正在CPU上执行。该类描述符的S标志置0，表示系统段。
 
 * *LDT描述符-LDTD*
-    
+
     Indicates that the Segment Descriptor refers to a segment containing an LDT; it can appear only in the GDT. The corresponding Type field has the value 2. The S flag of such descriptors is set to 0. The next section shows how 80×86 processors are able to decide whether a segment descriptor is stored in the GDT or in the LDT of the process.
 
     描述段描述符指向包含LDT的段；这样的描述符只能出现在GDT中。相应的`Type`位域值为2。这类描述符的S标志位置0，表示系统段。下一段，我们将会描述x86处理器是怎样决定一个段描述符存储在GDT还是进程的LDT中的。
@@ -915,11 +907,11 @@ Figure 2-5 shows in detail how a logical address is translated into a correspond
 图2-5详细地展示了逻辑地址转换成线性地址的过程。段硬件单元执行下面的操作：
 
 1. Examines the TI field of the Segment Selector to determine which Descriptor Table stores the Segment Descriptor. This field indicates that the Descriptor is either in the GDT (in which case the segmentation unit gets the base linear address of the GDT from the gdtr register) or in the active LDT (in which case the segmentation unit gets the base linear address of that LDT from the ldtr register).
-    
+
     检查段选择器中的TI位域，决定段描述符存储在哪个描述符表中（GDT还是LDT）。如果是在GDT中，段硬件单元从`gdtr`寄存器中获取GDT的基地址（线性地址）；如果是在LDT中，段硬件单元从`ldtr`寄存器中获取LDT的基地址（线性地址）；
 
 2. Computes the address of the Segment Descriptor from the `index` field of the Segment Selector. The `index` field is multiplied by 8 (the size of a Segment Descriptor), and the result is added to the content of the `gdtr` or `ldtr` register.
-    
+
     根据段选择器中的`index`位域计算段描述符的地址，把`index*8`加到`gdtr`或`ldtr`寄存器的内容上，就是想要的段描述符的地址，其中8是段描述符的大小。
 
 3. Adds the offset of the logical address to the Base field of the Segment Descriptor, thus obtaining the linear address.
@@ -941,7 +933,7 @@ Segmentation has been included in 80×86 microprocessors to encourage programmer
 x86微处理器包含段就是鼓励编程者将他们的程序分割成逻辑相关的实体，例如子程序、全局和局部数据区域。但是，Linux使用段的方式很有限。事实上，分段和分页在某种程度上是冗余的，因为它们两个都可以分割进程的物理地址空间：分段可以给每一个进程分配不同的线性地址空间，而分页可以映射同一个线性地址到不同的物理地址空间。Linux更喜欢分页而不是分段，原因如下：
 
 * Memory management is simpler when all processes use the same segment register values—that is, when they share the same set of linear addresses.
-    
+
     当所有的进程使用相同的段寄存器值时，内存管理更简单-也就是说，它们共享线性地址。
 
 * One of the design objectives of Linux is portability to a wide range of architectures; RISC architectures in particular have limited support for segmentation.
@@ -1012,7 +1004,7 @@ The 18 segment descriptors included in each GDT point to the following segments:
 这18个段描述符指向下面这些段：
 
 * Four user and kernel code and data segments (see previous section).
-    
+
     4个用户和内核代码和数据段
 
 * A Task State Segment (TSS), different for each processor in the system. The linear address space corresponding to a TSS is a small subset of the linear address space corresponding to the kernel data segment. The Task State Segments are sequentially stored in the init_tss array; in particular, the Base field of the TSS descriptor for the nth CPU points to the nth component of the init_tss array. The G (granularity) flag is cleared, while the Limit field is set to 0xeb, because the TSS segment is 236 bytes long. The Type field is set to 9 or 11 (available 32-bit TSS), and the DPL is set to 0, because processes in User Mode are not allowed to access TSS segments. You will find details on how Linux uses TSSs in the section “Task State Segment” in Chapter 3.
@@ -1020,11 +1012,11 @@ The 18 segment descriptors included in each GDT point to the following segments:
     任务状态段(TSS)，对于系统中的每个CPU都是不同的。TSS对应的线性地址空间仅仅是内核数据段对应的线性地址空间的一小部分。所有任务状态段(TSS)被连续地存储在init_tss寄存器中；第N个CPU的TSS描述符的Base位域指向init_tss数组的第N部分。G标志被置0，Limit位域被设置位0xeb，因为TSS段的大小就是236字节长；Type位域被设置为9或11（可用的32位TSS）；DPL被设置为0，因为用户态的进程不允许访问TSS段。将会在第3章的[任务状态段](#3.3.2)一节中详细讲解Linux如何使用TSS。
 
 * A segment including the default Local Descriptor Table (LDT), usually shared by all processes (see the next section).
-    
+
     包含默认LDT的段，通常所有的进程共享（将在下一节中介绍）。
 
 * Three Thread-Local Storage (TLS) segments: this is a mechanism that allows multithreaded applications to make use of up to three segments containing data local to each thread. The *set_thread_area()* and *get_thread_area()* system calls, respectively, create and release a TLS segment for the executing process.
-    
+
     3个线程本地存储段（TLS）：这是一种允许多线程程序可以使用多达3个段保存每个线程本地数据的机制。系统调用set_thread_area()和get_thread_area()，分别为正在执行的进程创建和释放TLS段。
 
 * Three segments related to Advanced Power Management (APM): the BIOS code makes use of segments, so when the Linux APM driver invokes BIOS functions to get or set the status of APM devices, it may use custom code and data segments.
@@ -1036,7 +1028,7 @@ The 18 segment descriptors included in each GDT point to the following segments:
     5个和即插即用（PnP)BIOS服务相关的段。和上一种段类似，BIOS代码使用这些段，所以当Linux PnP驱动调用BIOS函数检测PnP设备可用的资源时，可能会使用用户代码和数据段。
 
 * A special TSS segment used by the kernel to handle “Double fault” exceptions (see “Exceptions” in Chapter 4).
-    
+
     内核使用的一个特殊TSS段，用来处理（Double fault）异常（参见第4章的[异常](#4.2.2)一节）
 
 As stated earlier, there is a copy of the GDT for each processor in the system. All copies of the GDT store identical entries, except for a few cases. First, each processor has its own TSS segment, thus the corresponding GDT’s entries differ. Moreover, a few entries in the GDT may depend on the process that the CPU is executing (LDT and TLS Segment Descriptors). Finally, in some cases a processor may temporarily modify an entry in its copy of the GDT; this happens, for instance, when invoking an APM’s BIOS procedure.
@@ -1129,21 +1121,21 @@ The entries of Page Directories and Page Tables have the same structure. Each en
 页目录和页表中的项具有相同的结构。每一项包含下面这些内容：
 
 * Present标志
-    
+
     如果被设置，说明指向的页（或二级页表）被包含在内存中；如果该标志为0，内存中没有该页，该项中的其它位由操作系统作其它目的使用。如果需要执行地址转换的二级页表或页目录中的项中的`Present`标志被清除，分页单元就将该线性地址存储到控制寄存器`cr2`中并产生异常14-页错误异常。（我们将在[第17章 Linux如何使用该标志](#17)中看到。）
 
     <font color="blue"> 通俗地讲，使用该标志表示要访问的地址在内存中存不存在，不存在的话，就会产生页错误异常。</font>
 
 * 包含页帧物理地址中最重要的20位的域
-    
+
     因为每个页帧具有4KB的容量，它的物理地址肯定是4096的倍数，所以，所包含的物理地址的低12位总是0。如果该域是指向页目录的，页帧中包含的是一个页表；如果它指向一个页表，页帧中包含的是数据所在的页。
 
 * 访问标志
-    
+
     每次分页单元访问相应的页帧时，设置该标志。操作系统在选择要换出的页时，使用该标志。分页单元绝不会复位该标志，应该由操作系统完成。
 
 * Dirty标志
-    
+
     只对页表项有用。每次对页帧实行写操作的时候，设置该标志。因为和Accessed标志一样，也是操作系统在选择要换出的页时使用该标志。分页单元绝不会复位该标志，应该由操作系统完成。
 
 * Read/Write标志
@@ -1180,7 +1172,7 @@ The entries of Page Directories and Page Tables have the same structure. Each en
 * 目录 - 最高有效10位
 
 * 偏移量 - 剩下的22位
-  
+
 使能了扩展分页的页目录项和普通的分页几乎相同，除了：
 
 * 必须设置`页大小`标志。
@@ -1399,11 +1391,11 @@ Mapping linear to physical addresses now becomes a mechanical task, although it 
 下面的宏简化了页表的处理：
 
 * PAGE_SHIFT
-    
+
     指定`Offset`域的长度，也就是位数。对于80x86处理器，该宏的值是12。因为一个页中的所有地址必须用`Offset`域能够索引到，所以页的大小就是2^12，也就是4096个字节。PAGE_SIZE会使用该宏返回一个页的大小。PAGE_MASK是0xfffff000，作为`Offset`域的掩码。
 
 * PMD_SHIFT
-    
+
     线性地址`Offset`和`Table`域的位的总长度；换句话说，页中间目录项能够映射的区域的大小。PMD_SIZE宏使用该宏计算出页中间目录项映射区域的大小，也就是一个页表的大小。PMD_MASK宏是`Offset`和`Table`域的掩码。
 
     当PAE禁止时，PMD_SHIFT的值是22（12位的`Offset`和10位的`Table`），PMD_SIZE产生的大小是2^22或4MB，PMD_MASK的值是0xffc00000。相反，如果PAE被使能，PMD_SHIFT的值是21（12位的`Offset`和9位的`Table`），PMD_SIZE产生的大小是2^21或2MB，PMD_MASK的值是0xffe00000。
@@ -1411,17 +1403,17 @@ Mapping linear to physical addresses now becomes a mechanical task, although it 
     大页不使用最后一级页表，LARGE_PAGE_SIZE是大页的大小，等于PMD_SIZE(2PMD_SHIFT)，同时，LARGE_PAGE_MASK等于PMD_MASK
 
 * PUD_SHIFT
-    
+
     确定页上层目录项可以映射的区域大小的对数。PUD_SIZE计算页上层目录中的一项可以映射的区域大小。PUD_MASK是`Table`、`Offset`、`Middle Air`3个域的位掩码。在80x86系统上，PUD_SHIFT总是等于PMD_SHIFT，而PUD_SIZE等于4M或2M。
 
 * PGDIR_SHIFT
-    
+
     确定页全局目录项能够映射的区域大小的对数。PGDIR_SIZE计算一个页全局目录项映射区域的大小。PGDIR_MASK是对应位`Offset`、`Table`、`Middle Air`和`Upper Air` 域的位掩码。
 
     当PAE禁止时，PGDIR_SHIFT 的值是22（12位的`Offset`和10位的`Table`），PGDIR_SIZE 产生的大小是2^22或4MB，PGDIR_MASK的值是0xffc00000。相反，如果PAE被使能，PGDIR_SHIFT的值是30（12位的`Offset`+9位的`Table`+9位的`Middle Air`），PGDIR_SIZE产生的大小是2^30或1GB，PGDIR_MASK的值是0xc0000000。
 
 * PTRS_PER_PTE、PTRS_PER_PMD、PTRS_PER_PUD和PTRS_PER_PGD
-    
+
     分别计算各个表中的项数。当PAE禁止时，分别是1024、1、1和1024当PAE使能时，分别是512、512、1和4。
 
 <h3 id="2.5.2">2.5.2 处理页表的相关函数</h3>
@@ -1581,7 +1573,7 @@ Why isn’t the kernel loaded starting with the first available megabyte of RAM?
     物理地址0x000a0000到0x000fffff保留给BIOS服务程序的，用来映射ISA显卡的内部内存。这个区域是所有IBM兼容的PC中一个众所周知的保留区域，640K到1M地址范围：物理地址存在，但是保留，操作系统不能使用相关的页帧。
 
 * Additional page frames within the first megabyte may be reserved by specificcomputer models. For example, the IBM ThinkPad maps the 0xa0 page frame into the 0x9f one.
-    
+
     第一个1M内存中的其它页帧，可能被其它计算机架构保留。比如，IBM的ThinkPad将0xa0页帧映射到0x9f处。
 
 In the early stage of the boot sequence (see Appendix A), the kernel queries the BIOS and learns the size of the physical memory. In recent computers, the kernel also invokes a BIOS procedure to build a list of physical address ranges and their corresponding memory types.
@@ -1656,7 +1648,7 @@ The linear address space of a process is divided into two parts:
     线性地址空间0x00000000到0xbfffffff可以被用户空间或内核空间寻址。
 
 * Linear addresses from 0xc0000000 to 0xffffffff can be addressed only when the process runs in Kernel Mode.
-    
+
     线性地址空间0xc0000000到0xffffffff只被内核空间寻址。
 
 When a process runs in User Mode, it issues linear addresses smaller than 0xc0000000; when it runs in Kernel Mode, it is executing kernel code and the linear addresses issued are greater than or equal to 0xc0000000. In some cases, however, the kernel must access the User Mode linear address space to retrieve or store data.
@@ -1718,7 +1710,7 @@ The Kernel creates the desired mapping by filling all the swapper_pg_dir entries
     0和0x300设置为pg0的物理地址，1和0x301设置成pg1的地址
 
 * The Present, Read/Write, and User/Supervisor flags are set in all four entries.
-    
+
     4项的Present、Read/Write和User/Supervisor标志被置1
 
 
@@ -1806,15 +1798,15 @@ Let’s now consider kernel Page Table initialization for computers with more th
 让我们考虑一下当内存大于4G时，内核页表的初始化。更精确地说，我们将处理一下几种情况：
 
 * The CPU model supports Physical Address Extension (PAE).
-    
+
     CPU支持物理地址扩展（PAE）。
 
 * The amount of RAM is larger than 4 GB.
-    
+
     RAM大于4G。
 
 * The kernel is compiled with PAE support.
-    
+
     内核编译支持PAE。
 
 Although PAE handles 36-bit physical addresses, linear addresses are still 32-bit addresses. As in the previous case, Linux maps a 896-MB RAM window into the kernel linear address space; the remaining RAM is left unmapped and handled by dynamic remapping, as described in Chapter 8. The main difference with the previous case is that a three-level paging model is used, so the Page Global Directory is initialized by a cycle equivalent to the following:
@@ -1920,7 +1912,7 @@ To optimize the cache hit rate, the kernel considers the architecture in making 
 为了优化Cache的命中率，内核采用下面的思想：
 
 * The most frequently used fields of a data structure are placed at the low offset within the data structure, so they can be cached in the same line.
-    
+
     考虑把使用频率最高的数据结构的成员放到结构开始的地方，尽可能的在同一个line中缓存。
 
 * When allocating a large set of data structures, the kernel tries to store each of them in memory in such a way that all cache lines are used uniformly.
@@ -2009,9 +2001,9 @@ The term “process” is often used with several different meanings. In this bo
 术语"进程"经常被赋予不同的意义。在本书中，我们坚持操作系统教科书中的定义：进程时正在执行程序的实例。你可以认为进程就是一个数据结构的集合，完整地描述了程序执行的进度。
 
 > <font color="blue">补充：
-> 
+>
 > 现代操作系统的概念中，进程就是线程的容器，线程是内核调度的最小执行单元。一个正在执行的程序可以有多个进程，而进程又可以有多个线程。线程的划分粒度更小，导致并发性更高。另外，进程可以拥有独立的内存单元，而线程共享内存，从而极大提高了程序的运行效率。
-> 
+>
 > </font>
 
 Processes are like human beings: they are generated, they have a more or less significant life, they optionally generate one or more child processes, and eventually they die. A small difference is that sex is not really common among processes—each process has just one parent.
@@ -2071,11 +2063,11 @@ The six data structures on the right side of the figure refer to specific resour
 As its name implies, the state field of the process descriptor describes what is currently happening to the process. It consists of an array of flags, each of which describes a possible process state. In the current Linux version, these states are mutually exclusive, and hence exactly one flag of state always is set; the remaining flags are cleared. The following are the possible process states:
 
 1. TASK_RUNNING-运行态
-    
+
     The process is either executing on a CPU or waiting to be executed.
 
 2. TASK_INTERRUPTIBLE-阻塞态（可中断）
-    
+
     The process is suspended (sleeping) until some condition becomes true. Raising a hardware interrupt, releasing a system resource the process is waiting for, or delivering a signal are examples of conditions that might wake up the process (put its state back to TASK_RUNNING).
 
 
@@ -2084,12 +2076,12 @@ As its name implies, the state field of the process descriptor describes what is
     Like TASK_INTERRUPTIBLE, except that delivering a signal to the sleeping process leaves its state unchanged. This process state is seldom used. It is valuable, however, under certain specific conditions in which a process must wait until a given event occurs without being interrupted. For instance, this state may be used when a process opens a device file and the corresponding device driver starts probing for a corresponding hardware device. The device driver must not be interrupted until the probing is complete, or the hardware device could be left in an unpredictable state.
 
 4. TASK_STOPPED-终止态（不可中断）
-    
+
     Process execution has been stopped; the process enters this state after receiving a SIGSTOP, SIGTSTP, SIGTTIN, or SIGTTOU signal.
 
 5. TASK_TRACED-跟踪态
-    
-    Process execution has been stopped by a debugger. When a process is being monitored by another (such as when a debugger executes a ptrace() system call to monitor a test program), each signal may put the process in the TASK_TRACED state. 
+
+    Process execution has been stopped by a debugger. When a process is being monitored by another (such as when a debugger executes a ptrace() system call to monitor a test program), each signal may put the process in the TASK_TRACED state.
 
 Two additional states of the process can be stored both in the `state` field and in the `exit_state` field of the process descriptor; as the field name suggests, a process reaches one of these two states only when its execution is terminated:
 
@@ -2152,14 +2144,14 @@ Later, we’ll show you how it is possible to derive a true process descriptor p
 稍后，我们将展示如何从各自的PID中有效地派生出一个真正的进程描述符。效率非常重要，因为许多系统调用，如kill()都会使用PID通知受影响的进程。
 
 > <font color="blue">读书笔记：
-> 
+>
 > 如何标识进程：
-> 
+>
 > 1. 进程的表示方法有两种：task_struct结构体的地址和进程ID（PID）
 > 2. 为了兼容POSIX，Linux提出了"线程组"的概念，同一个组内的轻进程都具有自己的task_struct结构体，
 > 但是这个组的第一个线程作为组长，获得和进程ID相同的tgid，这样对于系统调用getid()来说，线程组内的
 > 所有线程就具有相同的PID了。
-> 
+>
 > </font>
 
 <h4 id="3.2.2.1">3.2.2.1 处理进程描述符</h4>
@@ -2216,19 +2208,19 @@ The close association between the `thread_info` structure and the Kernel Mode st
 
 > <font color="blue">注意：
 >   在2007年的一次更新(2.6.22之后)中加入了stack内核栈指针, 替代了原来的thread_info的指针。
->   
+>
 >  进程描述符task_struct结构中没有直接指向thread_info结构的指针，而是用一个void指针类型的成员表示，
 >  然后通过类型转换来访问thread_info结构。
->  
+>
 >  stack指向了内核栈的地址(其实也就是`thread_info`和`thread_union`的地址), 根据上面的描述，很容易
 >  通过类型转换获取`thread_info`的地址。
->  
+>
 >  相关代码在`include/linux/sched.h`中，如下所示。`task_thread_info` 用于通过`task_struct`来查找其`thread_info`的信息, 只需要一次指针类型转换即可。
-> 
+>
 >       #define task_thread_info(task)  ((struct thread_info *)(task)->stack)
->       
+>
 >  根据上面的代码，`task_thread_info`实际上是一个宏，在这儿，task是task_struct类型的对象
->   
+>
 > </font>
 
 <s>
@@ -2319,14 +2311,14 @@ The macro is the loop control statement after which the kernel programmer suppli
 宏展开后，就是一个for循环。可以注意的是，`init_task`进程描述符仅仅是扮演了一个链表表头的作用。该宏就是把`init_task`传递给下一个任务，直到再次转到`init_task`（因为是环形链表）。每一次的迭代过程中，通过宏传递进来的参数`p`都会被`list_entry`宏的值赋值，等于当前扫描到的进程描述符的地址。
 
 > <font color="blue">注意：
-> 
+>
 > 其实，理解了双向链表的操作，对于这一部分的理解就是水到渠成的事了。
-> 
+>
 > </font>
 
 <h4 id="3.2.2.5">3.2.2.5 运行态进程列表</h4>
 
-When looking for a new process to run on a CPU, the kernel has to consider only the runnable processes (that is, the processes in the TASK_RUNNING state). 
+When looking for a new process to run on a CPU, the kernel has to consider only the runnable processes (that is, the processes in the TASK_RUNNING state).
 
 当我们要查找将要在CPU上运行的进程时，必须只考虑在运行态的进程（也就是说处于`TASK_RUNNING`状态的进程）
 
@@ -2440,7 +2432,7 @@ The prio field of the process descriptor stores the dynamic priority of the proc
 因为在我们的示例中，pidhash_shift等于11，所以pid_hashfn宏产生的值永远落在0-2047这个区间内。
 
 > 魔幻常数
-> 
+>
 > 在上面的代码中，你肯定会想0x9e370001UL这个值是如何得来的。hash函数通常是索引值乘以一个合适的大数，因此，结果会溢出，将其余下的值存入32位的变量，这个变量可以看做是求模运算的结果。Knuth认为，选取一段数值范围中黄金比例的质数为这个大数是最合适的。所以，0-2^23之间的黄金比例附近最合适的质数，我们选取0x9e370001UL，它还可以方便地被加、减法，还有移位实现。因为它等于`2^31 + 2^29 - 2^25 + 2^22 - 2^19 – 2^16 + 1`。
 
 正如计算机科学课程中所讲的，哈希函数是无法保证PID和哈希表索引之间的一对一关系的。两个PID对应哈希表中的同一个索引，就成为 *冲突*。
@@ -2481,7 +2473,7 @@ PID哈希表的数据结构就解决了这所有的问题，因为它允许给�
     遍历与nr指定的PID相关的每一个PID列表，type是哈希表类型，task指向当前刚被遍历过的进程描述符。
 
 * find_task_by_pid_type(type, nr)
-    
+
     type类型的哈希表中查找PID等于nr的进程。函数返回匹配的进程描述符指针，如果不匹配返回NULL。
 
 * find_task_by_pid(nr)
@@ -2493,27 +2485,27 @@ PID哈希表的数据结构就解决了这所有的问题，因为它允许给�
     往类型为type的PID哈希表中插入进程描述符，task指向要插入的进程描述符，nr是PID哈希表的索引。如果已经有一个PID等于nr的进程描述符在哈希表中了，则将task插入到该PID对应的链表中。
 
 * detach_pid(task, type)
-    
+
     从类型为type的PID列表中删除task指向的进程描述符。执行完删除操作后，如果PID链表没有变为空，则函数执行中止；否则，该函数还会从类型为type的哈希表中删除对应的进程描述符。
 
 * next_thread(task)
-    
+
     返回类型为PIDTYPE_TGID的哈希表中紧跟在task之后的轻进程的进程描述符地址。因为链表是环形的，如果是作用到常规进程上，该宏返回进程本身的描述符地址。
 
 
 <h3 id="3.2.4">3.2.4 如何组织进程</h3>
 
-The runqueue lists group all processes in a TASK_RUNNING state. When it comes to grouping processes in other states, the various states call for different types of treatment, with Linux opting for one of the choices shown in the following list.
+使用runqueue列表组织所有运行态（TASK_RUNNING）的进程。对于其它状态下的进程，根据类型不同做不同的处理。下面是处理的基本原则：
 
-* Processes in a TASK_STOPPED, EXIT_ZOMBIE, or EXIT_DEAD state are not linked in specific lists. There is no need to group processes in any of these three states, because stopped, zombie, and dead processes are accessed only via PID or via linked lists of the child processes for a particular parent.
+* 处于TASK_STOPPED、EXIT_ZOMBIE或EXIT_DEAD等终止态的进程不需要使用特定列表进行管理。因为终止态的进程只能通过PID或者通过特定父进程的子进程链表进行查找。
 
-* Processes in a TASK_INTERRUPTIBLE or TASK_UNINTERRUPTIBLE state are subdivided into many classes, each of which corresponds to a specific event. In this case, the process state does not provide enough information to retrieve the process quickly, so it is necessary to introduce additional lists of processes. These are called wait queues and are discussed next.
+* 而处于TASK_INTERRUPTIBLE或TASK_UNINTERRUPTIBLE状态的进程被细分为许多类，每一类对应一种event。对于这种情况，内核必须在进程描述符中提供一种数据结构，用于管理这类进程信息。我们称这些额外的数据结构为等待队列。
 
 <h4 id="3.2.4.1">3.2.4.1 等待队列</h4>
 
-Wait queues have several uses in the kernel, particularly for interrupt handling, process synchronization, and timing. Because these topics are discussed in later chapters, we’ll just say here that a process must often wait for some event to occur, such as for a disk operation to terminate, a system resource to be released, or a fixed interval of time to elapse. Wait queues implement conditional waits on events: a process wishing to wait for a specific event places itself in the proper wait queue and relinquishes control. Therefore, a wait queue represents a set of sleeping processes, which are woken up by the kernel when some condition becomes true.
+等待队列在内核中有多种用途，特别是进行中断处理，进程同步和定时处理时，非常有用。在这儿，我们只讨论进程等待某些事件发生，比如硬盘操作终止，系统资源被释放，或timeout等事件。等待队列实现条件等待某些事件：进程等待某个事件，把自己暂时存入某个等待队列中，放弃对CPU的控制权；当等待的条件发生后，会被内核唤醒。
 
-Wait queues are implemented as doubly linked lists whose elements include pointers to process descriptors. Each wait queue is identified by a wait queue head, a data structure of type `wait_queue_head_t`:
+等待队列使用双向链表实现，包含指向进程描述符的指针。每个等待队列都有一个表头，数据类型为wait_queue_head_t，其定义如下：
 
     struct __wait_queue_head {
         spinlock_t lock;
@@ -2521,9 +2513,9 @@ Wait queues are implemented as doubly linked lists whose elements include pointe
     };
     typedef struct __wait_queue_head wait_queue_head_t;
 
-Because wait queues are modified by interrupt handlers as well as by major kernel functions, the doubly linked lists must be protected from concurrent accesses, which could induce unpredictable results (see Chapter 5). Synchronization is achieved by the `lock` spin lock in the wait queue head. The `task_list` field is the head of the list of waiting processes.
+因为等待队列可能同时被中断处理或内核函数修改，必须对这个双向链表实行加锁处理，防止并发情况的出现，从而产生不可预知的后果（参见[第5章](#5)）。等待队列中，使用的是自旋锁lock，其类型是spinlock_t。而成员task_list是等待进程的链表的表头。
 
-Elements of a wait queue list are of type `wait_queue_t`:
+等待队列中的元素类型为wait_queue_t，其定义如下：
 
     struct __wait_queue {
         unsigned int        flags;
@@ -2533,181 +2525,517 @@ Elements of a wait queue list are of type `wait_queue_t`:
     };
     typedef struct __wait_queue wait_queue_t;
 
-Each element in the wait queue list represents a sleeping process, which is waiting for some event to occur; its descriptor address is stored in the `task` field. The `task_list` field contains the pointers that link this element to the list of processes waiting for the same event.
+等待队列中的每一个元素表示一个正在休眠的进程，它正在等待某些事件的发生；其进程描述符的地址存储在task成员中。类型为list_head的成员task_list包含指向这个链表中其它元素的指针。
 
-However, it is not always convenient to wake up all sleeping processes in a wait
-queue. For instance, if two or more processes are waiting for exclusive access to
-some resource to be released, it makes sense to wake up just one process in the wait
-queue. This process takes the resource, while the other processes continue to sleep.
-(This avoids a problem known as the “thundering herd,” with which multiple processes
-are wakened only to race for a resource that can be accessed by one of them,
-with the result that remaining processes must once more be put back to sleep.)
+但是，唤醒等待队列中所有的休眠进程，多数时候可能不方便。比如，如果有多于2个进程正在等待某些资源，并进行独占式访问，这种情况下，应该只唤醒其中一个进程，允许其占用资源，而其它进程继续休眠。（这避免了 *惊群效应*的出现，所谓的惊群效应就是多个进程被唤醒，只为了竞争一个资源，而这个资源只能被其中一个访问，结果就是其余的进程再次被休眠。）
 
-Thus, there are two kinds of sleeping processes: exclusive processes (denoted by the
-value 1 in the flags field of the corresponding wait queue element) are selectively
-woken up by the kernel, while nonexclusive processes (denoted by the value 0 in the
-flags field) are always woken up by the kernel when the event occurs. A process
-waiting for a resource that can be granted to just one process at a time is a typical
-exclusive process. Processes waiting for an event that may concern any of them are
-nonexclusive. Consider, for instance, a group of processes that are waiting for the
-termination of a group of disk block transfers: as soon as the transfers complete, all
-waiting processes must be woken up. As we’ll see next, the func field of a wait queue
-element is used to specify how the processes sleeping in the wait queue should be
-woken up.
-
-
+因此，这就产生了两种休眠进程：独占式进程（等待队列中该进程的flags相应标志位被置1）和非独占进程（标志位被清零），当事件发生时，独占式进程有选择地被唤醒，非独占式进程总是全被唤醒。等待每次只能分配给一个进程使用的资源的进程，就是独占式进程；否则，就是非独占式。比如，一组进程正在等待硬盘传输完成的事件，一旦传输完成，所有等待的进程立即被唤醒。接下来，我们看看wait_queue_t中的func成员是如何将等待队列中休眠的进程唤醒的。
 
 <h4 id="3.2.4.2">3.2.4.2 处理等待队列</h4>
 
-A new wait queue head may be defined by using the DECLARE_WAIT_QUEUE_HEAD(name)
-macro, which statically declares a new wait queue head variable called name and initializes
-its lock and task_list fields. The init_waitqueue_head() function may be
-used to initialize a wait queue head variable that was allocated dynamically.
+1. 初始化
 
-The init_waitqueue_entry(q,p) function initializes a wait_queue_t structure q as follows:
+    声明等待队列表头，使用宏DECLARE_WAIT_QUEUE_HEAD(name)，静态声明一个名称为name的变量并初始化lock和task_list成员。init_waitqueue_head()函数动态创建一个等待队列表头变量并完成初始化。
 
-    q->flags = 0;
-    q->task = p;
-    q->func = default_wake_function;
+    函数init_waitqueue_entry(q,p)初始化等待队列中的一项，q的类型是wait_queue_t，代码内容如下：
 
-The nonexclusive process p will be awakened by default_wake_function(), which is a
-simple wrapper for the try_to_wake_up() function discussed in Chapter 7.
+        q->flags = 0;
+        q->task = p;
+        q->func = default_wake_function;
 
-Alternatively, the DEFINE_WAIT macro declares a new wait_queue_t variable and initializes
-it with the descriptor of the process currently executing on the CPU and the
-address of the autoremove_wake_function() wake-up function. This function invokes
-default_wake_function() to awaken the sleeping process, and then removes the wait
-queue element from the wait queue list. Finally, a kernel developer can define a custom
-awakening function by initializing the wait queue element with the init_
-waitqueue_func_entry() function.
+    非独占式进程P将会被default_wake_function()函数唤醒，该函数是try_to_wake_up()函数的封装函数，具体可以参考[第7章](#7)。
 
-Once an element is defined, it must be inserted into a wait queue. The add_wait_
-queue() function inserts a nonexclusive process in the first position of a wait queue
-list. The add_wait_queue_exclusive() function inserts an exclusive process in the last
-position of a wait queue list. The remove_wait_queue() function removes a process
-from a wait queue list. The waitqueue_active() function checks whether a given wait
-queue list is empty.
+    另外，DEFINE_WAIT声明一个新的wait_queue_t变量，并使用当前正在运行的进程描述符初始化它，而func成员被初始化为autoremove_wake_function()唤醒函数。这个函数调用default_wake_function()唤醒正在休眠的地址，然后从等待队列中删除这个进程。最后，内核开发者可以init_waitqueue_func_entry()函数可以自定义一个唤醒函数。
 
-A process wishing to wait for a specific condition can invoke any of the functions
-shown in the following list.
+2. 插入等待队列
 
-* The sleep_on() function operates on the current process:
+    将进程插入等待队列中，可以使用的函数有：
 
-        void sleep_on(wait_queue_head_t *wq)
+    * add_wait_queue()
+
+        将非独占进程插入到等待队列的第一个位置处。
+
+    * add_wait_queue_exclusive()
+
+        将独占进程插入到等待队列的最后位置处。
+
+    * remove_wait_queue()
+
+        从队列中移除一个进程。
+
+    * waitqueue_active()
+
+        检查等待队列是否为空
+
+3. 休眠
+
+    想要等待某个条件的进程，可以调用下面任何一个函数进入休眠状态：
+
+    - sleep_on()
+
+        sleep_on()函数直接操作当前进程：
+
+            void sleep_on(wait_queue_head_t *wq)
+            {
+                wait_queue_t wait;
+                init_waitqueue_entry(&wait, current);
+                current->state = TASK_UNINTERRUPTIBLE;
+                add_wait_queue(wq,&wait);               /* 指向等待队列的表头 */
+                schedule();
+                remove_wait_queue(wq, &wait);
+            }
+
+        函数设置当前进程的状态为TASK_UNINTERRUPTIBLE，并把它插入到指定的等待队列中。然后调用调度器，继续其它进程的执行。当休眠的进程被唤醒时，调度器继续sleep_on()函数的执行，执行`remove_wait_queue(wq, &wait);`这条语句，将进程从等待队列中删除。
+
+    - interruptible_sleep_on()
+
+        与sleep_on()函数相同，唯一的不同是，将进程的状态设为TASK_INTERRUPTIBLE，这表示进程可以被信号唤醒，比如中止信号等等。
+
+    - sleep_on_timeout()
+    - interruptible_sleep_on_timeout()
+
+        这两个函数和前面的2个函数非常类似，只是允许调用者可以定义个时间间隔，如果定时时间到，则进程被内核唤醒。实现方式就是使用schedule_timeout()函数代替schedule()函数。
+
+    - prepare_to_wait()
+    - prepare_to_wait_exclusive()
+    - finish_wait()
+
+        这几个函数是在内核2.6版本中引入的，提供了一些其它休眠进程的方法。它们的使用方式，通常如下：
+
+            DEFINE_WAIT(wait);
+            prepare_to_wait_exclusive(&wq, &wait, TASK_INTERRUPTIBLE);
+                                        /* wq 等待队列的表头 */
+            ...
+            if (!condition)
+                schedule();
+            finish_wait(&wq, &wait);
+
+        prepare_to_wait()和prepare_to_wait_exclusive()函数设置进程的状态为第三个参数传递进来的值，然后设置等待队列中的进程的独占标志，0-非独占，1-独占，然后插入到等待队列中，wq是等待队列的表头。
+
+        只要进程被唤醒，继续执行finish_wait()函数，再次将进程的状态设为TASK_RUNNING状态，从等待队列中删除该进程。（这儿有个需要注意的问题就是，condition必须在schedule()之前变为true。
+
+    - wait_event
+    - wait_event_interruptible
+
+        等待某个条件被验证，否则一直休眠。wait_event(wq,condition)的代码与下面的内容类似：
+
+            DEFINE_WAIT(__wait);
+            for (;;) {
+                prepare_to_wait(&wq, &__wait, TASK_UNINTERRUPTIBLE);
+                if (condition)
+                    break;
+                schedule();
+            }
+            finish_wait(&wq, &__wait);
+
+    我们发现，当需要测试某个条件，判断条件不能被验证时，将进程休眠且该操作必须是原子的，这种环境下，是无法使用类sleep_on()函数的。这种情况下是会产生竞态条件的，这种使用是不鼓励的。更主要的是，为了往等待队列中插入一个独占进程，内核必须使用prepare_to_wait_exclusive()或者直接调用add_wait_queue_exclusive()。其它的插入等待队列的函数都是非独占的。最后，使用DEFINE_WAIT或者finish_wait()将唤醒的进程从等待队列中删除。
+
+4. 唤醒
+
+    内核唤醒等待队列中的进程后，将它们设为运行态。可调用的方法有wake_up、wake_up_nr、wake_up_all、wake_up_interruptible、wake_up_interruptible_nr、wake_up_interruptible_all、wake_up_interruptible_sync、和wake_up_locked。基本上，从名字就可以看出它们的用处：
+
+    * 所有的宏都可唤醒处于TASK_INTERRUPTIBLE状态的休眠进程；如果宏名称不包含interruptible的宏，也能唤醒TASK_UNINTERRUPTIBLE状态的进程。
+
+    * 所有的宏都可以唤醒所要求的状态下的非独占进程
+
+    * 包含nr字符串的宏，唤醒所要求的状态下的独占进程，nr就是指定PID
+
+    * 不包含sync的宏会检查被唤醒进程的优先级是否高于当前正在运行的进程，如果有必要调用schedule()，将正在运行的进程休眠。包含sync的宏，不会执行优先级检查，这样的结果就是，高优先级的进程可能会有一定的延时。
+
+    * wake_up_locked宏与wake_up相似，不同的是，它可以在wait_queue_head_t中的自旋锁已经被占用的情况下调用。
+
+    比如，宏wake_up的代码大概是下面这样的：
+
+        void wake_up(wait_queue_head_t *q)
         {
-            wait_queue_t wait;
-            init_waitqueue_entry(&wait, current);
-            current->state = TASK_UNINTERRUPTIBLE;
-            add_wait_queue(wq,&wait); /* wq points to the wait queue head */
-            schedule();
-            remove_wait_queue(wq, &wait);
+            struct list_head *tmp;
+            wait_queue_t *curr;
+
+            list_for_each(tmp, &q->task_list) {
+                curr = list_entry(tmp, wait_queue_t, task_list);
+                if (curr->func(curr, TASK_INTERRUPTIBLE|TASK_UNINTERRUPTIBLE,
+                        0, NULL) && curr->flags)
+                    break;
+            }
         }
 
-    The function sets the state of the current process to TASK_UNINTERRUPTIBLE and inserts it into the specified wait queue. Then it invokes the scheduler, which resumes the execution of another process. When the sleeping process is awakened, the scheduler resumes execution of the sleep_on() function, which removes the process from the wait queue.
-
-* The interruptible_sleep_on() function is identical to sleep_on(), except that it
-sets the state of the current process to TASK_INTERRUPTIBLE instead of setting it to
-TASK_UNINTERRUPTIBLE, so that the process also can be woken up by receiving a
-signal.
-
-* The sleep_on_timeout() and interruptible_sleep_on_timeout() functions are
-similar to the previous ones, but they also allow the caller to define a time interval
-after which the process will be woken up by the kernel. To do this, they
-invoke the schedule_timeout() function instead of schedule() (see the section
-“An Application of Dynamic Timers: the nanosleep() System Call” in
-Chapter 6).
-
-* The prepare_to_wait(), prepare_to_wait_exclusive(), and finish_wait() functions,
-introduced in Linux 2.6, offer yet another way to put the current process
-to sleep in a wait queue. Typically, they are used as follows:
-
-        DEFINE_WAIT(wait);
-        prepare_to_wait_exclusive(&wq, &wait, TASK_INTERRUPTIBLE);
-                                    /* wq is the head of the wait queue */
-        ...
-        if (!condition)
-            schedule();
-        finish_wait(&wq, &wait);
-
-    The prepare_to_wait() and prepare_to_wait_exclusive() functions set the process
-state to the value passed as the third parameter, then set the exclusive flag in
-the wait queue element respectively to 0 (nonexclusive) or 1 (exclusive), and
-finally insert the wait queue element wait into the list of the wait queue head wq.
-
-    As soon as the process is awakened, it executes the finish_wait() function,
-which sets again the process state to TASK_RUNNING (just in case the awaking condition
-becomes true before invoking schedule()), and removes the wait queue
-element from the wait queue list (unless this has already been done by the wakeup
-function).
-
-* The wait_event and wait_event_interruptible macros put the calling process to
-sleep on a wait queue until a given condition is verified. For instance, the wait_
-event(wq,condition) macro essentially yields the following fragment:
-
-        DEFINE_WAIT(__wait);
-        for (;;) {
-            prepare_to_wait(&wq, &__wait, TASK_UNINTERRUPTIBLE);
-            if (condition)
-                break;
-            schedule();
-        }
-        finish_wait(&wq, &__wait);
-
-A few comments on the functions mentioned in the above list: the sleep_on()-like
-functions cannot be used in the common situation where one has to test a condition
-and atomically put the process to sleep when the condition is not verified; therefore,
-because they are a well-known source of race conditions, their use is discouraged.
-Moreover, in order to insert an exclusive process into a wait queue, the kernel must
-make use of the prepare_to_wait_exclusive() function (or just invoke add_wait_
-queue_exclusive() directly); any other helper function inserts the process as nonexclusive.
-Finally, unless DEFINE_WAIT or finish_wait() are used, the kernel must remove
-the wait queue element from the list after the waiting process has been awakened.
-
-The kernel awakens processes in the wait queues, putting them in the TASK_RUNNING
-state, by means of one of the following macros: wake_up, wake_up_nr, wake_up_all,
-wake_up_interruptible, wake_up_interruptible_nr, wake_up_interruptible_all,
-wake_up_interruptible_sync, and wake_up_locked. One can understand what each of
-these nine macros does from its name:
-
-* All macros take into consideration sleeping processes in the TASK_INTERRUPTIBLE state; if the macro name does not include the string “interruptible,” sleeping processes in the TASK_UNINTERRUPTIBLE state also are considered.
-
-* All macros wake all nonexclusive processes having the required state (see the previous bullet item).
-
-* The macros whose name include the string “nr” wake a given number of exclusive processes having the required state; this number is a parameter of the macro. The macros whose names include the string “all” wake all exclusive processes having the required state. Finally, the macros whose names don’t include “nr” or “all” wake exactly one exclusive process that has the required state.
-
-* The macros whose names don’t include the string “sync” check whether the priority of any of the woken processes is higher than that of the processes currently running in the systems and invoke schedule() if necessary. These checks are not made by the macro whose name includes the string “sync”; as a result, execution of a high priority process might be slightly delayed.
-
-
-* The wake_up_locked macro is similar to wake_up, except that it is called when the spin lock in wait_queue_head_t is already held.
-
-For instance, the wake_up macro is essentially equivalent to the following code fragment:
-
-    void wake_up(wait_queue_head_t *q)
-    {
-        struct list_head *tmp;
-        wait_queue_t *curr;
-        
-        list_for_each(tmp, &q->task_list) {
-            curr = list_entry(tmp, wait_queue_t, task_list);
-            if (curr->func(curr, TASK_INTERRUPTIBLE|TASK_UNINTERRUPTIBLE,
-                    0, NULL) && curr->flags)
-                break;
-        }
-    }
-
-The `list_for_each` macro scans all items in the `q->task_list` doubly linked list, that is, all processes in the wait queue. For each item, the `list_entry` macro computes the address of the corresponding `wait_queue_t` variable. The `func` field of this variable stores the address of the wake-up function, which tries to wake up the process identified by the `task` field of the wait queue element. If a process has been effectively awakened (the function returned 1) and if the process is exclusive (curr->flags equal to 1), the loop terminates. Because all nonexclusive processes are always at the beginning of the doubly linked list and all exclusive processes are at the end, the function always wakes the nonexclusive processes and then wakes one exclusive process, if any exists.*
+    遍历q指向的双向链表q->task_list中所有的进程。对于每一项，list_entry计算wait_queue_t类型的变量的地址。这个变量的func成员存储着唤醒函数的地址。如果进程被唤醒，且如果进程是独占的（curr->flags=1），则循环终止。因为所有的非独占进程都存储在链表的开头部分，所有的独占进程都在链表的尾端，该函数总是唤醒所有的非独占进程，然后唤醒一个独占进程，如果存在的话。
 
 <h3 id="3.2.5">3.2.5 进程资源限制</h3>
+
+Each process has an associated set of resource limits, which specify the amount of system resources it can use. These limits keep a user from overwhelming the system(its CPU, disk space, and so on). Linux recognizes the following resource limits illustrated in Table 3-7.
+
+The resource limits for the current process are stored in the `current->signal->rlim`field, that is, in a field of the process’s signal descriptor (see the section “Data Structures Associated with Signals” in Chapter 11). The field is an array of elements of type struct rlimit, one for each resource limit:
+
+    struct rlimit {
+        unsigned long rlim_cur;
+        unsigned long rlim_max;
+    };
+
+表3-7 资源限制
+
+1. RLIMIT_AS
+
+    进程空间的最大值，单位是字节。当进程使用malloc()或者相关函数扩大自己的地址空间时，就会检查这个值。
+
+2. RLIMIT_CORE
+
+    The maximum core dump file size, in bytes. The kernel checks this value when a process is aborted, before creating a core file in the current directory of the process (see the section “Actions Performed upon Delivering a Signal” in Chapter 11). If the limit is 0, the kernel won’t create the file.
+
+3. RLIMIT_CPU
+
+    The maximum CPU time for the process, in seconds. If the process exceeds the limit, the kernel sends it a SIGXCPU signal, and then, if the process doesn’t terminate, a SIGKILL signal (see Chapter 11).
+
+4. RLIMIT_DATA
+
+    The maximum heap size, in bytes. The kernel checks this value before expanding the heap of the process (see the section “Managing the Heap” in Chapter 9).
+
+5. RLIMIT_FSIZE
+
+    The maximum file size allowed, in bytes. If the process tries to enlarge a file to a size greater than this value, the kernel sends it a SIGXFSZ signal.
+
+6. RLIMIT_LOCKS
+
+    文件锁的最大数量（目前不强制）。
+
+7. RLIMIT_MEMLOCK
+
+    非交换内存的最大值，单位是字节。当内核调用mlock()或mlockall()系统调用尝试给一个页帧加锁时会检查该值。
+
+8. RLIMIT_MSGQUEUE
+
+    POSIX消息队列的最大字节数。
+
+9. RLIMIT_NOFILE
+
+    The maximum number of open file descriptors. The kernel checks this value when opening a new file or duplicating a file descriptor (see Chapter 12).
+
+10. RLIMIT_NPROC
+
+    The maximum number of processes that the user can own (see the section “The clone(), fork(), and vfork() System Calls” later in this chapter).
+
+11. RLIMIT_RSS
+
+    The maximum number of page frames owned by the process (currently, not enforced).
+
+12. RLIMIT_SIGPENDING
+
+    The maximum number of pending signals for the process (see Chapter 11).
+
+13. RLIMIT_STACK
+
+    The maximum stack size, in bytes. The kernel checks this value before expanding the User Mode stack of the process (see the section “Page Fault Exception Handler” in Chapter 9).
+
+The `rlim_cur` field is the current resource limit for the resource. For example, `current->signal->rlim[RLIMIT_CPU].rlim_cur` represents the current limit on the CPU time of the running process.
+
+The `rlim_max` field is the maximum allowed value for the resource limit. By using the getrlimit() and setrlimit() system calls, a user can always increase the rlim_cur limit of some resource up to rlim_max. However, only the superuser (or, more precisely, a user who has the CAP_SYS_RESOURCE capability) can increase the rlim_max field or set the rlim_cur field to a value greater than the corresponding rlim_max field.
+
+Most resource limits contain the value `RLIM_INFINITY (0xffffffff)`, which means that no user limit is imposed on the corresponding resource (of course, real limits exist due to kernel design restrictions, available RAM, available space on disk, etc.). However, the system administrator may choose to impose stronger limits on some resources. Whenever a user logs into the system, the kernel creates a process owned by the superuser, which can invoke setrlimit() to decrease the rlim_max and rlim_cur fields for a resource. The same process later executes a login shell and becomes owned by the user. Each new process created by the user inherits the content of the rlim array from its parent, and therefore the user cannot override the limits enforced by the administrator.
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h2 id="3.3">3.3 进程切换</h2>
+
+To control the execution of processes, the kernel must be able to suspend the execution of the process running on the CPU and resume the execution of some other process previously suspended. This activity goes variously by the names process switch, task switch, or context switch. The next sections describe the elements of process switching in Linux.
+
 <h3 id="3.3.1">3.3.1 硬件上下文</h3>
+
+While each process can have its own address space, all processes have to share the CPU registers. So before resuming the execution of a process, the kernel must ensure that each such register is loaded with the value it had when the process was suspended.
+
+The set of data that must be loaded into the registers before the process resumes its execution on the CPU is called the hardware context. The hardware context is a subset of the process execution context, which includes all information needed for the process execution. In Linux, a part of the hardware context of a process is stored in the process descriptor, while the remaining part is saved in the Kernel Mode stack.
+
+In the description that follows, we will assume the prev local variable refers to the process descriptor of the process being switched out and next refers to the one being switched in to replace it. We can thus define a process switch as the activity consisting of saving the hardware context of prev and replacing it with the hardware context of next. Because process switches occur quite often, it is important to minimize the time spent in saving and loading hardware contexts.
+
+Old versions of Linux took advantage of the hardware support offered by the 80×86 architecture and performed a process switch through a far jmp instruction* to the selector of the Task State Segment Descriptor of the next process. While executing the instruction, the CPU performs a hardware context switch by automatically saving the old hardware context and loading a new one. But Linux 2.6 uses software to perform a process switch for the following reasons:
+
+* Step-by-step switching performed through a sequence of mov instructions allows better control over the validity of the data being loaded. In particular, it is possible to check the values of the ds and es segmentation registers, which might have been forged by a malicious user. This type of checking is not possible when using a single far jmp instruction.
+
+* The amount of time required by the old approach and the new approach is about the same. However, it is not possible to optimize a hardware context switch, while there might be room for improving the current switching code.
+
+Process switching occurs only in Kernel Mode. The contents of all registers used by a process in User Mode have already been saved on the Kernel Mode stack before performing process switching (see Chapter 4). This includes the contents of the ss and esp pair that specifies the User Mode stack pointer address.
+
 <h3 id="3.3.2">3.3.2 进程状态段</h3>
+
+The 80×86 architecture includes a specific segment type called the Task State Segment (TSS), to store hardware contexts. Although Linux doesn’t use hardware context switches, it is nonetheless forced to set up a TSS for each distinct CPU in the system. This is done for two main reasons:
+
+* When an 80×86 CPU switches from User Mode to Kernel Mode, it fetches the address of the Kernel Mode stack from the TSS (see the sections “Hardware Handling of Interrupts and Exceptions” in Chapter 4 and “Issuing a System Call via the sysenter Instruction” in Chapter 10).
+
+* When a User Mode process attempts to access an I/O port by means of an in or out instruction, the CPU may need to access an I/O Permission Bitmap stored in the TSS to verify whether the process is allowed to address the port. More precisely, when a process executes an in or out I/O instruction in User Mode, the control unit performs the following operations:
+
+    1. It checks the 2-bit IOPL field in the eflags register. If it is set to 3, the control unit executes the I/O instructions. Otherwise, it performs the next check.
+    2. It accesses the tr register to determine the current TSS, and thus the proper I/O Permission Bitmap.
+    3. It checks the bit of the I/O Permission Bitmap corresponding to the I/O port specified in the I/O instruction. If it is cleared, the instruction is executed; otherwise, the control unit raises a “General protection” exception.
+
+The tss_struct structure describes the format of the TSS. As already mentioned in Chapter 2, the init_tss array stores one TSS for each CPU on the system. At each process switch, the kernel updates some fields of the TSS so that the corresponding CPU’s control unit may safely retrieve the information it needs. Thus, the TSS reflects the privilege of the current process on the CPU, but there is no need to maintain TSSs for processes when they’re not running.
+
+Each TSS has its own 8-byte Task State Segment Descriptor (TSSD). This descriptor includes a 32-bit Base field that points to the TSS starting address and a 20-bit Limit field. The S flag of a TSSD is cleared to denote the fact that the corresponding TSS is a System Segment (see the section “Segment Descriptors” in Chapter 2).
+
+The Type field is set to either 9 or 11 to denote that the segment is actually a TSS. In the Intel’s original design, each process in the system should refer to its own TSS; the second least significant bit of the Type field is called the Busy bit; it is set to 1 if the process is being executed by a CPU, and to 0 otherwise. In Linux design, there is just one TSS for each CPU, so the Busy bit is always set to 1.
+
+The TSSDs created by Linux are stored in the Global Descriptor Table (GDT), whose base address is stored in the gdtr register of each CPU. The tr register of each CPU contains the TSSD Selector of the corresponding TSS. The register also includes two hidden, nonprogrammable fields: the Base and Limit fields of the TSSD. In this way, the processor can address the TSS directly without having to retrieve the TSS address from the GDT.
+
 <h4 id="3.3.2.1">3.3.2.1 线程域</h4>
+
+At every process switch, the hardware context of the process being replaced must be saved somewhere. It cannot be saved on the TSS, as in the original Intel design, because Linux uses a single TSS for each processor, instead of one for every process.
+
+Thus, each process descriptor includes a field called thread of type thread_struct, in which the kernel saves the hardware context whenever the process is being switched out. As we’ll see later, this data structure includes fields for most of the CPU registers, except the general-purpose registers such as eax, ebx, etc., which are stored in the Kernel Mode stack.
+
 <h3 id="3.3.3">3.3.3 执行进程切换</h3>
+
+A process switch may occur at just one well-defined point: the schedule() function,
+which is discussed at length in Chapter 7. Here, we are only concerned with how the
+kernel performs a process switch.
+
+Essentially, every process switch consists of two steps:
+
+1. Switching the Page Global Directory to install a new address space; we’ll
+describe this step in Chapter 9.
+2. Switching the Kernel Mode stack and the hardware context, which provides all
+the information needed by the kernel to execute the new process, including the
+CPU registers.
+
+Again, we assume that prev points to the descriptor of the process being replaced,
+and next to the descriptor of the process being activated. As we’ll see in Chapter 7,
+prev and next are local variables of the schedule() function.
+
 <h4 id="3.3.3.1">3.3.3.1 switch_to宏</h4>
-<h4 id="3.3.3.1">3.3.3.1 __switch_to()函数</h4>
+
+The second step of the process switch is performed by the switch_to macro. It is one
+of the most hardware-dependent routines of the kernel, and it takes some effort to
+understand what it does.
+
+First of all, the macro has three parameters, called prev, next, and last. You might
+easily guess the role of prev and next: they are just placeholders for the local variables
+prev and next, that is, they are input parameters that specify the memory locations
+containing the descriptor address of the process being replaced and the
+descriptor address of the new process, respectively.
+
+What about the third parameter, last? Well, in any process switch three processes
+are involved, not just two. Suppose the kernel decides to switch off process A and to
+activate process B. In the schedule() function, prev points to A’s descriptor and next
+points to B’s descriptor. As soon as the switch_to macro deactivates A, the execution
+flow of A freezes.
+
+Later, when the kernel wants to reactivate A, it must switch off another process C (in
+general, this is different from B) by executing another switch_to macro with prev
+pointing to C and next pointing to A. When A resumes its execution flow, it finds its
+old Kernel Mode stack, so the prev local variable points to A’s descriptor and next
+points to B’s descriptor. The scheduler, which is now executing on behalf of process
+A, has lost any reference to C. This reference, however, turns out to be useful to
+complete the process switching (see Chapter 7 for more details).
+
+The last parameter of the switch_to macro is an output parameter that specifies a
+memory location in which the macro writes the descriptor address of process C (of
+course, this is done after A resumes its execution). Before the process switching, the
+macro saves in the eax CPU register the content of the variable identified by the first
+input parameter prev—that is, the prev local variable allocated on the Kernel Mode
+stack of A. After the process switching, when A has resumed its execution, the macro
+writes the content of the eax CPU register in the memory location of A identified by
+the third output parameter last. Because the CPU register doesn’t change across the
+process switch, this memory location receives the address of C’s descriptor. In the
+current implementation of schedule(), the last parameter identifies the prev local
+variable of A, so prev is overwritten with the address of C.
+
+The contents of the Kernel Mode stacks of processes A, B, and C are shown in
+Figure 3-7, together with the values of the eax register; be warned that the figure
+shows the value of the prev local variable before its value is overwritten with the contents
+of the eax register.
+
+<img id="Figure_3_7" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_7.PNG">
+
+The switch_to macro is coded in extended inline assembly language that makes for rather complex reading: in fact, the code refers to registers by means of a special positional notation that allows the compiler to freely choose the general-purpose registers to be used. Rather than follow the cumbersome extended inline assembly language, we’ll describe what the switch_to macro typically does on an 80×86 microprocessor by using standard assembly language:
+
+1. Saves the values of prev and next in the eax and edx registers, respectively:
+
+        movl prev, %eax
+        movl next, %edx
+
+2. Saves the contents of the eflags and ebp registers in the prev Kernel Mode stack. They must be saved because the compiler assumes that they will stay unchanged until the end of switch_to:
+
+        pushfl
+        pushl %ebp
+
+3. Saves the content of esp in prev->thread.esp so that the field points to the top of the prev Kernel Mode stack:
+
+        movl %esp,484(%eax)
+
+    The 484(%eax) operand identifies the memory cell whose address is the contents of eax plus 484.
+
+4. Loads next->thread.esp in esp. From now on, the kernel operates on the Kernel
+Mode stack of next, so this instruction performs the actual process switch from
+prev to next. Because the address of a process descriptor is closely related to that
+of the Kernel Mode stack (as explained in the section “Identifying a Process” earlier
+in this chapter), changing the kernel stack means changing the current
+process:
+
+        movl 484(%edx), %esp
+
+5. Saves the address labeled 1 (shown later in this section) in prev->thread.eip.
+When the process being replaced resumes its execution, the process executes the
+instruction labeled as 1:
+
+        movl $1f, 480(%eax)
+
+6. On the Kernel Mode stack of next, the macro pushes the next->thread.eip
+value, which, in most cases, is the address labeled as 1:
+
+        pushl 480(%edx)
+
+7. Jumps to the __switch_to() C function (see next):
+
+        jmp __switch_to
+
+8. Here process A that was replaced by B gets the CPU again: it executes a few
+instructions that restore the contents of the eflags and ebp registers. The first of
+these two instructions is labeled as 1:
+
+        1:
+            popl %ebp
+            popfl
+
+    Notice how these pop instructions refer to the kernel stack of the prev process. They will be executed when the scheduler selects prev as the new process to be executed on the CPU, thus invoking switch_to with prev as the second parameter. Therefore, the esp register points to the prev’s Kernel Mode stack.
+
+9. Copies the content of the eax register (loaded in step 1 above) into the memory location identified by the third parameter last of the switch_to macro:
+
+        movl %eax, last
+
+    As discussed earlier, the eax register points to the descriptor of the process that has just been replaced.
+
+<h4 id="3.3.3.2">3.3.3.2 __switch_to()函数</h4>
+
+The __switch_to() function does the bulk of the process switch started by the
+switch_to() macro. It acts on the prev_p and next_p parameters that denote the
+former process and the new process. This function call is different from the average
+function call, though, because __switch_to() takes the prev_p and next_p parameters
+from the eax and edx registers (where we saw they were stored), not from the
+stack like most functions. To force the function to go to the registers for its parameters,
+the kernel uses the __attribute__ and regparm keywords, which are nonstandard
+extensions of the C language implemented by the gcc compiler. The __switch_
+to() function is declared in the include/asm-i386/system.h header file as follows:
+
+    __switch_to(struct task_struct *prev_p,
+            struct task_struct *next_p)
+        __attribute__(regparm(3));
+
+The steps performed by the function are the following:
+
+1. Executes the code yielded by the __unlazy_fpu() macro (see the section “Saving
+and Loading the FPU, MMX, and XMM Registers” later in this chapter) to
+optionally save the contents of the FPU, MMX, and XMM registers of the prev_p
+process.
+
+    __unlazy_fpu(prev_p);
+
+2. Executes the smp_processor_id() macro to get the index of the local CPU,
+namely the CPU that executes the code. The macro gets the index from the cpu
+field of the thread_info structure of the current process and stores it into the cpu
+local variable.
+
+3. Loads next_p->thread.esp0 in the esp0 field of the TSS relative to the local CPU;
+as we’ll see in the section “Issuing a System Call via the sysenter Instruction” in
+Chapter 10, any future privilege level change from User Mode to Kernel Mode
+raised by a sysenter assembly instruction will copy this address in the esp register:
+
+        init_tss[cpu].esp0 = next_p->thread.esp0;
+
+4. Loads in the Global Descriptor Table of the local CPU the Thread-Local Storage (TLS) segments used by the next_p process; the three Segment Selectors are stored in the tls_array array inside the process descriptor (see the section “Segmentation in Linux” in Chapter 2).
+
+        cpu_gdt_table[cpu][6] = next_p->thread.tls_array[0];
+        cpu_gdt_table[cpu][7] = next_p->thread.tls_array[1];
+        cpu_gdt_table[cpu][8] = next_p->thread.tls_array[2];
+
+5. Stores the contents of the fs and gs segmentation registers in prev_p->thread.fs
+and prev_p->thread.gs, respectively; the corresponding assembly language
+instructions are:
+
+        movl %fs, 40(%esi)
+        movl %gs, 44(%esi)
+
+    The esi register points to the prev_p->thread structure.
+
+6. If the fs or the gs segmentation register have been used either by the prev_p or
+by the next_p process (i.e., if they have a nonzero value), loads into these registers
+the values stored in the thread_struct descriptor of the next_p process. This
+step logically complements the actions performed in the previous step. The main
+assembly language instructions are:
+
+        movl 40(%ebx),%fs
+        movl 44(%ebx),%gs
+
+        The ebx register points to the next_p->thread structure. The code is actually
+more intricate, as an exception might be raised by the CPU when it detects an
+invalid segment register value. The code takes this possibility into account by
+adopting a “fix-up” approach (see the section “Dynamic Address Checking: The
+Fix-up Code” in Chapter 10).
+
+7. Loads six of the dr0, ..., dr7 debug registers* with the contents of the next_p->
+thread.debugreg array. This is done only if next_p was using the debug registers
+when it was suspended (that is, field next_p->thread.debugreg[7] is not 0).
+These registers need not be saved, because the prev_p->thread.debugreg array is
+modified only when a debugger wants to monitor prev:
+
+        if (next_p->thread.debugreg[7]){
+            loaddebug(&next_p->thread, 0);
+            loaddebug(&next_p->thread, 1);
+            loaddebug(&next_p->thread, 2);
+            loaddebug(&next_p->thread, 3);
+            /* no 4 and 5 */
+            loaddebug(&next_p->thread, 6);
+            loaddebug(&next_p->thread, 7);
+        }
+
+8. Updates the I/O bitmap in the TSS, if necessary. This must be done when either
+next_p or prev_p has its own customized I/O Permission Bitmap:
+
+        if (prev_p->thread.io_bitmap_ptr || next_p->thread.io_bitmap_ptr)
+            handle_io_bitmap(&next_p->thread, &init_tss[cpu]);
+
+    Because processes seldom modify the I/O Permission Bitmap, this bitmap is handled
+in a “lazy” mode: the actual bitmap is copied into the TSS of the local CPU
+only if a process actually accesses an I/O port in the current timeslice. The customized
+I/O Permission Bitmap of a process is stored in a buffer pointed to by
+the io_bitmap_ptr field of the thread_info structure. The handle_io_bitmap()
+function sets up the io_bitmap field of the TSS used by the local CPU for the
+next_p process as follows:
+
+    * If the next_p process does not have its own customized I/O Permission Bitmap, the io_bitmap field of the TSS is set to the value 0x8000.
+    * If the next_p process has its own customized I/O Permission Bitmap, the io_bitmap field of the TSS is set to the value 0x9000.
+
+    The io_bitmap field of the TSS should contain an offset inside the TSS where the
+actual bitmap is stored. The 0x8000 and 0x9000 values point outside of the TSS
+limit and will thus cause a “General protection” exception whenever the User
+Mode process attempts to access an I/O port (see the section “Exceptions” in
+Chapter 4). The do_general_protection() exception handler will check the value
+stored in the io_bitmap field: if it is 0x8000, the function sends a SIGSEGV signal to
+the User Mode process; otherwise, if it is 0x9000, the function copies the process
+bitmap (pointed to by the io_bitmap_ptr field in the thread_info structure) in the
+TSS of the local CPU, sets the io_bitmap field to the actual bitmap offset (104),
+and forces a new execution of the faulty assembly language instruction.
+
+9. Terminates. The __switch_to() C function ends by means of the statement:
+
+        return prev_p;
+
+    The corresponding assembly language instructions generated by the compiler are:
+
+        movl %edi,%eax
+        ret
+
+    The prev_p parameter (now in edi) is copied into eax, because by default the
+return value of any C function is passed in the eax register. Notice that the value
+of eax is thus preserved across the invocation of __switch_to(); this is quite
+important, because the invoking switch_to macro assumes that eax always stores
+the address of the process descriptor being replaced.
+
+    The ret assembly language instruction loads the eip program counter with the
+return address stored on top of the stack. However, the __switch_to() function
+has been invoked simply by jumping into it. Therefore, the ret instruction finds
+on the stack the address of the instruction labeled as 1, which was pushed by
+the switch_to macro. If next_p was never suspended before because it is being
+executed for the first time, the function finds the starting address of the ret_
+from_fork() function (see the section “The clone(), fork(), and vfork() System
+Calls” later in this chapter).
+
 <h3 id="3.3.4">3.3.4 保存和加载FPU、MMX和XMM寄存器</h3>
 <h4 id="3.3.4.1">3.3.4.1 保存FPU寄存器</h4>
 <h4 id="3.3.4.2">3.3.4.2 加载FPU寄存器</h4>
@@ -2748,12 +3076,15 @@ The `list_for_each` macro scans all items in the `q->task_list` doubly linked li
 <h2 id="4.7">4.7 软件中断和Tasklet</h2>
 <h2 id="4.8">4.8 工作队列</h2>
 <h2 id="4.9">4.9 中断和异常的返回</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
-<h1 id="2">5 内核同步</h1>
-<h2 id="1">5.1 内核服务如何请求</h2>
-<h2 id="1">5.2 同步原语</h2>
-<h2 id="1">5.3 内核数据结构的同步访问</h2>
-<h2 id="1">5.4 防止竞态条件的示例</h2>
+
+<h1 id="5">5 内核同步</h1>
+<h2 id="5">5.1 内核服务如何请求</h2>
+<h2 id="5">5.2 同步原语</h2>
+<h2 id="5">5.3 内核数据结构的同步访问</h2>
+<h2 id="5">5.4 防止竞态条件的示例</h2>
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 <h1 id="2">6 内核计时</h1>
 <h2 id="1">6.1 时钟和定时器电路</h2>
@@ -2817,18 +3148,18 @@ Each error code is defined as a macro constant, which yields a corresponding pos
 核心笔记：
 
 1. POSIX API和系统调用的区别：
-    
+
     `POSIX API`可以理解为一些标准C函数库，而系统调用是在其上进行的封装，以满足用户态和内核态切换需要。系统只要是使用符合`POSIX`标准定义的函数实现系统调用，就是与`POSIX`兼容的。
 
 2. 为什么这么设计？不直接使用API？
-    
+
     如果使用API，那么用户态程序可以直接访问硬件资源，这与`进程/内核`模型的设计理念不符。使用系统调用有2个好处：
 
     * 用户态和内核态隔离开来，访问更加安全
     * 便于用户态程序的移植
 
 3. 对于系统调用，用户可能更关心返回值。
-    
+
     其返回值用一个整数表示，其宏定义位于 *include/arch-specific/errno.h*头文件中。在这儿，`arch-specific`与系统平台的架构相关。用户态的 标准C库的 */usr/include/errno.h*头文件中也应该包含这些错误返回码。
 
 <h2 id="10.2">10.2 系统调用处理程序和服务例程</h2>
@@ -2914,7 +3245,7 @@ The call loads the following values into the gate descriptor fields (see the sec
 * Offset
 * Type
 * DPL(Descriptor Privilege Level)
-    
+
     Set to 3. This allows processes in User Mode to invoke the exception handler (see the section “Hardware Handling of Interrupts and Exceptions” in Chapter 4).
 
 Therefore, when a User Mode process issues an *int $0x80* instruction, the CPU switches into Kernel Mode and starts executing instructions from the *system_call* address.
@@ -2983,50 +3314,50 @@ and es:
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="16">16 访问文件</h1> 
-<h2 id="16.1">16.1 读写文件</h2> 
-<h2 id="16.2">16.2 内存映射</h2> 
-<h2 id="16.3">16.3 直接I/O传送</h2> 
+<h1 id="16">16 访问文件</h1>
+<h2 id="16.1">16.1 读写文件</h2>
+<h2 id="16.2">16.2 内存映射</h2>
+<h2 id="16.3">16.3 直接I/O传送</h2>
 <h2 id="16.4">16.4 异步I/O</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="17">17 页帧回收</h1> 
-<h2 id="17.1">17.1 页帧回收算法</h2> 
-<h2 id="17.2">17.2 反向映射</h2> 
-<h2 id="17.3">17.3 实现PFRA</h2> 
-<h2 id="17.4">17.4 交换</h2> 
+<h1 id="17">17 页帧回收</h1>
+<h2 id="17.1">17.1 页帧回收算法</h2>
+<h2 id="17.2">17.2 反向映射</h2>
+<h2 id="17.3">17.3 实现PFRA</h2>
+<h2 id="17.4">17.4 交换</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="18">18 Ext2和Ext3文件系统</h1> 
-<h2 id="18.1">18.1 Ext2的一般特性</h2> 
-<h2 id="18.2">18.2 Ext2硬盘数据结构</h2> 
-<h2 id="18.3">18.3 Ext2内存数据结构</h2> 
-<h2 id="18.4">18.4 创建Ext2文件系统</h2> 
+<h1 id="18">18 Ext2和Ext3文件系统</h1>
+<h2 id="18.1">18.1 Ext2的一般特性</h2>
+<h2 id="18.2">18.2 Ext2硬盘数据结构</h2>
+<h2 id="18.3">18.3 Ext2内存数据结构</h2>
+<h2 id="18.4">18.4 创建Ext2文件系统</h2>
 <h2 id="18.5">18.5 Ext2方法</h2>
-<h2 id="18.6">18.6 管理Ext2硬盘空间</h2> 
+<h2 id="18.6">18.6 管理Ext2硬盘空间</h2>
 <h2 id="18.7">18.7 Ext3文件系统</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="19">19 进程通信</h1> 
-<h2 id="19.1">19.1 管道</h2> 
-<h2 id="19.2">19.2 FIFO</h2> 
-<h2 id="19.3">19.3 System V IPC</h2> 
+<h1 id="19">19 进程通信</h1>
+<h2 id="19.1">19.1 管道</h2>
+<h2 id="19.2">19.2 FIFO</h2>
+<h2 id="19.3">19.3 System V IPC</h2>
 <h2 id="19.4">19.4 POSIX消息队列</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="20">20 程序执行</h1> 
-<h2 id="20.1">20.1 可执行文件</h2> 
-<h2 id="20.2">20.2 可执行文件格式</h2> 
-<h2 id="20.3">20.3 执行域</h2> 
-<h2 id="20.4">20.4 exec函数</h2> 
+<h1 id="20">20 程序执行</h1>
+<h2 id="20.1">20.1 可执行文件</h2>
+<h2 id="20.2">20.2 可执行文件格式</h2>
+<h2 id="20.3">20.3 执行域</h2>
+<h2 id="20.4">20.4 exec函数</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
-<h1 id="21">21 系统启动</h1> 
+<h1 id="21">21 系统启动</h1>
 
 This appendix explains what happens right after users switch on their computers—that is, how a Linux kernel image is copied into memory and executed. In short, we discuss how the kernel, and thus the whole system, is “bootstrapped.”
 
@@ -3061,22 +3392,22 @@ Linux is forced to use BIOS in the bootstrapping phase, when it must retrieve th
     第一步，完成硬件上电自检测，专业术语称为 *Power-On Self-Test (POST)*。
 
 2. <font color="blue">Initializes the hardware devices</font>. This phase is crucial in modern PCI-based architectures, because it guarantees that all hardware devices operate without conflicts on the IRQ lines and I/O ports. At the end of this phase, a table of installed PCI devices is displayed.
-    
+
     第二步，初始化硬件。这一步对于现代基于PCI的硬件架构非常重要，可以检查IRQ中断线和I/O端口是否有冲突。完成这一步，会建立一个已安装的PCI设备的表。
 
 3. Searches for an operating system to boot. Actually, depending on the BIOS setting, the procedure may try to access (in a predefined, customizable order) the first sector (boot sector) of every floppy disk, hard disk, and CD-ROM in the system.
-    
+
     搜索需要引导的操作系统。检索的对象依赖于BIOS的设置，比如软盘、硬盘和CD-ROM中的第一个扇区，也称为引导扇区。
 
 4. As soon as a valid device is found, it copies the contents of its first sector into RAM, starting from physical address 0x00007c00, and then jumps into that address and executes the code just loaded.
-    
+
     只要找到合法的设备，就会把第一个扇区的内容拷贝到RAM，从物理地址0x00007c00开始，然后跳转到此地址并开始执行刚刚加载的代码。
 
 The rest of this appendix takes you from the most primitive starting state to the full glory of a running Linux system.
 
 本章余下的部分，将会从最原始的启动阶段到Linux系统运行起来，进行一一阐述。
 
-<h2 id="21.2">21.2 Bootloader</h2> 
+<h2 id="21.2">21.2 Bootloader</h2>
 
 The boot loader is the program invoked by the BIOS to load the image of an operating system kernel into RAM. Let’s briefly sketch how boot loaders work in IBM’s PC architecture.
 
@@ -3117,19 +3448,19 @@ Assuming that a Linux kernel image must be booted, the LILO boot loader, which r
 要加载Linux内核镜像，LILO基本上要执行下面几步：
 
 1. Invokes a BIOS procedure to display a “Loading” message.
-    
+
     调用BIOS程序显示正在加载的消息。
 
 2. Invokes a BIOS procedure to load an initial portion of the kernel image from disk: the first 512 bytes of the kernel image are put in RAM at address 0x00090000, while the code of the setup() function (see below) is put in RAM starting from address 0x00090200.
-    
+
     调用BIOS程序从硬盘加载内核镜像的开始部分：把内核的头512字节存放到RAM地址0x00090000处，同时，把`setup()`函数加载到RAM地址0x00090200处。
 
 3. Invokes a BIOS procedure to load the rest of the kernel image from disk and puts the image in RAM starting from either low address 0x00010000 (for small kernel images compiled with `make zImage`) or high address 0x00100000 (for big kernel images compiled with make bzImage). In the following discussion, we say that the kernel image is “loaded low” or “loaded high” in RAM, respectively. Support for big kernel images uses essentially the same booting scheme as the other one, but it places data in different physical memory addresses to avoid problems with the ISA hole mentioned in the section “Physical Memory Layout” in Chapter 2.
-    
+
     调用BIOS程序从硬盘加载内核其余部分：如果内核镜像较小（使用`make zImage`编译），存放到低地址0x00010000处；如果内核镜像较大（使用`make bzImage`编译），则存放到高地址0x00100000处。大内核镜像的引导原理和其它引导基本上是一样的，只是为了避免和ISA空洞（可以查看[物理内存布局](#2.5.3)）产生冲突，把数据放在了不同的物理地址空间上。
 
 4. Jumps to the setup() code.
-    
+
     跳转到`setup()`函数。
 
 <h2 id="21.3">21.3 setup()函数</h2>
@@ -3143,35 +3474,35 @@ The `setup()` function must initialize the hardware devices in the computer and 
 `setup()`函数负责初始化硬件设备，为内核执行提供环境。尽管BIOS已经初始化了大部分硬件，但是为了系统的可移植性和健壮性，Linux按照自己的方式重新初始化硬件设备。`setup()`执行以下步骤：
 
 1. In ACPI-compliant systems, it invokes a BIOS routine that builds a table in RAM describing the layout of the system’s physical memory (the table can be seen in the boot kernel messages by looking for the “BIOS-e820” label). In older systems, it invokes a BIOS routine that just returns the amount of RAM available in the system.
-    
+
     遵循ACPI的系统，调用BIOS服务程序在RAM中构建一张关于系统物理地址布局的表（该表可以通过在内核引导信息中搜索`BIOS-e820`字样找到。在较旧的系统上，只是调用BIOS服务程序返回系统中可用的RAM数量。
 
 2. Sets the keyboard repeat delay and rate. (When the user keeps a key pressed past a certain amount of time, the keyboard device sends the corresponding keycode over and over to the CPU.)
-    
+
     设置键盘重复计数延时和速率。（当用户按下按键后一段时间，键盘设备就会向CPU连续不断地发送相应的键码。
 
 3. Initializes the video adapter card.
-    
+
     初始化视频适配器卡。
 
 4. Reinitializes the disk controller and determines the hard disk parameters.
-    
+
     重新初始化硬盘控制器并设置硬盘参数。
 
 5. Checks for an IBM Micro Channel bus (MCA).
-    
+
     检查IBM微通道总线（MCA）。
 
 6. Checks for a PS/2 pointing device (bus mouse).
-    
+
     检查PS/2所指向的设备。
 
 7. Checks for Advanced Power Management (APM) BIOS support.
-    
+
     检查高级电源管理（APM）BIOS支持。
 
 8. If the BIOS supports the *Enhanced Disk Drive Services (EDD)*, it invokes the proper BIOS procedure to build a table in RAM describing the hard disks available in the system. (The information included in the table can be seen by reading the files in the *firmware/edd* directory of the *sysfs* special filesystem.)
-    
+
     如果BIOS支持 *Enhanced Disk Drive Services (EDD)*，它会调用正确的BIOS程序构建一张表，用来描述系统中可用的硬盘。（表中的信息可以通过读取 *firmware/edd*和 *sysfs*文件目录下的文件查看。）
 
 9. If the kernel image was loaded low in RAM (at physical address 0x00010000), the function moves it to physical address 0x00001000. Conversely, if the kernel image was loaded high in RAM, the function does not move it. This step is necessary because to be able to store the kernel image on a floppy disk and to reduce the booting time, the kernel image stored on disk is compressed, and the decompression routine needs some free space to use as a temporary buffer following the kernel image in RAM.
@@ -3179,30 +3510,30 @@ The `setup()` function must initialize the hardware devices in the computer and 
     如果内核镜像载入低内存区（物理地址0x00010000），该函数会将其移动到物理地址0x00001000处。相反，如果内核镜像载入高内存区（物理地址0x00100000），该函数不会搬运它。这一步是必要的，因为为了能够在软盘上存储内核镜像，同时也是为了减少引导时间，存储在软盘上的内核镜像被压缩，解压缩服务程序需要一些紧跟在内核镜像后面的空间作为临时缓存。
 
 10. Sets the A20 pin located on the 8042 keyboard controller. The A20 pin is a hack introduced in the 80286-based systems to make physical addresses compatible with those of the ancient 8088 microprocessors. Unfortunately, the A20 pin must be properly set before switching to Protected Mode, otherwise the 21st bit of every physical address will always be regarded as zero by the CPU. Setting the A20 pin is a messy operation.
-    
+
     设置A20管脚，用于8042键盘控制器。该管脚的存在是为了和基于80286的系统进行兼容。
 
 11. Sets up a provisional Interrupt Descriptor Table (IDT) and a provisional Global Descriptor Table (GDT).
-    
+
     建立临时中段描述表（IDT）和临时GDT（全局描述表）。
 
 12. Resets the floating-point unit (FPU), if any.
-    
+
     复位浮点单元（FPU），当然前提是支持的话。
 
 13. Reprograms the Programmable Interrupt Controllers (PIC) to mask all interrupts, except IRQ2 which is the cascading interrupt between the two PICs.
-    
+
     重新设置可编程中断控制器（PIC）屏蔽所有中断，除了IRQ2，它是专门用于2个PIC级联的。
 
 14. Switches the CPU from Real Mode to Protected Mode by setting the PE bit in the cr0 status register. The PG bit in the cr0 register is cleared, so paging is still disabled.
-    
+
     设置cr0寄存器的PE标志位，切换CPU从实模式到保护模式。同时，cr0寄存器中的PG位被清除，所以此时分页机制仍然是禁止的。
 
 15. Jumps to the startup_32() assembly language function.
-    
+
     跳转到汇编函数`startup_32()`处。
 
-<h2 id="21.4">21.4 setup_32()函数</h2> 
+<h2 id="21.4">21.4 setup_32()函数</h2>
 
 There are two different startup_32() functions; the one we refer to here is coded in the `arch/i386/boot/compressed/head.S` file. After `setup()` terminates, the function has been moved either to physical address 0x00100000 or to physical address 0x00001000, depending on whether the kernel image was loaded high or low in RAM.
 
@@ -3217,7 +3548,7 @@ This function performs the following operations:
     初始化段寄存器和临时堆栈。
 
 2. Clears all bits in the eflags register.
-    
+
     清除`eflags`寄存器中的所有位。
 
 3. Fills the area of uninitialized data of the kernel identified by the `_edata` and `_end` symbols with zeros (see the section “Physical Memory Layout” in Chapter 2).
@@ -3239,7 +3570,7 @@ This function performs the following operations:
     如果内核镜像被加载到低地址空间，解压缩后的内核被放置到地址0x00100000处。否则，如果内核镜像被加载到高地址空间，解压缩后的内核被放置到压缩内核镜像的后面的临时缓存中。然后，解压缩后的镜像会被移动到最后的位置，也就是开始地址0x00100000处。
 
 5. Jumps to physical address 0x00100000.
-    
+
     然后，跳转到物理地址0x00100000处。
 
 The decompressed kernel image begins with another startup_32() function included in the `arch/i386/kernel/head.S` file. Using the same name for both the functions does not create any problems (besides confusing our readers), because both functions are executed by jumping to their initial physical addresses.
@@ -3251,11 +3582,11 @@ The second startup_32() function sets up the execution environment for the first
 第二个函数`startup_32()`函数建立第一个Linux进程（进程0）的运行环境。函数执行下面的操作：
 
 1. Initializes the segmentation registers with their final values.
-    
+
     使用最终的值，初始化段寄存器。
 
 2. Fills the bss segment of the kernel (see the section “Program Segments and Process Memory Regions” in Chapter 20) with zeros.
-    
+
     初始化内核的`bss`段为0（参见[第20章 程序段和进程内存区域](#20.1.5)）
 
 3. Initializes the provisional kernel Page Tables contained in `swapper_pg_dir` and `pg0` to identically map the linear addresses to the same physical addresses, as explained in the section “Kernel Page Tables” in Chapter 2.
@@ -3310,7 +3641,7 @@ The start_kernel() function completes the initialization of the Linux kernel. Ne
     调用`build_all_zonelists()`函数（参见[第8章中的内存区](#8.1.3)），初始化内存区。
 
 3. The Buddy system allocators are initialized by invoking the page_alloc_init() and mem_init() functions (see the section “The Buddy System Algorithm” in Chapter 8).
-    
+
     调用`page_alloc_init()`和`mem_init()`函数（参见[第8章中的伙伴系统算法](#8.1.7)），初始化`伙伴系统分配器`。
 
 4. The final initialization of the IDT is performed by invoking trap_init() (see the section “Exception Handling” in Chapter 4) and init_IRQ() (see the section “IRQ data structures” in Chapter 4).
@@ -3341,10 +3672,10 @@ Besides the “Linux version 2.6.11...” message, which is displayed right afte
 
 除了`Linux version 2.6.11...`这条提示信息之外，`start_kernel()`函数执行之后，还会显示一些其它的信息，这些信息都是由init程序和内核线程打印的。最后，熟悉的登陆提示信息就会出现在控制台上（或者在图形界面上，如果X Window系统启动的话），告诉用户Linux内核已经启动并正在运行。
 
-<h1 id="22">22 模块化</h1> 
-<h2 id="22.1">22.1 是否选择模块化</h2> 
-<h2 id="22.2">22.2 实现模块</h2> 
-<h2 id="22.3">22.3 加载和卸载模块</h2> 
-<h2 id="22.4">22.4 根据需要加载模块</h2> 
+<h1 id="22">22 模块化</h1>
+<h2 id="22.1">22.1 是否选择模块化</h2>
+<h2 id="22.2">22.2 实现模块</h2>
+<h2 id="22.3">22.3 加载和卸载模块</h2>
+<h2 id="22.4">22.4 根据需要加载模块</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
