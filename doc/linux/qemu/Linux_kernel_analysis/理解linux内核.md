@@ -43,8 +43,8 @@
         + [3.2.4 如何组织进程](#3.2.4)
         + [3.2.5 进程资源限制](#3.2.5)
     - [3.3 进程切换](#3.3)
-        + [3.3.1 进程状态](#3.3.1)
-        + [3.3.2 进程状态段](#3.3.2)
+        + [3.3.1 硬件上下文](#3.3.1)
+        + [3.3.2 任务状态段-TSS](#3.3.2)
         + [3.3.3 执行进程切换](#3.3.3)
         + [3.3.4 保存和加载FPU、MMX和XMM寄存器](#3.3.4)
     - [3.4 创建进程](#3.4)
@@ -771,29 +771,19 @@ To make it easy to retrieve segment selectors quickly, the processor provides se
 
 为了简单快速检索段选择器，CPU提供了段寄存器，它的唯一目的就是保存段选择器；这些段寄存器被称为`cs`、`ss`、`ds`、`es`、`fs`和`gs`。尽管只有6个，但是程序可以通过保存其内容到内存中，然后后面再恢复的办法，重复利用这些段寄存器，用作不同的目的。
 
-Three of the six segmentation registers have specific purposes:
-
 其中3个寄存器具有特定的用途：
 
 * cs
-
-    The code segment register, which points to a segment containing program instructions
 
     代码段寄存器，指向包含程序指令的段。
 
 * ss
 
-    The stack segment register, which points to a segment containing the current program stack
-
     栈的段寄存器，指向包含当前程序栈的段。
 
 * ds
 
-    The data segment register, which points to a segment containing global and static data
-
     数据段寄存器，指向包含全局和静态数据的段。
-
-The remaining three segmentation registers are general purpose and may refer to arbitrary data segments.
 
 其余的3个寄存器是通用目的寄存器，可以指向任意数据段。
 
@@ -803,15 +793,9 @@ The `cs` register has another important function: it includes a 2-bit field that
 
 <h3 id="2.2.2">2.2.2 段描述符</h3>
 
-Each segment is represented by an 8-byte Segment Descriptor that describes the segment characteristics. Segment Descriptors are stored either in the Global Descriptor Table (GDT) or in the Local Descriptor Table (LDT).
-
-每一个段都由描述段特征8个字节的段描述符表示。段描述符即可以存储在全局描述符表（GDT），也可以存储在局部描述符表（LDT）。
-
-Usually only one GDT is defined, while each process is permitted to have its own LDT if it needs to create additional segments besides those stored in the GDT. The address and size of the GDT in main memory are contained in the `gdtr` control register, while the address and size of the currently used LDT are contained in the `ldtr` control register.
+每一个段都由8个字节的段描述符表示。段描述符即可以存储在全局描述符表（GDT），也可以存储在局部描述符表（LDT）。
 
 通常，只有一个GDT，所有的进程共享。但是如果每个进程还需要创建额外的段，可以拥有自己的LDT。GDT在内存中的地址和大小保存在`gdtr`控制寄存器中，而当前正在使用的LDT的地址和大小保存在`ldtr`寄存器中。
-
-Figure 2-3 illustrates the format of a Segment Descriptor; the meaning of the various fields is explained in Table 2-1.
 
 图2-3解释了段描述符的格式；表2-1阐述了各个位域的意义。
 
@@ -819,7 +803,7 @@ Figure 2-3 illustrates the format of a Segment Descriptor; the meaning of the va
 
 | 位域名称   | 描述 |
 | ---------- | ---- |
-| Base   | 保存段的第一个字节的线性地址，硬件单元会自动把3个分立的基地址单元组合成一个32位的地址 |
+| Base   | 保存段描述符的起始地址，硬件单元会自动把3个分立的基地址单元组合成一个32位的地址 |
 | G      | 粒度，如果=0，段按字节表示；否则，按4K的倍数表示。|
 | Limit  | 该段最后一个内存单元的偏移量，相当于长度。如果G=0，段的大小为1~1MB；否则为4K~4GB。|
 | S      | 系统标志：如果被清除，则该段是一个系统段，用来存储关键数据结构，比如LDT；否则，就是正常代码段或数据段。|
@@ -835,25 +819,17 @@ There are several types of segments, and thus several types of Segment Descripto
 
 * *代码段描述符*
 
-    Indicates that the Segment Descriptor refers to a code segment; it may be included either in the GDT or in the LDT. The descriptor has the S flag set (nonsystem segment).
-
     表明该段描述符指向一个代码段；即可以包含在GDT，也可以包含在LDT。S标志置1，表示这是代码段。
 
 * *数据段描述符*
-
-    Indicates that the Segment Descriptor refers to a data segment; it may be included either in the GDT or in the LDT. The descriptor has the S flag set. Stack segments are implemented by means of generic data segments.
 
     表明该段描述符指向一个数据段；即可以包含在GDT，也可以包含在LDT。S标志置1，表示这是数据段。栈段就是通过通用数据段实现的。
 
 * *任务状态段描述符*
 
-    Indicates that the Segment Descriptor refers to a Task State Segment (TSS)—that is, a segment used to save the contents of the processor registers (see the section “Task State Segment” in Chapter 3); it can appear only in the GDT. The corresponding `Type` field has the value 11 or 9, depending on whether the corresponding process is currently executing on a CPU. The S flag of such descriptors is set to 0.
-
     表明该段描述符指向一个任务状态段（TSS），也就是说，该段是用来保存处理器各个寄存器的内容的（第3章的[任务状态段](#3.3.2)）；它只能出现在GDT中。相应的`Type`位域使用值11或9，依赖于相应的进程现在是否正在CPU上执行。该类描述符的S标志置0，表示系统段。
 
 * *LDT描述符-LDTD*
-
-    Indicates that the Segment Descriptor refers to a segment containing an LDT; it can appear only in the GDT. The corresponding Type field has the value 2. The S flag of such descriptors is set to 0. The next section shows how 80×86 processors are able to decide whether a segment descriptor is stored in the GDT or in the LDT of the process.
 
     描述段描述符指向包含LDT的段；这样的描述符只能出现在GDT中。相应的`Type`位域值为2。这类描述符的S标志位置0，表示系统段。下一段，我们将会描述x86处理器是怎样决定一个段描述符存储在GDT还是进程的LDT中的。
 
@@ -999,37 +975,21 @@ GDT的布局可以参考图2-6.每一个GDT包含18个段描述符和14个空、
 
 图2-6 全局描述符表-GDT
 
-The 18 segment descriptors included in each GDT point to the following segments:
-
 这18个段描述符指向下面这些段：
 
-* Four user and kernel code and data segments (see previous section).
+*  4个用户和内核代码和数据段
 
-    4个用户和内核代码和数据段
+* 任务状态段(TSS)，对于系统中的每个CPU都是不同的。TSS对应的线性地址空间仅仅是内核数据段对应的线性地址空间的一小部分。所有任务状态段(TSS)被连续地存储在init_tss寄存器中；第N个CPU的TSS描述符的Base位域指向init_tss数组的第N部分。G标志被置0，Limit位域被设置位0xeb，因为TSS段的大小就是236字节长；Type位域被设置为9或11（可用的32位TSS）；DPL被设置为0，因为用户态的进程不允许访问TSS段。将会在第3章的[任务状态段](#3.3.2)一节中详细讲解Linux如何使用TSS。
 
-* A Task State Segment (TSS), different for each processor in the system. The linear address space corresponding to a TSS is a small subset of the linear address space corresponding to the kernel data segment. The Task State Segments are sequentially stored in the init_tss array; in particular, the Base field of the TSS descriptor for the nth CPU points to the nth component of the init_tss array. The G (granularity) flag is cleared, while the Limit field is set to 0xeb, because the TSS segment is 236 bytes long. The Type field is set to 9 or 11 (available 32-bit TSS), and the DPL is set to 0, because processes in User Mode are not allowed to access TSS segments. You will find details on how Linux uses TSSs in the section “Task State Segment” in Chapter 3.
+* 包含默认LDT的段，通常所有的进程共享（将在下一节中介绍）。
 
-    任务状态段(TSS)，对于系统中的每个CPU都是不同的。TSS对应的线性地址空间仅仅是内核数据段对应的线性地址空间的一小部分。所有任务状态段(TSS)被连续地存储在init_tss寄存器中；第N个CPU的TSS描述符的Base位域指向init_tss数组的第N部分。G标志被置0，Limit位域被设置位0xeb，因为TSS段的大小就是236字节长；Type位域被设置为9或11（可用的32位TSS）；DPL被设置为0，因为用户态的进程不允许访问TSS段。将会在第3章的[任务状态段](#3.3.2)一节中详细讲解Linux如何使用TSS。
+*  3个线程本地存储段（TLS）：这是一种允许多线程程序可以使用多达3个段保存每个线程本地数据的机制。系统调用set_thread_area()和get_thread_area()，分别为正在执行的进程创建和释放TLS段。
 
-* A segment including the default Local Descriptor Table (LDT), usually shared by all processes (see the next section).
+*  3个跟高级电源管理（APM）相关的段：BIOS代码使用这些段，所以，当Linux APM驱动调用BIOS函数去获取或设置APM设备的状态时，它可能会使用用户代码和数据段。
 
-    包含默认LDT的段，通常所有的进程共享（将在下一节中介绍）。
+*  5个和即插即用（PnP)BIOS服务相关的段。和上一种段类似，BIOS代码使用这些段，所以当Linux PnP驱动调用BIOS函数检测PnP设备可用的资源时，可能会使用用户代码和数据段。
 
-* Three Thread-Local Storage (TLS) segments: this is a mechanism that allows multithreaded applications to make use of up to three segments containing data local to each thread. The *set_thread_area()* and *get_thread_area()* system calls, respectively, create and release a TLS segment for the executing process.
-
-    3个线程本地存储段（TLS）：这是一种允许多线程程序可以使用多达3个段保存每个线程本地数据的机制。系统调用set_thread_area()和get_thread_area()，分别为正在执行的进程创建和释放TLS段。
-
-* Three segments related to Advanced Power Management (APM): the BIOS code makes use of segments, so when the Linux APM driver invokes BIOS functions to get or set the status of APM devices, it may use custom code and data segments.
-
-    3个跟高级电源管理（APM）相关的段：BIOS代码使用这些段，所以，当Linux APM驱动调用BIOS函数去获取或设置APM设备的状态时，它可能会使用用户代码和数据段。
-
-* Five segments related to Plug and Play (PnP) BIOS services. As in the previous case, the BIOS code makes use of segments, so when the Linux PnP driver invokes BIOS functions to detect the resources used by PnP devices, it may use custom code and data segments.
-
-    5个和即插即用（PnP)BIOS服务相关的段。和上一种段类似，BIOS代码使用这些段，所以当Linux PnP驱动调用BIOS函数检测PnP设备可用的资源时，可能会使用用户代码和数据段。
-
-* A special TSS segment used by the kernel to handle “Double fault” exceptions (see “Exceptions” in Chapter 4).
-
-    内核使用的一个特殊TSS段，用来处理（Double fault）异常（参见第4章的[异常](#4.2.2)一节）
+*  内核使用的一个特殊TSS段，用来处理（Double fault）异常（参见第4章的[异常](#4.2.2)一节）
 
 As stated earlier, there is a copy of the GDT for each processor in the system. All copies of the GDT store identical entries, except for a few cases. First, each processor has its own TSS segment, thus the corresponding GDT’s entries differ. Moreover, a few entries in the GDT may depend on the process that the CPU is executing (LDT and TLS Segment Descriptors). Finally, in some cases a processor may temporarily modify an entry in its copy of the GDT; this happens, for instance, when invoking an APM’s BIOS procedure.
 
@@ -2663,16 +2623,18 @@ PID哈希表的数据结构就解决了这所有的问题，因为它允许给�
 
 <h3 id="3.2.5">3.2.5 进程资源限制</h3>
 
-Each process has an associated set of resource limits, which specify the amount of system resources it can use. These limits keep a user from overwhelming the system(its CPU, disk space, and so on). Linux recognizes the following resource limits illustrated in Table 3-7.
+每个进程都需要进行资源限制，避免把系统搞垮（比如对CPU的使用，硬盘空间的占用等等）。基于这个目的，Linux内核在每个进程的进程描述符中还应该包含资源限制的数据结构，Linux使用了一个数组成员，该数组成员的包含关系为current->signal->rlim，数组的定义如下所示：
 
-The resource limits for the current process are stored in the `current->signal->rlim`field, that is, in a field of the process’s signal descriptor (see the section “Data Structures Associated with Signals” in Chapter 11). The field is an array of elements of type struct rlimit, one for each resource limit:
+    struct rlimit rlim[RLIM_NLIMITS];
+
+其中，rlimit结构的定义为：
 
     struct rlimit {
-        unsigned long rlim_cur;
-        unsigned long rlim_max;
+        __kernel_ulong_t    rlim_cur;
+        __kernel_ulong_t    rlim_max;
     };
 
-表3-7 资源限制
+__kernel_ulong_t等于无符号长整形。RLIM_NLIMITS的大小为16，也就是说，目前对进程资源的限制有16种，分别如下所示：
 
 1. RLIMIT_AS
 
@@ -2680,19 +2642,19 @@ The resource limits for the current process are stored in the `current->signal->
 
 2. RLIMIT_CORE
 
-    The maximum core dump file size, in bytes. The kernel checks this value when a process is aborted, before creating a core file in the current directory of the process (see the section “Actions Performed upon Delivering a Signal” in Chapter 11). If the limit is 0, the kernel won’t create the file.
+    最大核心转储文件大小，单位是字节。当进程被中止时，内核会检查这个值，然后进程的当前目录下创建一个core文件。（最常见的情况就是，我们的程序有bug而崩溃的时候，会在该目录下产生一个core文件。）当然了，如果这个值的大小为0，是不会产生core文件的。
 
 3. RLIMIT_CPU
 
-    The maximum CPU time for the process, in seconds. If the process exceeds the limit, the kernel sends it a SIGXCPU signal, and then, if the process doesn’t terminate, a SIGKILL signal (see Chapter 11).
+    进程占用CPU的最大时间，单位是秒（S）。如果超过这个时间，内核会发送一个SIGXCPU信号，如果进程还是没有终止，再发送SIGKILL信号。
 
 4. RLIMIT_DATA
 
-    The maximum heap size, in bytes. The kernel checks this value before expanding the heap of the process (see the section “Managing the Heap” in Chapter 9).
+    最大堆大小，单位是字节。内核在扩大进程的堆空间之前，检查这个值。
 
 5. RLIMIT_FSIZE
 
-    The maximum file size allowed, in bytes. If the process tries to enlarge a file to a size greater than this value, the kernel sends it a SIGXFSZ signal.
+    最大文件大小，单位是字节。如果进程尝试扩大文件超过这个值，内核发送一个SIGXFSZ信号。
 
 6. RLIMIT_LOCKS
 
@@ -2708,165 +2670,146 @@ The resource limits for the current process are stored in the `current->signal->
 
 9. RLIMIT_NOFILE
 
-    The maximum number of open file descriptors. The kernel checks this value when opening a new file or duplicating a file descriptor (see Chapter 12).
+    打开的文件描述符最大数量。当新打开一个文件或复制文件描述符时，内核都会检查这个值。
 
 10. RLIMIT_NPROC
 
-    The maximum number of processes that the user can own (see the section “The clone(), fork(), and vfork() System Calls” later in this chapter).
+    用户可以拥有的最大进程数量。
 
 11. RLIMIT_RSS
 
-    The maximum number of page frames owned by the process (currently, not enforced).
+    进程可以拥有的页帧数量，也就是物理帧的数量（目前不强制）。
 
 12. RLIMIT_SIGPENDING
 
-    The maximum number of pending signals for the process (see Chapter 11).
+    进程挂起信号的最大数量。
 
 13. RLIMIT_STACK
 
-    The maximum stack size, in bytes. The kernel checks this value before expanding the User Mode stack of the process (see the section “Page Fault Exception Handler” in Chapter 9).
+    最大栈空间，单位是字节。在扩展进程的用户态栈时，内核会检查这个值。
 
-The `rlim_cur` field is the current resource limit for the resource. For example, `current->signal->rlim[RLIMIT_CPU].rlim_cur` represents the current limit on the CPU time of the running process.
+14. RLIMIT_NICE
+    
+    优先级的完美值。进程可通过setpriority()或nice()设置。
 
-The `rlim_max` field is the maximum allowed value for the resource limit. By using the getrlimit() and setrlimit() system calls, a user can always increase the rlim_cur limit of some resource up to rlim_max. However, only the superuser (or, more precisely, a user who has the CAP_SYS_RESOURCE capability) can increase the rlim_max field or set the rlim_cur field to a value greater than the corresponding rlim_max field.
+15. RLIMIT_RTPRIO
 
-Most resource limits contain the value `RLIM_INFINITY (0xffffffff)`, which means that no user limit is imposed on the corresponding resource (of course, real limits exist due to kernel design restrictions, available RAM, available space on disk, etc.). However, the system administrator may choose to impose stronger limits on some resources. Whenever a user logs into the system, the kernel creates a process owned by the superuser, which can invoke setrlimit() to decrease the rlim_max and rlim_cur fields for a resource. The same process later executes a login shell and becomes owned by the user. Each new process created by the user inherits the content of the rlim array from its parent, and therefore the user cannot override the limits enforced by the administrator.
+    最大实时优先级。进程可通过sched_setscheduler和sched_setparam设置。
+
+16. RLIMIT_RTTIME
+
+    实时任务的timeout，单位是uS。
+
+结构体成员rlim_cur表示对当前进程的资源限制。比如`current->signal->rlim[RLIMIT_CPU].rlim_cur`是指当前正在运行的进程的CPU时间限制。
+
+成员rlim_max表示资源限制允许的最大值。可以通过getrlimit()和setrlimit()系统调用进行设置，用户可以增加rlim_max的值到rlim_max。但是，超级用户（更准确地将，具有CAP_SYS_RESOURCE能力的用户）可以增加rlim_max的值，或者将rlim_cur设为超过rlim_max的值。
+
+> 这就是为什么当我们的程序崩溃时，却发现没有core文件，这是因为系统默认是关闭的。所以需要调用命令
+>       
+>       ulimit -c unlimited // 设置core文件大小为不限制大小
+>       
+> 然后才能看到core文件的原因。
+
+但是，我们查看源码的时候会发现，大部分的资源限制都被设为RLIM_INFINITY（0xffffffff），这意味对资源没有用户限制（当然了，本身还要受到硬件的限制：比如可用的RAM，硬盘实际空间等等）。这是因为我们想要保留软件设置的自由度，如果代码中直接写死对硬件资源的限制，软件操作的空间就会变小。
+
+通过上面的方法，系统管理员可以更改对资源的限制。当用户登陆到系统时，内核创建一个超级用户拥有的进程，通过它调用setrlimit()减小rlim_max和rlim_cur的值；然后执行login shell，成为用户态进程（实际就是进程init）。用户新创建的进程继承它父进程的rlim数组内容，所以，用用也不能覆盖掉由超级用户赋值的限制值。
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h2 id="3.3">3.3 进程切换</h2>
 
-To control the execution of processes, the kernel must be able to suspend the execution of the process running on the CPU and resume the execution of some other process previously suspended. This activity goes variously by the names process switch, task switch, or context switch. The next sections describe the elements of process switching in Linux.
+进程切换，又称为任务切换、上下文切换、或者任务调度。下面我们就来研究Linux的进程切换。
 
 <h3 id="3.3.1">3.3.1 硬件上下文</h3>
 
-While each process can have its own address space, all processes have to share the CPU registers. So before resuming the execution of a process, the kernel must ensure that each such register is loaded with the value it had when the process was suspended.
+尽管每个进程都有自己的地址空间，但是所有的进程却共享CPU寄存器。所以，在恢复进程执行之前，内核必须保证该进程在挂起时的寄存器值重新加载到CPU的寄存器中。
 
-The set of data that must be loaded into the registers before the process resumes its execution on the CPU is called the hardware context. The hardware context is a subset of the process execution context, which includes all information needed for the process execution. In Linux, a part of the hardware context of a process is stored in the process descriptor, while the remaining part is saved in the Kernel Mode stack.
+这些需要加载到CPU寄存器中的值就成为硬件上下文。硬件上下文是进程执行上下文的一个子集，进程执行上下文包含进程执行所需要的所有信息。在Linux中，进程的硬件上下文一部分存储在进程描述符中，而其它部分存储在内核态的栈中。
 
-In the description that follows, we will assume the prev local variable refers to the process descriptor of the process being switched out and next refers to the one being switched in to replace it. We can thus define a process switch as the activity consisting of saving the hardware context of prev and replacing it with the hardware context of next. Because process switches occur quite often, it is important to minimize the time spent in saving and loading hardware contexts.
+在下面的描述中，我们假设，局部变量prev指向将要被替换掉的进程，而next指向将要替换的进程。因此，我们就可以说，进程切换就是保存prev进程的硬件上下文，然后加载next进程的硬件上下文。因为进程的切换非常频繁，所以最小化保存和加载硬件上下文内容的时间就显得非常重要了。
 
-Old versions of Linux took advantage of the hardware support offered by the 80×86 architecture and performed a process switch through a far jmp instruction* to the selector of the Task State Segment Descriptor of the next process. While executing the instruction, the CPU performs a hardware context switch by automatically saving the old hardware context and loading a new one. But Linux 2.6 uses software to perform a process switch for the following reasons:
+旧版本的linux利用x86架构提供的硬件支持，并通过远程调转指令（GNU-`ljump`；Intel-`jmp far`）进行进程切换，跳转到下一个进程的任务状态段（TSS）描述符。执行这条跳转指令的同时，CPU自动执行硬件上下文切换，保存旧的硬件上下文，加载新的硬件上下文。但是，linux2.6版本以后，通过软件进行进程切换，原因如下：
 
-* Step-by-step switching performed through a sequence of mov instructions allows better control over the validity of the data being loaded. In particular, it is possible to check the values of the ds and es segmentation registers, which might have been forged by a malicious user. This type of checking is not possible when using a single far jmp instruction.
+* 通过一连串的mov指令，一步步执行切换，可以更好地控制加载数据的合法性。由其是ds和es段寄存器中的值，有可能会被恶意用户篡改。如果使用远程跳转指令是无法进程数据检查的。
 
-* The amount of time required by the old approach and the new approach is about the same. However, it is not possible to optimize a hardware context switch, while there might be room for improving the current switching code.
+* 新旧方法所要求的时间是大致相同的。但是，优化硬件上下文的切换是不可能的，因为都是由CPU完成的，而Linux是使用软件代替硬件上下文切换的，所以有优化的空间，一遍提高执行时间。
 
-Process switching occurs only in Kernel Mode. The contents of all registers used by a process in User Mode have already been saved on the Kernel Mode stack before performing process switching (see Chapter 4). This includes the contents of the ss and esp pair that specifies the User Mode stack pointer address.
+进程切换只能发生在内核态。在进行进程切换之前，用户态进程使用的所有寄存器内容都已经包含在内核态的栈中了。这其中就包含指定用户态进程栈指针地址的ss和esp这对寄存器内容。
 
-<h3 id="3.3.2">3.3.2 进程状态段</h3>
+<h3 id="3.3.2">3.3.2 任务状态段-TSS</h3>
 
-The 80×86 architecture includes a specific segment type called the Task State Segment (TSS), to store hardware contexts. Although Linux doesn’t use hardware context switches, it is nonetheless forced to set up a TSS for each distinct CPU in the system. This is done for two main reasons:
+x86架构包含一个特殊的段寄存器，称为任务状态段（TSS），用来保存硬件上下文内容。尽管Linux不使用硬件上下文切换，但还是给每个不同CPU建立一个TSS。这么做，基于两个原因：
 
-* When an 80×86 CPU switches from User Mode to Kernel Mode, it fetches the address of the Kernel Mode stack from the TSS (see the sections “Hardware Handling of Interrupts and Exceptions” in Chapter 4 and “Issuing a System Call via the sysenter Instruction” in Chapter 10).
+* 当x86架构的CPU从用户态到内核态时，会从TSS中获取内核态的栈地址（参见第4章的[中断和异常的硬件处理](#4.2.4)和第10章的[通过系统进入指令发送系统调用](#10.3.2)）
 
-* When a User Mode process attempts to access an I/O port by means of an in or out instruction, the CPU may need to access an I/O Permission Bitmap stored in the TSS to verify whether the process is allowed to address the port. More precisely, when a process executes an in or out I/O instruction in User Mode, the control unit performs the following operations:
+* 用户态进程想要访问I/O端口的时候，CPU需要访问存储在TSS中的I/O权限位，判断进程是否被允许访问这个I/O端口。那么，当用户态进程执行in或out指令时，I/O控制单元到底做了什么呢？
 
-    1. It checks the 2-bit IOPL field in the eflags register. If it is set to 3, the control unit executes the I/O instructions. Otherwise, it performs the next check.
-    2. It accesses the tr register to determine the current TSS, and thus the proper I/O Permission Bitmap.
-    3. It checks the bit of the I/O Permission Bitmap corresponding to the I/O port specified in the I/O instruction. If it is cleared, the instruction is executed; otherwise, the control unit raises a “General protection” exception.
+    1. 检查eflags寄存器中IOPL位（2位）。如果等于3，也就是超级用户权限，也就是进程对于这个I/O端口来说就是一个超级用户，那么，直接执行I/O指令。否则，继续执行检查。
+    2. 访问tr寄存器，确定当前的TSS，以及正确的I/O访问权限。
+    3. 它检查I/O端口对应的访问权限位。如果清零，指令被执行；否则，控制单元发出**常规保护**的异常。
 
-The tss_struct structure describes the format of the TSS. As already mentioned in Chapter 2, the init_tss array stores one TSS for each CPU on the system. At each process switch, the kernel updates some fields of the TSS so that the corresponding CPU’s control unit may safely retrieve the information it needs. Thus, the TSS reflects the privilege of the current process on the CPU, but there is no need to maintain TSSs for processes when they’re not running.
+内核中使用tss_struct结构体描述TSS。init_tss数组为系统中的每一个CPU包含一个tss_struct结构。每一次进程切换，内核更新TSS相关内容，使CPU控制单元能够安全地检索自己想要的信息。因而，TSS反映了当前运行在CPU上的进程的特权级别，但是当进程不运行的时候，无需维护这些信息。
 
-Each TSS has its own 8-byte Task State Segment Descriptor (TSSD). This descriptor includes a 32-bit Base field that points to the TSS starting address and a 20-bit Limit field. The S flag of a TSSD is cleared to denote the fact that the corresponding TSS is a System Segment (see the section “Segment Descriptors” in Chapter 2).
+每个TSS具有8个字节长度的任务状态段描述符（TSSD）。这个描述符包含一个32位的基地址，指向TSS的起始地址
+以及20位的Limit域，表示页的大小。TSSD的S标志被清零，说明这是一个系统段（参见第2章的[段描述符](#2.2.2)）。
 
-The Type field is set to either 9 or 11 to denote that the segment is actually a TSS. In the Intel’s original design, each process in the system should refer to its own TSS; the second least significant bit of the Type field is called the Busy bit; it is set to 1 if the process is being executed by a CPU, and to 0 otherwise. In Linux design, there is just one TSS for each CPU, so the Busy bit is always set to 1.
+Type域设置为9或者11都可以，表明该段是一个TSS段即可。Intel最初的设计中，系统中的每个进程都应该引用自己的TSS：Type域的低第2个有效位称为Busy位，如果被设为1，进程正在CPU上执行；设为0，没有执行。在Linux的设计中，每个CPU就只有一个TSS，所以，Busy位总是设为1。换句话说，Linux中Type域一般为11。
 
-The TSSDs created by Linux are stored in the Global Descriptor Table (GDT), whose base address is stored in the gdtr register of each CPU. The tr register of each CPU contains the TSSD Selector of the corresponding TSS. The register also includes two hidden, nonprogrammable fields: the Base and Limit fields of the TSSD. In this way, the processor can address the TSS directly without having to retrieve the TSS address from the GDT.
+创建的这些TSSD存储在全局描述符表（GDT）中，该表的基地址存储在CPU的gdtr寄存器中。每个CPU的tr寄存器包含对应TSS的TSSD选择器，还包含两个隐藏的、不可编程的域：TSSD的Base和Limit域。使用这种方法，CPU可以直接寻址TSS，而不必非得访问GDT中TSS的地址。
 
 <h4 id="3.3.2.1">3.3.2.1 线程域</h4>
 
-At every process switch, the hardware context of the process being replaced must be saved somewhere. It cannot be saved on the TSS, as in the original Intel design, because Linux uses a single TSS for each processor, instead of one for every process.
+每当进程切换时，将要被替换掉的进程硬件上下文内容都应该被保存到某个地址。显然不能保存在TSS中，因为Linux为每个CPU就建立了一个TSS，而不是为每个进程建立TSS。
 
-Thus, each process descriptor includes a field called thread of type thread_struct, in which the kernel saves the hardware context whenever the process is being switched out. As we’ll see later, this data structure includes fields for most of the CPU registers, except the general-purpose registers such as eax, ebx, etc., which are stored in the Kernel Mode stack.
+因而，进程描述符中添加了一个类型为thread_struct的结构，通过它，内核保存将要被切换出的进程的硬件上下文。后面我们会看到，该数据结构包含了大部分的CPU寄存器，除了通用目的寄存器，比如eax、ebx等，它们被存储在内核态的栈中。
 
 <h3 id="3.3.3">3.3.3 执行进程切换</h3>
 
-A process switch may occur at just one well-defined point: the schedule() function,
-which is discussed at length in Chapter 7. Here, we are only concerned with how the
-kernel performs a process switch.
+关于进程切换的时机：schedule()函数，我们在[第7章](#7)再讨论。这儿，我们只关注如何执行进程切换。
 
-Essentially, every process switch consists of two steps:
+基本上，进程的切换分为两步：
 
-1. Switching the Page Global Directory to install a new address space; we’ll
-describe this step in Chapter 9.
-2. Switching the Kernel Mode stack and the hardware context, which provides all
-the information needed by the kernel to execute the new process, including the
-CPU registers.
+1. 切换页全局目录（PGD），切换到新的地址空间；这一步的内容，我们将在[第9章](#9)讨论。
+2. 切换内核态栈和硬件上下文内容，提供执行新进程所需要的所有信息，包括CPU寄存器。
 
-Again, we assume that prev points to the descriptor of the process being replaced,
-and next to the descriptor of the process being activated. As we’ll see in Chapter 7,
-prev and next are local variables of the schedule() function.
+我们仍然假设prev指向被切换掉的进程描述符，next指向将要执行的进程描述符。我们将会在第7章发现，prev和next正是schedule()函数的局部变量。
 
 <h4 id="3.3.3.1">3.3.3.1 switch_to宏</h4>
 
-The second step of the process switch is performed by the switch_to macro. It is one
-of the most hardware-dependent routines of the kernel, and it takes some effort to
-understand what it does.
+The second step of the process switch is performed by the switch_to macro. It is one of the most hardware-dependent routines of the kernel, and it takes some effort to understand what it does.
 
-First of all, the macro has three parameters, called prev, next, and last. You might
-easily guess the role of prev and next: they are just placeholders for the local variables
-prev and next, that is, they are input parameters that specify the memory locations
-containing the descriptor address of the process being replaced and the
-descriptor address of the new process, respectively.
+First of all, the macro has three parameters, called prev, next, and last. You might easily guess the role of prev and next: they are just placeholders for the local variables prev and next, that is, they are input parameters that specify the memory locations containing the descriptor address of the process being replaced and the descriptor address of the new process, respectively.
 
-What about the third parameter, last? Well, in any process switch three processes
-are involved, not just two. Suppose the kernel decides to switch off process A and to
-activate process B. In the schedule() function, prev points to A’s descriptor and next
-points to B’s descriptor. As soon as the switch_to macro deactivates A, the execution
-flow of A freezes.
+What about the third parameter, last? Well, in any process switch three processes are involved, not just two. Suppose the kernel decides to switch off process A and to activate process B. In the schedule() function, prev points to A’s descriptor and next points to B’s descriptor. As soon as the switch_to macro deactivates A, the execution flow of A freezes.
 
-Later, when the kernel wants to reactivate A, it must switch off another process C (in
-general, this is different from B) by executing another switch_to macro with prev
-pointing to C and next pointing to A. When A resumes its execution flow, it finds its
-old Kernel Mode stack, so the prev local variable points to A’s descriptor and next
-points to B’s descriptor. The scheduler, which is now executing on behalf of process
-A, has lost any reference to C. This reference, however, turns out to be useful to
-complete the process switching (see Chapter 7 for more details).
+Later, when the kernel wants to reactivate A, it must switch off another process C (in general, this is different from B) by executing another switch_to macro with prev pointing to C and next pointing to A. When A resumes its execution flow, it finds its old Kernel Mode stack, so the prev local variable points to A’s descriptor and next points to B’s descriptor. The scheduler, which is now executing on behalf of process A, has lost any reference to C. This reference, however, turns out to be useful to complete the process switching (see Chapter 7 for more details).
 
-The last parameter of the switch_to macro is an output parameter that specifies a
-memory location in which the macro writes the descriptor address of process C (of
-course, this is done after A resumes its execution). Before the process switching, the
-macro saves in the eax CPU register the content of the variable identified by the first
-input parameter prev—that is, the prev local variable allocated on the Kernel Mode
-stack of A. After the process switching, when A has resumed its execution, the macro
-writes the content of the eax CPU register in the memory location of A identified by
-the third output parameter last. Because the CPU register doesn’t change across the
-process switch, this memory location receives the address of C’s descriptor. In the
-current implementation of schedule(), the last parameter identifies the prev local
-variable of A, so prev is overwritten with the address of C.
+The last parameter of the switch_to macro is an output parameter that specifies a memory location in which the macro writes the descriptor address of process C (of course, this is done after A resumes its execution). Before the process switching, the macro saves in the eax CPU register the content of the variable identified by the first input parameter prev—that is, the prev local variable allocated on the Kernel Mode stack of A. After the process switching, when A has resumed its execution, the macro writes the content of the eax CPU register in the memory location of A identified by the third output parameter last. Because the CPU register doesn’t change across the process switch, this memory location receives the address of C’s descriptor. In the current implementation of schedule(), the last parameter identifies the prev local variable of A, so prev is overwritten with the address of C.
 
-The contents of the Kernel Mode stacks of processes A, B, and C are shown in
-Figure 3-7, together with the values of the eax register; be warned that the figure
-shows the value of the prev local variable before its value is overwritten with the contents
-of the eax register.
+The contents of the Kernel Mode stacks of processes A, B, and C are shown in Figure 3-7, together with the values of the eax register; be warned that the figure shows the value of the prev local variable before its value is overwritten with the contents of the eax register.
 
 <img id="Figure_3_7" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_7.PNG">
 
 The switch_to macro is coded in extended inline assembly language that makes for rather complex reading: in fact, the code refers to registers by means of a special positional notation that allows the compiler to freely choose the general-purpose registers to be used. Rather than follow the cumbersome extended inline assembly language, we’ll describe what the switch_to macro typically does on an 80×86 microprocessor by using standard assembly language:
 
-1. Saves the values of prev and next in the eax and edx registers, respectively:
+1. 将新旧进程描述符存放到CPU寄存器中：
 
         movl prev, %eax
         movl next, %edx
 
 2. Saves the contents of the eflags and ebp registers in the prev Kernel Mode stack. They must be saved because the compiler assumes that they will stay unchanged until the end of switch_to:
+2. 保存旧进程的内核态栈中的`eflags`和`ebp`寄存器的内容。它们必须被保存，因为
 
         pushfl
         pushl %ebp
 
-3. Saves the content of esp in prev->thread.esp so that the field points to the top of the prev Kernel Mode stack:
+3. 保存旧进程的栈到`prev->thread.esp`中
 
         movl %esp,484(%eax)
 
-    The 484(%eax) operand identifies the memory cell whose address is the contents of eax plus 484.
+    操作数`484(%eax)`表明目的地址是寄存器`eax`中的地址加上`484`。
 
-4. Loads next->thread.esp in esp. From now on, the kernel operates on the Kernel
-Mode stack of next, so this instruction performs the actual process switch from
-prev to next. Because the address of a process descriptor is closely related to that
-of the Kernel Mode stack (as explained in the section “Identifying a Process” earlier
-in this chapter), changing the kernel stack means changing the current
-process:
+4. 将新进程的栈指针加载到`esp`寄存器中。next->thread.esp in esp. From now on, the kernel operates on the Kernel Mode stack of next, so this instruction performs the actual process switch from prev to next. Because the address of a process descriptor is closely related to that of the Kernel Mode stack (as explained in the section “Identifying a Process” earlier in this chapter), changing the kernel stack means changing the current process:
 
         movl 484(%edx), %esp
 
@@ -3080,12 +3023,26 @@ Calls” later in this chapter).
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="5">5 内核同步</h1>
+
+You could think of the kernel as a server that answers requests; these requests can come either from a process running on a CPU or an external device issuing an interrupt request. We make this analogy to underscore that parts of the kernel are not run serially, but in an interleaved way. Thus, they can give rise to race conditions, which must be controlled through proper synchronization techniques. A general introduction to these topics can be found in the section “An Overview of Unix Kernels” in Chapter 1.
+
+We start this chapter by reviewing when, and to what extent, kernel requests are executed in an interleaved fashion. We then introduce the basic synchronization primitives implemented by the kernel and describe how they are applied in the most common cases. Finally, we illustrate a few practical examples.
+
 <h2 id="5">5.1 内核服务如何请求</h2>
+
+To get a better grasp of how kernel’s code is executed, we will look at the kernel as a waiter who must satisfy two types of requests: those issued by customers and those issued by a limited number of different bosses. The policy adopted by the waiter is the following:
+
+1. If a boss calls while the waiter is idle, the waiter starts servicing the boss.
+2. If a boss calls while the waiter is servicing a customer, the waiter stops servicing the customer and starts servicing the boss.
+
 <h2 id="5">5.2 同步原语</h2>
+
 <h2 id="5">5.3 内核数据结构的同步访问</h2>
+
 <h2 id="5">5.4 防止竞态条件的示例</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
+
 <h1 id="2">6 内核计时</h1>
 <h2 id="1">6.1 时钟和定时器电路</h2>
 <h2 id="1">6.2 内核计时架构</h2>
