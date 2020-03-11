@@ -2689,7 +2689,7 @@ __kernel_ulong_t等于无符号长整形。RLIM_NLIMITS的大小为16，也就�
     最大栈空间，单位是字节。在扩展进程的用户态栈时，内核会检查这个值。
 
 14. RLIMIT_NICE
-    
+
     优先级的完美值。进程可通过setpriority()或nice()设置。
 
 15. RLIMIT_RTPRIO
@@ -2705,9 +2705,9 @@ __kernel_ulong_t等于无符号长整形。RLIM_NLIMITS的大小为16，也就�
 成员rlim_max表示资源限制允许的最大值。可以通过getrlimit()和setrlimit()系统调用进行设置，用户可以增加rlim_max的值到rlim_max。但是，超级用户（更准确地将，具有CAP_SYS_RESOURCE能力的用户）可以增加rlim_max的值，或者将rlim_cur设为超过rlim_max的值。
 
 > 这就是为什么当我们的程序崩溃时，却发现没有core文件，这是因为系统默认是关闭的。所以需要调用命令
->       
+>
 >       ulimit -c unlimited // 设置core文件大小为不限制大小
->       
+>
 > 然后才能看到core文件的原因。
 
 但是，我们查看源码的时候会发现，大部分的资源限制都被设为RLIM_INFINITY（0xffffffff），这意味对资源没有用户限制（当然了，本身还要受到硬件的限制：比如可用的RAM，硬盘实际空间等等）。这是因为我们想要保留软件设置的自由度，如果代码中直接写死对硬件资源的限制，软件操作的空间就会变小。
@@ -2988,15 +2988,405 @@ Calls” later in this chapter).
 
 <h2 id="3.4">3.4 创建进程</h2>
 
+Unix操作系统创建进程来响应用户请求。比如，每当用户在shell命令行中键入命令时，创建一个shell副本，然后执行用户的请求。
+
+传统的Unix系统使用相同的方法创建所有进程：在子进程中复制父进程的所有资源。但是，这种创建进程的方法效率比较低，因为它拷贝父进程的整个地址空间。子进程极少需要读取或修改所有从父进程继承的资源。大部分时候，都是立即发出execve()系统调用和并清空所有拷贝的地址空间。
+
+现代Unix系统采用三种方法解决这个问题：
+
+* **写时复制技术**（Copy-On-Write）允许父进程和子进程共享相同的物理地址空间。不论哪个进程尝试写这个共同的物理地址时，内核都会给这个尝试的进程分配一个新的物理地址空间。 尝试写的进程就在新的地址空间上进行操作。
+
+* **轻量级进程允许父进程和子进程共享内核数据结构**，比如页表（因此，共享整个用户态地址空间），打开的文件和信号处理等。
+
+* vfork()创建一个进程，和父进程共享内存地址空间。先阻止父进程的执行，直到子进程退出或者执行一个新程序之后，父进程才执行。
+
 <h3 id="3.4.1">3.4.1 clone()、fork()和vfork()系统调用</h3>
+
+Linux内核用于创建进程的系统调用有3个，它们的实现分别为：fork、vfork、clone。它们的作用如下表所示：
+
+| 调用 | 描述 |
+| --- | ---- |
+| clone | 创建轻量级进程（也就是线程） |
+| vfork | clone()调用的一种特殊情况 |
+| fork  | 创建父进程的完整副本      |
+
+1. clone()
+
+    创建轻量级进程，其拥有的参数是：
+
+    1. fn
+
+        指定新进程执行的函数。当从函数返回时，子进程终止。函数返回一个退出码，表明子进程的退出状态。
+
+    2. arg
+
+        指向fn()函数的参数。
+
+    3. flags
+
+        一些标志位，低字节是表示当子进程终止时发送给父进程的信号，通常是SIGCHLD信号。其余的3个字节是一组标志，如下表所示：
+
+        | 名称 | 描述 |
+        | ------------- | -----------------------|
+        | CLONE_VM      | 共享内存描述符和所有的页表 |
+        | CLONE_FS      | 共享文件系统 |
+        | CLONE_FILES   | 共享打开的文件 |
+        | CLONE_SIGHAND | 共享信号处理函数，阻塞和挂起的信号等 |
+        | CLONE_PTRACE  | debug用，父进程被追踪，子进程也追踪 |
+        | CLONE_VFORK   | 父进程挂起，直到子进程释放虚拟内存资源 |
+        | CLONE_PARENT  | 设置子进程的父进程是调用者的父进程，也就是创建兄弟进程 |
+        | CLONE_THREAD  | 共享线程组，设置相应的线程组数据 |
+        | CLONE_NEWNS   | 设置自己的命令空间，也就是有独立的文件系统 |
+        | CLONE_SYSVSEM | 共享System V IPC可撤销信号量操作 |
+        | CLONE_SETTLS  | 为轻量级进程创建新的TLS段 |
+        | CLONE_PARENT_SETTID | 写子进程PID到父进程的用户态变量中 |
+        | CLONE_CHILD_CLEARTID | 设置时，当子进程exit或者exec时，给父进程发送信号 |
+
+    4. child_stack
+
+        指定子进程的用户态栈指针，存储在子进程的esp寄存器中。父进程总是给子进程分配一个新的栈。
+
+    5. tls
+
+        指向为轻量级进程定义的TLS段数据结构的地址。只有CLONE_SETTLS标志设置了才有意义。
+
+    6. ptid
+
+        指定父进程的用户态变量地址，用来保存新建轻量级进程的PID。只有CLONE_PARENT_SETTID标志设置了才有意义。
+
+    7. ctid
+
+        指定新进程保存PID的用户态变量的地址。只有CLONE_CHILD_SETTID标志设置了才有意义。
+
+    clone()其实是一个C库中的封装函数，它建立新进程的栈并调用sys_clone()系统调用。sys_clone()系统调用没有参数fn和arg。事实上，clone()把fn函数的指针保存到子进程的栈中return地址处，指针arg紧随其后。当clone()函数终止时，CPU从栈上获取return地址并执行fn(arg)函数。
+
+    下面我们看一个C代码示例，看看clone()函数的使用：
+
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <malloc.h>
+        #include <linux/sched.h>
+        #include <signal.h>
+        #include <sys/types.h>
+        #include <unistd.h>
+
+        #define FIBER_STACK 8192
+
+        int a;
+        void *stack;
+
+        int do_something()
+        {
+            printf("This is the son, and my pid is:%d,
+                and a = %d\n", getpid(), ++a);
+            free(stack);
+            exit(1);
+        }
+
+        int main()
+        {
+            void * stack;
+            a = 1;
+
+            /* 为子进程申请系统堆栈 */
+            stack = malloc(FIBER_STACK);
+
+            if(!stack)
+            {
+                printf("The stack failed\n");
+                exit(0);
+            }
+            printf("Creating son thread!!!\n");
+
+            clone(&do_something, (char *)stack + FIBER_STACK, CLONE_VM|CLONE_VFORK, 0);//创建子线程
+            printf("This is the father, and my pid is: %d, and a = %d\n", getpid(), a);
+
+            exit(1);
+        }
+
+    上面的代码就相当于实现了一个vfork()，只有子进程执行完并释放虚拟内存资源后，父进程执行。执行结果是：
+
+        Creating son thread!!!
+        This is the son, and my pid is:3733, and a = 2
+        This is the father, and my pid is: 3732, and a = 2
+
+    它们现在共享堆栈，所以a的值是相等的。
+
+2. fork()
+
+    linux将fork实现为这样的clone()系统调用，其flags参数指定为SIGCHLD信号并清除所有clone标志，child_stack参数是当前父进程栈的指针。父进程和子进程暂时共享相同的用户态堆栈。然后采用 **写时复制技术**，不管是父进程还是子进程，在尝试修改堆栈时，立即获得刚才共享的用户态堆栈的一个副本。也就是称为了一个单独的进程。
+
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <sys/types.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int count = 1;
+            int child;
+
+            child = fork();
+            if(child < 0){
+                perror("fork error : ");
+            }
+            else if(child == 0){    // child process
+                printf("This is son, his count is: %d (%p). and his pid is: %d\n",
+                        ++count, &count, getpid());
+            }
+            else{                   // parent process
+                printf("This is father, his count is: %d (%p), his pid is: %d\n",
+                        count, &count, getpid());
+            }
+            return EXIT_SUCCESS;
+        }
+
+    上面代码的执行结果：
+
+        This is father, his count is: 1 (0xbfdbb384), his pid is: 3994
+        This is son, his count is: 2 (0xbfdbb384). and his pid is: 3995
+
+    可以看出，父子进程的PID是不一样的，而且堆栈也是独立的（count计数一个是1，一个是2）。
+
+3. vfork()
+
+    将vfork实现为这样的clone()系统调用，flags参数指定为SIGCHLD|CLONE_VM|CLONE_VFORK信号并且
+system call, introduced in the previous section, is implemented by Linux as a clone() system call whose flags parameter specifies both a SIGCHLD signal and the flags CLONE_VM and CLONE_VFORK, and whose child_stack parameter is equal to the current parent stack pointer.
+
 <h4 id="3.4.1.1">3.4.1.1 do_fork()函数</h4>
+
+The do_fork() function, which handles the clone(), fork(), and vfork() system calls, acts on the following parameters:
+
+1. clone_flags
+
+    Same as the flags parameter of clone()
+
+2. stack_start
+
+    Same as the child_stack parameter of clone()
+
+3. regs
+
+    Pointer to the values of the general purpose registers saved into the Kernel Mode stack when switching from User Mode to Kernel Mode (see the section “The do_IRQ() function” in Chapter 4)
+
+4. stack_size
+
+    Unused (always set to 0)
+
+5. parent_tidptr, child_tidptr
+
+    Same as the corresponding ptid and ctid parameters of clone()
+
+do_fork() makes use of an auxiliary function called copy_process() to set up the process descriptor and any other kernel data structure required for child’s execution. Here are the main steps performed by do_fork():
+
+1. Allocates a new PID for the child by looking in the pidmap_array bitmap (see the earlier section “Identifying a Process”).
+
+2. Checks the ptrace field of the parent (current->ptrace): if it is not zero, the parent process is being traced by another process, thus do_fork() checks whether the debugger wants to trace the child on its own (independently of the value of the CLONE_PTRACE flag specified by the parent); in this case, if the child is not a kernel thread (CLONE_UNTRACED flag cleared), the function sets the CLONE_PTRACE flag.
+
+3. Invokes copy_process() to make a copy of the process descriptor. If all needed resources are available, this function returns the address of the task_struct descriptor just created. This is the workhorse of the forking procedure, and we will describe it right after do_fork().
+
+4. If either the CLONE_STOPPED flag is set or the child process must be traced, that is, the PT_PTRACED flag is set in p->ptrace, it sets the state of the child to TASK_STOPPED and adds a pending SIGSTOP signal to it (see the section “The Role of Signals” in Chapter 11). The state of the child will remain TASK_STOPPED until another process (presumably the tracing process or the parent) will revert its state to TASK_RUNNING, usually by means of a SIGCONT signal.
+
+5. If the CLONE_STOPPED flag is not set, it invokes the wake_up_new_task() function, which performs the following operations:
+    1. Adjusts the scheduling parameters of both the parent and the child (see “The Scheduling Algorithm” in Chapter 7).
+    2. If the child will run on the same CPU as the parent,* and parent and child do not share the same set of page tables (CLONE_VM flag cleared), it then forces the child to run before the parent by inserting it into the parent’s runqueue right before the parent. This simple step yields better performance if the child flushes its address space and executes a new program right after the forking. If we let the parent run first, the Copy On Write mechanism would give rise to a series of unnecessary page duplications.
+    3. Otherwise, if the child will not be run on the same CPU as the parent, or if parent and child share the same set of page tables (CLONE_VM flag set), it inserts the child in the last position of the parent’s runqueue.
+
+6. If the CLONE_STOPPED flag is set, it puts the child in the TASK_STOPPED state.
+7. If the parent process is being traced, it stores the PID of the child in the ptrace_message field of current and invokes ptrace_notify(), which essentially stops the current process and sends a SIGCHLD signal to its parent. The “grandparent” of the child is the debugger that is tracing the parent; the SIGCHLD signal notifies the debugger that current has forked a child, whose PID can be retrieved by looking into the current->ptrace_message field.
+8. If the CLONE_VFORK flag is specified, it inserts the parent process in a wait queue and suspends it until the child releases its memory address space (that is, until the child either terminates or executes a new program).
+9. Terminates by returning the PID of the child.
+
 <h4 id="3.4.1.2">3.4.1.2 copy_process()函数</h4>
+
+The copy_process() function sets up the process descriptor and any other kernel data
+structure required for a child’s execution. Its parameters are the same as do_fork(),
+plus the PID of the child. Here is a description of its most significant steps:
+
+1. Checks whether the flags passed in the clone_flags parameter are compatible. In
+particular, it returns an error code in the following cases:
+
+    1. Both the flags CLONE_NEWNS and CLONE_FS are set.
+
+    2. The CLONE_THREAD flag is set, but the CLONE_SIGHAND flag is cleared (lightweight processes in the same thread group must share signals).
+
+    3. The CLONE_SIGHAND flag is set, but the CLONE_VM flag is cleared (lightweight processes sharing the signal handlers must also share the memory descriptor).
+
+2. Performs any additional security checks by invoking security_task_create() and, later, security_task_alloc(). The Linux kernel 2.6 offers hooks for security extensions that enforce a security model stronger than the one adopted by traditional Unix. See Chapter 20 for details.
+
+3. Invokes dup_task_struct() to get the process descriptor for the child. This function performs the following actions:
+
+    1. Invokes __unlazy_fpu() on the current process to save, if necessary, the contents of the FPU, MMX, and SSE/SSE2 registers in the thread_info structure of the parent. Later, dup_task_struct() will copy these values in the thread_info structure of the child.
+
+    2. Executes the alloc_task_struct() macro to get a process descriptor (task_struct structure) for the new process, and stores its address in the tsk local variable.
+
+    3. Executes the alloc_thread_info macro to get a free memory area to store the thread_info structure and the Kernel Mode stack of the new process, and saves its address in the ti local variable. As explained in the earlier section “Identifying a Process,” the size of this memory area is either 8 KB or 4 KB.
+
+    4. Copies the contents of the current’s process descriptor into the task_struct structure pointed to by tsk, then sets tsk->thread_info to ti.
+
+    5. Copies the contents of the current’s thread_info descriptor into the structure pointed to by ti, then sets ti->task to tsk.
+
+    6. Sets the usage counter of the new process descriptor (tsk->usage) to 2 to specify that the process descriptor is in use and that the corresponding process is alive (its state is not EXIT_ZOMBIE or EXIT_DEAD).
+
+    7. Returns the process descriptor pointer of the new process (tsk).
+
+
+4. Checks whether the value stored in current->signal->rlim[RLIMIT_NPROC].rlim_cur is smaller than or equal to the current number of processes owned by the user. If so, an error code is returned, unless the process has root privileges. The function gets the current number of processes owned by the user from a per-user data structure named user_struct. This data structure can be found through a pointer in the user field of the process descriptor.
+
+5. Increases the usage counter of the user_struct structure (tsk->user->__count field) and the counter of the processes owned by the user (tsk->user->processes).
+
+6. Checks that the number of processes in the system (stored in the nr_threads
+variable) does not exceed the value of the max_threads variable. The default value
+of this variable depends on the amount of RAM in the system. The general rule
+is that the space taken by all thread_info descriptors and Kernel Mode stacks
+cannot exceed 1/8 of the physical memory. However, the system administrator
+may change this value by writing in the /proc/sys/kernel/threads-max file.
+
+7. If the kernel functions implementing the execution domain and the executable
+format (see Chapter 20) of the new process are included in kernel modules, it
+increases their usage counters (see Appendix B).
+
+8. Sets a few crucial fields related to the process state:
+
+    1. Initializes the big kernel lock counter tsk->lock_depth to -1 (see the section
+“The Big Kernel Lock” in Chapter 5).
+
+    2. Initializes the tsk->did_exec field to 0: it counts the number of execve() system
+calls issued by the process.
+
+    3. Updates some of the flags included in the tsk->flags field that have been
+copied from the parent process: first clears the PF_SUPERPRIV flag, which
+indicates whether the process has used any of its superuser privileges, then
+sets the PF_FORKNOEXEC flag, which indicates that the child has not yet issued
+an execve() system call.
+
+9. Stores the PID of the new process in the tsk->pid field.
+
+10. If the CLONE_PARENT_SETTID flag in the clone_flags parameter is set, it copies the child’s PID into the User Mode variable addressed by the parent_tidptr parameter.
+
+11. Initializes the list_head data structures and the spin locks included in the child’s process descriptor, and sets up several other fields related to pending signals, timers, and time statistics.
+
+12. Invokes copy_semundo(), copy_files( ), copy_fs( ), copy_sighand( ), copy_
+signal(), copy_mm( ), and copy_namespace( ) to create new data structures and
+copy into them the values of the corresponding parent process data structures,
+unless specified differently by the clone_flags parameter.
+
+13. Invokes copy_thread( ) to initialize the Kernel Mode stack of the child process
+with the values contained in the CPU registers when the clone( ) system call was
+issued (these values have been saved in the Kernel Mode stack of the parent, as
+described in Chapter 10). However, the function forces the value 0 into the field corresponding to the eax register (this is the child’s return value of the fork() or
+clone() system call). The thread.esp field in the descriptor of the child process is
+initialized with the base address of the child’s Kernel Mode stack, and the address
+of an assembly language function (ret_from_fork( )) is stored in the thread.eip
+field. If the parent process makes use of an I/O Permission Bitmap, the child gets
+a copy of such bitmap. Finally, if the CLONE_SETTLS flag is set, the child gets the
+TLS segment specified by the User Mode data structure pointed to by the tls
+parameter of the clone() system call.*
+
+14. If either CLONE_CHILD_SETTID or CLONE_CHILD_CLEARTID is set in the clone_flags
+parameter, it copies the value of the child_tidptr parameter in the tsk->set_
+chid_tid or tsk->clear_child_tid field, respectively. These flags specify that the
+value of the variable pointed to by child_tidptr in the User Mode address space
+of the child has to be changed, although the actual write operations will be done
+later.
+
+15. Turns off the TIF_SYSCALL_TRACE flag in the thread_info structure of the child, so
+that the ret_from_fork() function will not notify the debugging process about
+the system call termination (see the section “Entering and Exiting a System Call”
+in Chapter 10). (The system call tracing of the child is not disabled, because it is
+controlled by the PTRACE_SYSCALL flag in tsk->ptrace.)
+
+16. Initializes the tsk->exit_signal field with the signal number encoded in the low
+bits of the clone_flags parameter, unless the CLONE_THREAD flag is set, in which
+case initializes the field to -1. As we’ll see in the section “Process Termination”
+later in this chapter, only the death of the last member of a thread group (usually,
+the thread group leader) causes a signal notifying the parent of the thread
+group leader.
+
+17. Invokes sched_fork() to complete the initialization of the scheduler data structure
+of the new process. The function also sets the state of the new process to
+TASK_RUNNING and sets the preempt_count field of the thread_info structure to 1,
+thus disabling kernel preemption (see the section “Kernel Preemption” in
+Chapter 5). Moreover, in order to keep process scheduling fair, the function
+shares the remaining timeslice of the parent between the parent and the child
+(see “The scheduler_tick( ) Function” in Chapter 7).
+
+18. Sets the cpu field in the thread_info structure of the new process to the number
+of the local CPU returned by smp_processor_id().
+
+19. Initializes the fields that specify the parenthood relationships. In particular, if
+CLONE_PARENT or CLONE_THREAD are set, it initializes tsk->real_parent and tsk->parent to the value in current->real_parent; the parent of the child thus appears
+as the parent of the current process. Otherwise, it sets the same fields to current.
+
+20. If the child does not need to be traced (CLONE_PTRACE flag not set), it sets the tsk->
+ptrace field to 0. This field stores a few flags used when a process is being traced
+by another process. In such a way, even if the current process is being traced, the
+child will not.
+
+21. Executes the SET_LINKS macro to insert the new process descriptor in the process
+list.
+
+22. If the child must be traced (PT_PTRACED flag in the tsk->ptrace field set), it sets
+tsk->parent to current->parent and inserts the child into the trace list of the
+debugger.
+
+23. Invokes attach_pid( ) to insert the PID of the new process descriptor in the
+pidhash[PIDTYPE_PID] hash table.
+
+24. If the child is a thread group leader (flag CLONE_THREAD cleared):
+
+    1. Initializes tsk->tgid to tsk->pid.
+
+    2. Initializes tsk->group_leader to tsk.
+
+    3. Invokes three times attach_pid() to insert the child in the PID hash tables of type PIDTYPE_TGID, PIDTYPE_PGID, and PIDTYPE_SID.
+
+25. Otherwise, if the child belongs to the thread group of its parent (CLONE_THREAD flag set):
+
+    1. Initializes tsk->tgid to tsk->current->tgid.
+
+    2. Initializes tsk->group_leader to the value in current->group_leader.
+
+    3. Invokes attach_pid() to insert the child in the PIDTYPE_TGID hash table(more specifically, in the per-PID list of the current->group_leader process).
+
+26. A new process has now been added to the set of processes: increases the value of the nr_threads variable.
+
+27. Increases the total_forks variable to keep track of the number of forked processes.
+
+28. Terminates by returning the child’s process descriptor pointer (tsk).
+
+Let’s go back to what happens after do_fork() terminates. Now we have a complete
+child process in the runnable state. But it isn’t actually running. It is up to the scheduler
+to decide when to give the CPU to this child. At some future process switch, the
+schedule bestows this favor on the child process by loading a few CPU registers with
+the values of the thread field of the child’s process descriptor. In particular, esp is
+loaded with thread.esp (that is, with the address of child’s Kernel Mode stack), and
+eip is loaded with the address of ret_from_fork( ). This assembly language function
+invokes the schedule_tail( ) function (which in turn invokes the finish_task_
+switch() function to complete the process switch; see the section “The schedule( )
+Function” in Chapter 7), reloads all other registers with the values stored in the
+stack, and forces the CPU back to User Mode. The new process then starts its execution
+right at the end of the fork( ), vfork( ), or clone( ) system call. The value
+returned by the system call is contained in eax: the value is 0 for the child and equal
+to the PID for the child’s parent. To understand how this is done, look back at what
+copy_thread() does on the eax register of the child’s process (step 13 of copy_
+process()).
+
+The child process executes the same code as the parent, except that the fork returns a
+0 (see step 13 of copy_process()). The developer of the application can exploit this
+fact, in a manner familiar to Unix programmers, by inserting a conditional statement
+in the program based on the PID value that forces the child to behave differently
+from the parent process.
 
 <h3 id="3.4.2">3.4.2 内核线程</h3>
 <h4 id="3.4.2.1">3.4.2.1 创建内核线程</h4>
 <h4 id="3.4.2.2">3.4.2.2 进程0</h4>
 <h4 id="3.4.2.3">3.4.2.3 进程1</h4>
 <h4 id="3.4.2.4">3.4.2.4 其它内核线程</h4>
+
+
+
+
 
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
