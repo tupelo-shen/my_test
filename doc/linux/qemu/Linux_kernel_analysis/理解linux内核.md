@@ -767,9 +767,7 @@ A logical address consists of two parts: a segment identifier and an offset that
 
 图2-2 段选择器格式
 
-To make it easy to retrieve segment selectors quickly, the processor provides segmentation registers whose only purpose is to hold Segment Selectors; these registers are called cs, ss, ds, es, fs, and gs. Although there are only six of them, a program can reuse the same segmentation register for different purposes by saving its content in memory and then restoring it later.
-
-为了简单快速检索段选择器，CPU提供了段寄存器，它的唯一目的就是保存段选择器；这些段寄存器被称为`cs`、`ss`、`ds`、`es`、`fs`和`gs`。尽管只有6个，但是程序可以通过保存其内容到内存中，然后后面再恢复的办法，重复利用这些段寄存器，用作不同的目的。
+为了快速检索段选择器，CPU提供了段寄存器，它的唯一目的就是保存段选择器；这些段寄存器被称为`cs`、`ss`、`ds`、`es`、`fs`和`gs`。尽管只有6个，但是程序可以通过保存其内容到内存中，然后后面再恢复的办法，重复利用这些段寄存器，用作不同的目的。
 
 其中3个寄存器具有特定的用途：
 
@@ -3006,9 +3004,20 @@ Linux内核用于创建进程的系统调用有3个，它们的实现分别为�
 
 | 调用 | 描述 |
 | --- | ---- |
-| clone | 创建轻量级进程（也就是线程） |
-| vfork | clone()调用的一种特殊情况 |
-| fork  | 创建父进程的完整副本      |
+| clone | 创建轻量级进程（也就是线程），pthread库基于此实现 |
+| vfork | 父子进程共享资源，子进程先于父进程执行 |
+| fork  | 创建父进程的完整副本 |
+
+<font color="blue">
+进程的4要素:
+
+* 执行代码
+* 私有堆栈空间
+* 进程控制块（task_struct）
+* 有独立的内存空间
+
+</font>
+下面我们来看一下3个函数的区别：
 
 1. clone()
 
@@ -3150,243 +3159,368 @@ Linux内核用于创建进程的系统调用有3个，它们的实现分别为�
 
 3. vfork()
 
-    将vfork实现为这样的clone()系统调用，flags参数指定为SIGCHLD|CLONE_VM|CLONE_VFORK信号并且
-system call, introduced in the previous section, is implemented by Linux as a clone() system call whose flags parameter specifies both a SIGCHLD signal and the flags CLONE_VM and CLONE_VFORK, and whose child_stack parameter is equal to the current parent stack pointer.
+    将vfork实现为这样的clone()系统调用，flags参数指定为SIGCHLD|CLONE_VM|CLONE_VFORK信号，child_stack参数等于当前父进程栈指针。
 
-<h4 id="3.4.1.1">3.4.1.1 do_fork()函数</h4>
+    vfork其实是一种过时的应用，vfork也是创建一个子进程，但是子进程共享父进程的空间。在vfork创建子进程之后，阻塞父进程，直到子进程执行了exec()或exit()。vfork最初是因为fork没有实现COW机制，而在很多情况下fork之后会紧接着执行exec，而exec的执行相当于之前的fork复制的空间全部变成了无用功，所以设计了vfork。而现在fork使用了COW机制，唯一的代价仅仅是复制父进程页表的代价，所以vfork不应该出现在新的代码之中。
 
-The do_fork() function, which handles the clone(), fork(), and vfork() system calls, acts on the following parameters:
+    实际上，vfork创建的是一个线程，与父进程共享内存和堆栈空间：
 
-1. clone_flags
+    我们看下面的示例代码：
 
-    Same as the flags parameter of clone()
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <sys/types.h>
+        #include <unistd.h>
 
-2. stack_start
+        int main()
+        {
+            int count = 1;
+            int child;
+            printf("Before create son, the father's count is:%d\n", count);
+            if(!(child = vfork())) {
+                printf("This is son, his pid is: %d and the count is: %d\n",
+                        getpid(), ++count);
+                exit(1);
+            }
+            else {
+                printf("This is father, pid is: %d and count is: %d\n",
+                        getpid(), count);
+            }
+        }
 
-    Same as the child_stack parameter of clone()
+    执行结果为：
 
-3. regs
+        Before create son, the father's count is:1
+        This is son, his pid is: 3564 and the count is: 2
+        This is father, pid is: 3563 and count is: 2
 
-    Pointer to the values of the general purpose registers saved into the Kernel Mode stack when switching from User Mode to Kernel Mode (see the section “The do_IRQ() function” in Chapter 4)
+    从运行结果看，vfork创建的子进程（线程）共享了父进程的count变量，所以，子进程修改count，父进程的count值也改变了。
 
-4. stack_size
+    另外由vfork创建的子进程要先于父进程执行，子进程执行时，父进程处于挂起状态，子进程执行完，唤醒父进程。除非子进程exit或者execve才会唤起父进程，看下面程序：
 
-    Unused (always set to 0)
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <sys/types.h>
+        #include <unistd.h>
 
-5. parent_tidptr, child_tidptr
+        int main()
+        {
+            int count = 1;
+            int child;
+            printf("Before create son, the father's count is:%d\n", count);
+            if(!(child = vfork())) {
 
-    Same as the corresponding ptid and ctid parameters of clone()
+                int i;
+                for(i = 0; i < 100; i++)
+                {
+                    printf("Child process & i = %d\n", i);
+                    count++;
+                    if(i == 20)
+                    {
+                        printf("Child process & pid = %d;count = %d\n",
+                                getpid(), ++count);
+                        exit(1);
+                    }
+                }
+            }
+            else {
+                printf("Father process & pid = %d ;count = %d\n",
+                        getpid(), count);
+            }
+        }
 
-do_fork() makes use of an auxiliary function called copy_process() to set up the process descriptor and any other kernel data structure required for child’s execution. Here are the main steps performed by do_fork():
+    执行结果为：
 
-1. Allocates a new PID for the child by looking in the pidmap_array bitmap (see the earlier section “Identifying a Process”).
+        Before create son, the father's count is:1
+        Child process & i = 0
+        Child process & i = 1
+        Child process & i = 2
+        Child process & i = 3
+        Child process & i = 4
+        Child process & i = 5
+        Child process & i = 6
+        Child process & i = 7
+        Child process & i = 8
+        Child process & i = 9
+        Child process & i = 10
+        Child process & i = 11
+        Child process & i = 12
+        Child process & i = 13
+        Child process & i = 14
+        Child process & i = 15
+        Child process & i = 16
+        Child process & i = 17
+        Child process & i = 18
+        Child process & i = 19
+        Child process & i = 20
+        Child process & pid = 3755;count = 23
+        Father process & pid = 3754 ;count = 23
 
-2. Checks the ptrace field of the parent (current->ptrace): if it is not zero, the parent process is being traced by another process, thus do_fork() checks whether the debugger wants to trace the child on its own (independently of the value of the CLONE_PTRACE flag specified by the parent); in this case, if the child is not a kernel thread (CLONE_UNTRACED flag cleared), the function sets the CLONE_PTRACE flag.
+    从上面的结果可以看出，父进程总是等子进程执行完毕后才开始继续执行。
 
-3. Invokes copy_process() to make a copy of the process descriptor. If all needed resources are available, this function returns the address of the task_struct descriptor just created. This is the workhorse of the forking procedure, and we will describe it right after do_fork().
+<h4 id="3.4.1.1">3.4.1.1 _do_fork()函数</h4>
 
-4. If either the CLONE_STOPPED flag is set or the child process must be traced, that is, the PT_PTRACED flag is set in p->ptrace, it sets the state of the child to TASK_STOPPED and adds a pending SIGSTOP signal to it (see the section “The Role of Signals” in Chapter 11). The state of the child will remain TASK_STOPPED until another process (presumably the tracing process or the parent) will revert its state to TASK_RUNNING, usually by means of a SIGCONT signal.
+不论是clone()、fork()还是vfork()，它们最核心的部分还是调用_do_fork()（一个与体系无关的函数），完成创建进程的工作。它具有如下参数：
 
-5. If the CLONE_STOPPED flag is not set, it invokes the wake_up_new_task() function, which performs the following operations:
-    1. Adjusts the scheduling parameters of both the parent and the child (see “The Scheduling Algorithm” in Chapter 7).
-    2. If the child will run on the same CPU as the parent,* and parent and child do not share the same set of page tables (CLONE_VM flag cleared), it then forces the child to run before the parent by inserting it into the parent’s runqueue right before the parent. This simple step yields better performance if the child flushes its address space and executes a new program right after the forking. If we let the parent run first, the Copy On Write mechanism would give rise to a series of unnecessary page duplications.
-    3. Otherwise, if the child will not be run on the same CPU as the parent, or if parent and child share the same set of page tables (CLONE_VM flag set), it inserts the child in the last position of the parent’s runqueue.
+> `_do_fork`和`do_fork`在进程的复制的时候并没有太大的区别, 他们就只是在进程tls复制的过程中实现有细微差别
 
-6. If the CLONE_STOPPED flag is set, it puts the child in the TASK_STOPPED state.
-7. If the parent process is being traced, it stores the PID of the child in the ptrace_message field of current and invokes ptrace_notify(), which essentially stops the current process and sends a SIGCHLD signal to its parent. The “grandparent” of the child is the debugger that is tracing the parent; the SIGCHLD signal notifies the debugger that current has forked a child, whose PID can be retrieved by looking into the current->ptrace_message field.
-8. If the CLONE_VFORK flag is specified, it inserts the parent process in a wait queue and suspends it until the child releases its memory address space (that is, until the child either terminates or executes a new program).
-9. Terminates by returning the PID of the child.
+下面是_do_fork的源代码:
+
+    long _do_fork(unsigned long clone_flags,
+              unsigned long stack_start,
+              unsigned long stack_size,
+              int __user *parent_tidptr,
+              int __user *child_tidptr,
+              unsigned long tls)
+    {
+        struct task_struct *p;
+        int trace = 0;
+        long nr;
+
+        /*
+         * 当从kernel_thread调用或CLONE_UNTRACED被设置时，不需要报告event
+         * 否则，报告使用哪种fork类型的event
+         */
+        if (!(clone_flags & CLONE_UNTRACED)) {
+            if (clone_flags & CLONE_VFORK)
+                trace = PTRACE_EVENT_VFORK;
+            else if ((clone_flags & CSIGNAL) != SIGCHLD)
+                trace = PTRACE_EVENT_CLONE;
+            else
+                trace = PTRACE_EVENT_FORK;
+
+            if (likely(!ptrace_event_enabled(current, trace)))
+                trace = 0;
+        }
+        /* 拷贝进程描述符 */
+        p = copy_process(clone_flags, stack_start, stack_size,
+                 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
+        /*
+         * 在唤醒新线程之前，先检查指针是否合法
+         * 因为如果线程创建后立即退出的话，线程指针可能会非法
+         */
+        if (!IS_ERR(p)) {
+            struct completion vfork;
+            struct pid *pid;
+
+            trace_sched_process_fork(current, p);
+
+            /* 分配PID */
+            pid = get_task_pid(p, PIDTYPE_PID);
+            nr = pid_vnr(pid);
+
+            /* 把新进程PID写入到父进程的用户态变量中。 */
+            if (clone_flags & CLONE_PARENT_SETTID)
+                put_user(nr, parent_tidptr);
+
+            /* 如果实现的是vfork调用，则完成completion机制，确保父进程后续运行 */
+            if (clone_flags & CLONE_VFORK) {
+                p->vfork_done = &vfork;
+                init_completion(&vfork);
+                get_task_struct(p);
+            }
+
+            /* 唤醒新进程 */
+            wake_up_new_task(p);
+
+            /* fork过程完成，子进程开始运行，并告知ptracer */
+            if (unlikely(trace))
+                ptrace_event_pid(trace, pid);
+
+            /*
+             * 如果实现的vfork调用，则将父进程插入等待队列，并挂起父进程
+             * 直到子进程释放自己的内存空间，也就是，保证子进程先行于父进程
+             */
+            if (clone_flags & CLONE_VFORK) {
+                if (!wait_for_vfork_done(p, &vfork))
+                    ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
+            }
+            put_pid(pid);
+        } else {
+            nr = PTR_ERR(p);
+        }
+        return nr;
+    }
 
 <h4 id="3.4.1.2">3.4.1.2 copy_process()函数</h4>
 
-The copy_process() function sets up the process descriptor and any other kernel data
-structure required for a child’s execution. Its parameters are the same as do_fork(),
-plus the PID of the child. Here is a description of its most significant steps:
+copy_process函数实现进程创建的大部分工作：创建旧进程的副本，比如进程描述符和子进程运行需要的其它内核数据结构。下面是一段伪代码：
 
-1. Checks whether the flags passed in the clone_flags parameter are compatible. In
-particular, it returns an error code in the following cases:
+    static struct task_struct *copy_process(unsigned long clone_flags,
+                        unsigned long stack_start,
+                        unsigned long stack_size,
+                        int __user *child_tidptr,
+                        struct pid *pid,
+                        int trace,
+                        unsigned long tls,
+                        int node)
+    {
+        // 1. 检查参数clone_flags，一些标志组合是否合理
+        // ...
 
-    1. Both the flags CLONE_NEWNS and CLONE_FS are set.
+        // 2. 其它的安全检查
+        retval = security_task_create(clone_flags);
 
-    2. The CLONE_THREAD flag is set, but the CLONE_SIGHAND flag is cleared (lightweight processes in the same thread group must share signals).
+        // 3. 分配一个新的task_struct结构，与父进程完全相同，只是stack不同
+        p = dup_task_struct(current, node);
 
-    3. The CLONE_SIGHAND flag is set, but the CLONE_VM flag is cleared (lightweight processes sharing the signal handlers must also share the memory descriptor).
+        // 4. 检查该用户的进程数是否超过限制
+        if (atomic_read(&p->real_cred->user->processes) >=
+                task_rlimit(p, RLIMIT_NPROC)) {
+            // 检查该用户是否具有相关权限，不一定是root
+            if (p->real_cred->user != INIT_USER &&
+                // ...
+        }
 
-2. Performs any additional security checks by invoking security_task_create() and, later, security_task_alloc(). The Linux kernel 2.6 offers hooks for security extensions that enforce a security model stronger than the one adopted by traditional Unix. See Chapter 20 for details.
+        // 5. 检查进程数量是否超过max_threads，后者取决于内存的大小
+        if (nr_threads >= max_threads)
+        // ...
 
-3. Invokes dup_task_struct() to get the process descriptor for the child. This function performs the following actions:
+        // 6. 进程描述符相关变量初始化
 
-    1. Invokes __unlazy_fpu() on the current process to save, if necessary, the contents of the FPU, MMX, and SSE/SSE2 registers in the thread_info structure of the parent. Later, dup_task_struct() will copy these values in the thread_info structure of the child.
+        // 7. 完成调度器相关数据结构的初始化
+        retval = sched_fork(clone_flags, p);
 
-    2. Executes the alloc_task_struct() macro to get a process descriptor (task_struct structure) for the new process, and stores its address in the tsk local variable.
+        // 8. 拷贝所有的进程信息
+        shm_init_task(p);
+        retval = copy_semundo(clone_flags, p);
+        retval = copy_files(clone_flags, p);
+        retval = copy_fs(clone_flags, p);
+        retval = copy_sighand(clone_flags, p);
+        retval = copy_signal(clone_flags, p);
+        retval = copy_mm(clone_flags, p);
+        retval = copy_namespaces(clone_flags, p);
+        retval = copy_io(clone_flags, p);
 
-    3. Executes the alloc_thread_info macro to get a free memory area to store the thread_info structure and the Kernel Mode stack of the new process, and saves its address in the ti local variable. As explained in the earlier section “Identifying a Process,” the size of this memory area is either 8 KB or 4 KB.
+        // 9. 设置子进程的pid
+        retval = copy_thread_tls(clone_flags, stack_start, stack_size, p, tls);
 
-    4. Copies the contents of the current’s process descriptor into the task_struct structure pointed to by tsk, then sets tsk->thread_info to ti.
+        // ...
 
-    5. Copies the contents of the current’s thread_info descriptor into the structure pointed to by ti, then sets ti->task to tsk.
+        // 10. 设置子进程的PID
+        p->pid = pid_nr(pid);
 
-    6. Sets the usage counter of the new process descriptor (tsk->usage) to 2 to specify that the process descriptor is in use and that the corresponding process is alive (its state is not EXIT_ZOMBIE or EXIT_DEAD).
+        // 11. 根据是创建线程还是进程设置线程组组长、进程组组长等等信息
+        // ...
 
-    7. Returns the process descriptor pointer of the new process (tsk).
+        // 12. 将pid加入PIDTYPE_PID这个散列表
+        if (likely(p->pid)) {
+            // ..
+            attach_pid(p, PIDTYPE_PID);
+            nr_threads++;
+        }
 
+        // 释放资源，善后处理
+        return p;
+    err:
+        // 错误处理
+    }
 
-4. Checks whether the value stored in current->signal->rlim[RLIMIT_NPROC].rlim_cur is smaller than or equal to the current number of processes owned by the user. If so, an error code is returned, unless the process has root privileges. The function gets the current number of processes owned by the user from a per-user data structure named user_struct. This data structure can be found through a pointer in the user field of the process descriptor.
+现在，我们已经有了一个可运行的子进程，但是，实际上还没有运行。至于何时运行取决于调度器。在未来的某个进程切换时间点上，调度器把子进程描述符中的thread成员中的值加载到CPU上，赋予子进程CPU的使用权。esp寄存器加载thread.esp的值（也就是获取了子进程的内核态栈的地址），eip寄存器加载ret_from_fork()函数的返回地址（子进程执行的下一条指令）。ret_from_fork()是一个汇编函数，它调用schedule_tail()，继而调用finish_task_switch()函数，完成进程切换，然后把栈上的值加载到寄存器中，强迫CPU进入用户模式。基本上，新进程的执行恰恰在fork()、vfork()或clone()系统调用结束之时。该系统调用的返回值保存在寄存器eax中：对于子进程是0，对于父进程来说就是子进程的PID。
 
-5. Increases the usage counter of the user_struct structure (tsk->user->__count field) and the counter of the processes owned by the user (tsk->user->processes).
+要想理解这一点，应该要重点理解一下copy_thread_tls()函数，其与早期的copy_thread()函数非常类似，只是在末尾添加了向子线程添加tls的内容。
 
-6. Checks that the number of processes in the system (stored in the nr_threads
-variable) does not exceed the value of the max_threads variable. The default value
-of this variable depends on the amount of RAM in the system. The general rule
-is that the space taken by all thread_info descriptors and Kernel Mode stacks
-cannot exceed 1/8 of the physical memory. However, the system administrator
-may change this value by writing in the /proc/sys/kernel/threads-max file.
+在copy_thread_tls()函数中，我们可以看到这样的代码：
 
-7. If the kernel functions implementing the execution domain and the executable
-format (see Chapter 20) of the new process are included in kernel modules, it
-increases their usage counters (see Appendix B).
+    childregs->ax = 0;
+    p->thread.ip = (unsigned long) ret_from_fork;
 
-8. Sets a few crucial fields related to the process state:
-
-    1. Initializes the big kernel lock counter tsk->lock_depth to -1 (see the section
-“The Big Kernel Lock” in Chapter 5).
-
-    2. Initializes the tsk->did_exec field to 0: it counts the number of execve() system
-calls issued by the process.
-
-    3. Updates some of the flags included in the tsk->flags field that have been
-copied from the parent process: first clears the PF_SUPERPRIV flag, which
-indicates whether the process has used any of its superuser privileges, then
-sets the PF_FORKNOEXEC flag, which indicates that the child has not yet issued
-an execve() system call.
-
-9. Stores the PID of the new process in the tsk->pid field.
-
-10. If the CLONE_PARENT_SETTID flag in the clone_flags parameter is set, it copies the child’s PID into the User Mode variable addressed by the parent_tidptr parameter.
-
-11. Initializes the list_head data structures and the spin locks included in the child’s process descriptor, and sets up several other fields related to pending signals, timers, and time statistics.
-
-12. Invokes copy_semundo(), copy_files( ), copy_fs( ), copy_sighand( ), copy_
-signal(), copy_mm( ), and copy_namespace( ) to create new data structures and
-copy into them the values of the corresponding parent process data structures,
-unless specified differently by the clone_flags parameter.
-
-13. Invokes copy_thread( ) to initialize the Kernel Mode stack of the child process
-with the values contained in the CPU registers when the clone( ) system call was
-issued (these values have been saved in the Kernel Mode stack of the parent, as
-described in Chapter 10). However, the function forces the value 0 into the field corresponding to the eax register (this is the child’s return value of the fork() or
-clone() system call). The thread.esp field in the descriptor of the child process is
-initialized with the base address of the child’s Kernel Mode stack, and the address
-of an assembly language function (ret_from_fork( )) is stored in the thread.eip
-field. If the parent process makes use of an I/O Permission Bitmap, the child gets
-a copy of such bitmap. Finally, if the CLONE_SETTLS flag is set, the child gets the
-TLS segment specified by the User Mode data structure pointed to by the tls
-parameter of the clone() system call.*
-
-14. If either CLONE_CHILD_SETTID or CLONE_CHILD_CLEARTID is set in the clone_flags
-parameter, it copies the value of the child_tidptr parameter in the tsk->set_
-chid_tid or tsk->clear_child_tid field, respectively. These flags specify that the
-value of the variable pointed to by child_tidptr in the User Mode address space
-of the child has to be changed, although the actual write operations will be done
-later.
-
-15. Turns off the TIF_SYSCALL_TRACE flag in the thread_info structure of the child, so
-that the ret_from_fork() function will not notify the debugging process about
-the system call termination (see the section “Entering and Exiting a System Call”
-in Chapter 10). (The system call tracing of the child is not disabled, because it is
-controlled by the PTRACE_SYSCALL flag in tsk->ptrace.)
-
-16. Initializes the tsk->exit_signal field with the signal number encoded in the low
-bits of the clone_flags parameter, unless the CLONE_THREAD flag is set, in which
-case initializes the field to -1. As we’ll see in the section “Process Termination”
-later in this chapter, only the death of the last member of a thread group (usually,
-the thread group leader) causes a signal notifying the parent of the thread
-group leader.
-
-17. Invokes sched_fork() to complete the initialization of the scheduler data structure
-of the new process. The function also sets the state of the new process to
-TASK_RUNNING and sets the preempt_count field of the thread_info structure to 1,
-thus disabling kernel preemption (see the section “Kernel Preemption” in
-Chapter 5). Moreover, in order to keep process scheduling fair, the function
-shares the remaining timeslice of the parent between the parent and the child
-(see “The scheduler_tick( ) Function” in Chapter 7).
-
-18. Sets the cpu field in the thread_info structure of the new process to the number
-of the local CPU returned by smp_processor_id().
-
-19. Initializes the fields that specify the parenthood relationships. In particular, if
-CLONE_PARENT or CLONE_THREAD are set, it initializes tsk->real_parent and tsk->parent to the value in current->real_parent; the parent of the child thus appears
-as the parent of the current process. Otherwise, it sets the same fields to current.
-
-20. If the child does not need to be traced (CLONE_PTRACE flag not set), it sets the tsk->
-ptrace field to 0. This field stores a few flags used when a process is being traced
-by another process. In such a way, even if the current process is being traced, the
-child will not.
-
-21. Executes the SET_LINKS macro to insert the new process descriptor in the process
-list.
-
-22. If the child must be traced (PT_PTRACED flag in the tsk->ptrace field set), it sets
-tsk->parent to current->parent and inserts the child into the trace list of the
-debugger.
-
-23. Invokes attach_pid( ) to insert the PID of the new process descriptor in the
-pidhash[PIDTYPE_PID] hash table.
-
-24. If the child is a thread group leader (flag CLONE_THREAD cleared):
-
-    1. Initializes tsk->tgid to tsk->pid.
-
-    2. Initializes tsk->group_leader to tsk.
-
-    3. Invokes three times attach_pid() to insert the child in the PID hash tables of type PIDTYPE_TGID, PIDTYPE_PGID, and PIDTYPE_SID.
-
-25. Otherwise, if the child belongs to the thread group of its parent (CLONE_THREAD flag set):
-
-    1. Initializes tsk->tgid to tsk->current->tgid.
-
-    2. Initializes tsk->group_leader to the value in current->group_leader.
-
-    3. Invokes attach_pid() to insert the child in the PIDTYPE_TGID hash table(more specifically, in the per-PID list of the current->group_leader process).
-
-26. A new process has now been added to the set of processes: increases the value of the nr_threads variable.
-
-27. Increases the total_forks variable to keep track of the number of forked processes.
-
-28. Terminates by returning the child’s process descriptor pointer (tsk).
-
-Let’s go back to what happens after do_fork() terminates. Now we have a complete
-child process in the runnable state. But it isn’t actually running. It is up to the scheduler
-to decide when to give the CPU to this child. At some future process switch, the
-schedule bestows this favor on the child process by loading a few CPU registers with
-the values of the thread field of the child’s process descriptor. In particular, esp is
-loaded with thread.esp (that is, with the address of child’s Kernel Mode stack), and
-eip is loaded with the address of ret_from_fork( ). This assembly language function
-invokes the schedule_tail( ) function (which in turn invokes the finish_task_
-switch() function to complete the process switch; see the section “The schedule( )
-Function” in Chapter 7), reloads all other registers with the values stored in the
-stack, and forces the CPU back to User Mode. The new process then starts its execution
-right at the end of the fork( ), vfork( ), or clone( ) system call. The value
-returned by the system call is contained in eax: the value is 0 for the child and equal
-to the PID for the child’s parent. To understand how this is done, look back at what
-copy_thread() does on the eax register of the child’s process (step 13 of copy_
-process()).
-
-The child process executes the same code as the parent, except that the fork returns a
-0 (see step 13 of copy_process()). The developer of the application can exploit this
-fact, in a manner familiar to Unix programmers, by inserting a conditional statement
-in the program based on the PID value that forces the child to behave differently
-from the parent process.
+这就是为什么子进程为什么返回PID=0的原因。
 
 <h3 id="3.4.2">3.4.2 内核线程</h3>
+
+Traditional Unix systems delegate some critical tasks to intermittently running processes, including flushing disk caches, swapping out unused pages, servicing network connections, and so on. Indeed, it is not efficient to perform these tasks in strict linear fashion; both their functions and the end user processes get better response if they are scheduled in the background. Because some of the system processes run only in Kernel Mode, modern operating systems delegate their functions to kernel threads, which are not encumbered with the unnecessary User Mode context. In Linux, kernel threads differ from regular processes in the following ways:
+
+* Kernel threads run only in Kernel Mode, while regular processes run alternatively in Kernel Mode and in User Mode.
+
+* Because kernel threads run only in Kernel Mode, they use only linear addresses greater than PAGE_OFFSET. Regular processes, on the other hand, use all four gigabytes of linear addresses, in either User Mode or Kernel Mode.
+
 <h4 id="3.4.2.1">3.4.2.1 创建内核线程</h4>
+
+The kernel_thread( ) function creates a new kernel thread. It receives as parameters the address of the kernel function to be executed (fn), the argument to be passed to that function (arg), and a set of clone flags (flags). The function essentially invokes do_fork() as follows:
+
+    do_fork(flags|CLONE_VM|CLONE_UNTRACED, 0, pregs, 0, NULL, NULL);
+
+The CLONE_VM flag avoids the duplication of the page tables of the calling process: this duplication would be a waste of time and memory, because the new kernel thread will not access the User Mode address space anyway. The CLONE_UNTRACED flag ensures that no process will be able to trace the new kernel thread, even if the calling process is being traced.
+
+The pregs parameter passed to do_fork() corresponds to the address in the Kernel Mode stack where the copy_thread() function will find the initial values of the CPU registers for the new thread. The kernel_thread() function builds up this stack area so that:
+
+* The ebx and edx registers will be set by copy_thread() to the values of the parameters fn and arg, respectively.
+* The eip register will be set to the address of the following assembly language fragment:
+
+        movl %edx,%eax
+        pushl %edx
+        call *%ebx
+        pushl %eax
+        call do_exit
+
+Therefore, the new kernel thread starts by executing the fn(arg) function. If this function terminates, the kernel thread executes the _exit() system call passing to it the return value of fn() (see the section “Destroying Processes” later in this chapter).
+
 <h4 id="3.4.2.2">3.4.2.2 进程0</h4>
+
+The ancestor of all processes, called process 0, the idle process, or, for historical reasons, the swapper process, is a kernel thread created from scratch during the initialization phase of Linux (see Appendix A). This ancestor process uses the following statically allocated data structures (data structures for all other processes are dynamically allocated):
+
+* A process descriptor stored in the init_task variable, which is initialized by the INIT_TASK macro.
+* A thread_info descriptor and a Kernel Mode stack stored in the init_thread_union variable and initialized by the INIT_THREAD_INFO macro.
+* The following tables, which the process descriptor points to:
+    - init_mm
+    - init_fs
+    - init_files
+    - init_signals
+    - init_sighand
+    The tables are initialized, respectively, by the following macros:
+    - INIT_MM
+    - INIT_FS
+    - INIT_FILES
+    - INIT_SIGNALS
+    - INIT_SIGHAND
+* The master kernel Page Global Directory stored in swapper_pg_dir (see the section“Kernel Page Tables” in Chapter 2).
+
+The start_kernel() function initializes all the data structures needed by the kernel, enables interrupts, and creates another kernel thread, named process 1 (more commonly referred to as the init process):
+
+    kernel_thread(init, NULL, CLONE_FS|CLONE_SIGHAND);
+
+The newly created kernel thread has PID 1 and shares all per-process kernel data structures with process 0. When selected by the scheduler, the init process starts executing the init() function.
+
+After having created the init process, process 0 executes the cpu_idle( ) function, which essentially consists of repeatedly executing the hlt assembly language instruction with the interrupts enabled (see Chapter 4). Process 0 is selected by the scheduler only when there are no other processes in the TASK_RUNNING state.
+
+In multiprocessor systems there is a process 0 for each CPU. Right after the power-on, the BIOS of the computer starts a single CPU while disabling the others. The swapper process running on CPU 0 initializes the kernel data structures, then enables the other CPUs and creates the additional swapper processes by means of the copy_process() function passing to it the value 0 as the new PID. Moreover, the kernel sets the cpu field of the thread_info descriptor of each forked process to the proper CPU index.
+
 <h4 id="3.4.2.3">3.4.2.3 进程1</h4>
+
+The kernel thread created by process 0 executes the init( ) function, which in turn completes the initialization of the kernel. Then init( ) invokes the execve() system call to load the executable program init. As a result, the init kernel thread becomes a regular process having its own per-process kernel data structure (see Chapter 20). The init process stays alive until the system is shut down, because it creates and monitors the activity of all processes that implement the outer layers of the operating system.
+
 <h4 id="3.4.2.4">3.4.2.4 其它内核线程</h4>
 
+Linux uses many other kernel threads. Some of them are created in the initialization
+phase and run until shutdown; others are created “on demand,” when the kernel
+must execute a task that is better performed in its own execution context.
 
+A few examples of kernel threads (besides process 0 and process 1) are:
 
+* keventd (also called events)
 
+    Executes the functions in the keventd_wq workqueue (see Chapter 4).
+
+* kapmd
+
+    Handles the events related to the Advanced Power Management (APM).
+
+* kswapd
+
+    Reclaims memory, as described in the section “Periodic Reclaiming” in Chapter 17.
+
+* pdflush
+
+    Flushes “dirty” buffers to disk to reclaim memory, as described in the section “The pdflush Kernel Threads” in Chapter 15.
+
+* kblockd
+
+    Executes the functions in the kblockd_workqueue workqueue. Essentially, it periodically activates the block device drivers, as described in the section “Activating the Block Device Driver” in Chapter 14.
+
+* ksoftirqd
+
+    Runs the tasklets (see section “Softirqs and Tasklets” in Chapter 4); there is one of these kernel threads for each CPU in the system.
 
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
@@ -3400,14 +3534,116 @@ from the parent process.
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="4">4 中断和异常</h1>
+
+An interrupt is usually defined as an event that alters the sequence of instructions executed by a processor. Such events correspond to electrical signals generated by hardware circuits both inside and outside the CPU chip.
+
+Interrupts are often divided into synchronous and asynchronous interrupts:
+
+* Synchronous interrupts are produced by the CPU control unit while executing instructions and are called synchronous because the control unit issues them only after terminating the execution of an instruction.
+
+* Asynchronous interrupts are generated by other hardware devices at arbitrary times with respect to the CPU clock signals.
+
+Intel microprocessor manuals designate synchronous and asynchronous interrupts as exceptions and interrupts, respectively. We’ll adopt this classification, although we’ll occasionally use the term “interrupt signal” to designate both types together (synchronous as well as asynchronous).
+
+Interrupts are issued by interval timers and I/O devices; for instance, the arrival of a keystroke from a user sets off an interrupt.
+
+Exceptions, on the other hand, are caused either by programming errors or by anomalous conditions that must be handled by the kernel. In the first case, the kernel handles the exception by delivering to the current process one of the signals familiar to every Unix programmer. In the second case, the kernel performs all the steps needed to recover from the anomalous condition, such as a Page Fault or a request—via an assembly language instruction such as int or sysenter—for a kernel service.
+
+We start by describing in the next section the motivation for introducing such signals. We then show how the well-known IRQs (Interrupt ReQuests) issued by I/O devices give rise to interrupts, and we detail how 80×86 processors handle interrupts and exceptions at the hardware level. Then we illustrate, in the section “Initializing the Interrupt Descriptor Table,” how Linux initializes all the data structures required by the 80×86 interrupt architecture. The remaining three sections describe how Linux handles interrupt signals at the software level.
+
+One word of caution before moving on: in this chapter, we cover only “classic” interrupts common to all PCs; we do not cover the nonstandard interrupts of some architectures.
+
+
 <h2 id="4.1">4.1 中断信号的角色</h2>
+
+As the name suggests, interrupt signals provide a way to divert the processor to code
+outside the normal flow of control. When an interrupt signal arrives, the CPU must
+stop what it’s currently doing and switch to a new activity; it does this by saving the
+current value of the program counter (i.e., the content of the eip and cs registers) in
+the Kernel Mode stack and by placing an address related to the interrupt type into
+the program counter.
+
+There are some things in this chapter that will remind you of the context switch
+described in the previous chapter, carried out when a kernel substitutes one process
+for another. But there is a key difference between interrupt handling and process
+switching: the code executed by an interrupt or by an exception handler is not a process.
+Rather, it is a kernel control path that runs at the expense of the same process
+that was running when the interrupt occurred (see the later section “Nested Execution
+of Exception and Interrupt Handlers”). As a kernel control path, the interrupt
+handler is lighter than a process (it has less context and requires less time to set up or
+tear down).
+
+Interrupt handling is one of the most sensitive tasks performed by the kernel,
+because it must satisfy the following constraints:
+
+* Interrupts can come anytime, when the kernel may want to finish something else
+it was trying to do. The kernel’s goal is therefore to get the interrupt out of the
+way as soon as possible and defer as much processing as it can. For instance,
+suppose a block of data has arrived on a network line. When the hardware interrupts
+the kernel, it could simply mark the presence of data, give the processor
+back to whatever was running before, and do the rest of the processing later
+(such as moving the data into a buffer where its recipient process can find it, and
+then restarting the process). The activities that the kernel needs to perform in
+response to an interrupt are thus divided into a critical urgent part that the kernel
+executes right away and a deferrable part that is left for later.
+
+* Because interrupts can come anytime, the kernel might be handling one of them
+while another one (of a different type) occurs. This should be allowed as much
+as possible, because it keeps the I/O devices busy (see the later section “Nested
+Execution of Exception and Interrupt Handlers”). As a result, the interrupt handlers
+must be coded so that the corresponding kernel control paths can be executed
+in a nested manner. When the last kernel control path terminates, the kernel must be able to resume execution of the interrupted process or switch to
+another process if the interrupt signal has caused a rescheduling activity.
+
+* Although the kernel may accept a new interrupt signal while handling a previous
+one, some critical regions exist inside the kernel code where interrupts must
+be disabled. Such critical regions must be limited as much as possible because,
+according to the previous requirement, the kernel, and particularly the interrupt
+handlers, should run most of the time with the interrupts enabled.
+
+
+
 <h2 id="4.2">4.2 中断和异常</h2>
+
+The Intel documentation classifies interrupts and exceptions as follows:
+
+* Interrupts:
+    - Maskable interrupt
+    - Nonmaskable interrupts
+* Exceptions:
+    - Processor-detected exceptions
+    - Programmed exceptions
+
+Each interrupt or exception is identified by a number ranging from 0 to 255; Intel calls this 8-bit unsigned number a vector. The vectors of nonmaskable interrupts and exceptions are fixed, while those of maskable interrupts can be altered by programming the Interrupt Controller (see the next section).
+
+<h3 id="4.2.1">4.2.1 IRQ和中断</h3>
+
 <h2 id="4.3">4.3 嵌套中断和异常</h2>
+
 <h2 id="4.4">4.4 初始化中断描述符表</h2>
+
 <h2 id="4.5">4.5 异常处理</h2>
+
 <h2 id="4.6">4.6 中断处理</h2>
-<h2 id="4.7">4.7 软件中断和Tasklet</h2>
+
+As we explained earlier, most exceptions are handled simply by sending a Unix signal to the process that caused the exception. The action to be taken is thus deferred until the process receives the signal; as a result, the kernel is able to process the exception quickly.
+
+This approach does not hold for interrupts, because they frequently arrive long after the process to which they are related (for instance, a process that requested a data transfer) has been suspended and a completely unrelated process is running. So it would make no sense to send a Unix signal to the current process.
+
+Interrupt handling depends on the type of interrupt. For our purposes, we’ll distinguish three main classes of interrupts:
+
+1. I/O中断
+2. 定时器中断
+3. CPU之间的中断
+
+<h3 id="4.6.1">4.6.1 I/O中断处理</h3>
+
+
+
+<h2 id="4.7">4.7 软中断和Tasklet</h2>
+
 <h2 id="4.8">4.8 工作队列</h2>
+
 <h2 id="4.9">4.9 中断和异常的返回</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
