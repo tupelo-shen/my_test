@@ -2763,157 +2763,179 @@ Type域设置为9或者11都可以，表明该段是一个TSS段即可。Intel�
 
 <h3 id="3.3.3">3.3.3 执行进程切换</h3>
 
-关于进程切换的时机：schedule()函数，我们在[第7章](#7)再讨论。这儿，我们只关注如何执行进程切换。
+1. 进程切换的时机：
 
-基本上，进程的切换分为两步：
+    * 中断处理程序中直接调用schedule()函数，实现进程调度。
+    * 内核线程，是一个特殊的进程，只有内核态没有用户态。所以即可以主动调用schedule()函数进行调度，也可以被中断处理程序调用。
+    * 内核态进程没法直接主动调度，因为schedule()是一个内核函数，不是系统调用。所以只能在中断处理程序进行调度。
 
-1. 切换页全局目录（PGD），切换到新的地址空间；这一步的内容，我们将在[第9章](#9)讨论。
-2. 切换内核态栈和硬件上下文内容，提供执行新进程所需要的所有信息，包括CPU寄存器。
+2. 关键代码梳理
+    
+    * 首先，schedule()函数会调用`next = pick_next_task(rq, prev);`，所做的工作就是根据调度算法策略，选取要执行的下一个进程。
 
-我们仍然假设prev指向被切换掉的进程描述符，next指向将要执行的进程描述符。我们将会在第7章发现，prev和next正是schedule()函数的局部变量。
+    * 其次，根据调度策略得到要执行的进程后，调用`context_switch(rq, prev, next);`，完成进程上下文切换。其中，最关键的`switch_to(prev,next, prev);`切换堆栈和寄存器的状态。
+
+我们假设prev指向被切换掉的进程描述符，next指向将要执行的进程描述符。我们将会在第7章发现，prev和next正是schedule()函数的局部变量。
 
 <h4 id="3.3.3.1">3.3.3.1 switch_to宏</h4>
 
-The second step of the process switch is performed by the switch_to macro. It is one of the most hardware-dependent routines of the kernel, and it takes some effort to understand what it does.
+进程硬件上下文的切换是由宏`switch_to`完成的。该宏的实现与硬件架构是息息相关的，要想理解它需要下一番功夫。下面是基于X86架构下的该宏实现的汇编代码：
 
-First of all, the macro has three parameters, called prev, next, and last. You might easily guess the role of prev and next: they are just placeholders for the local variables prev and next, that is, they are input parameters that specify the memory locations containing the descriptor address of the process being replaced and the descriptor address of the new process, respectively.
+    #define switch_to(prev, next, last)                             \
+    do {                                                            \
+        /*
+         * 进程切换可能会改变所有的寄存器，所以我们通过未使用的输出变量显式地修改它们。
+         * EAX和EBP没有被列出，是因为EBP是为当前进程访问显式地保存和恢复的寄存器，
+         * 而EAX将会作为函数__switch_to()的返回值。
+         */
+        unsigned long ebx, ecx, edx, esi, edi;                      \
+                                                                    \
+        asm volatile("pushfl\n\t"               /* save    flags */ \
+                 "pushl %%ebp\n\t"              /* save    EBP   */ \
+                 "movl %%esp,%[prev_sp]\n\t"    /* save    ESP   */ \
+                 "movl %[next_sp],%%esp\n\t"    /* restore ESP   */ \
+                 "movl $1f,%[prev_ip]\n\t"      /* save    EIP   */ \
+                 "pushl %[next_ip]\n\t"         /* restore EIP   */ \
+                 __switch_canary                                    \
+                 __retpoline_fill_return_buffer                     \
+                 "jmp __switch_to\n"            /* regparm call  */ \
+                 "1:\t"                                             \
+                 "popl %%ebp\n\t"               /* restore EBP   */ \
+                 "popfl\n"                      /* restore flags */ \
+                                                                    \
+                 /* 输出参数 */                                     \
+                 : [prev_sp] "=m" (prev->thread.sp),                \
+                   [prev_ip] "=m" (prev->thread.ip),                \
+                   "=a" (last),                                     \
+                                                                    \
+                   /* 列出所有可能会修改的寄存器  */                \
+                   "=b" (ebx), "=c" (ecx), "=d" (edx),              \
+                   "=S" (esi), "=D" (edi)                           \
+                                                                    \
+                   __switch_canary_oparam                           \
+                                                                    \
+                   /* 输入参数 */                                   \
+                 : [next_sp]  "m" (next->thread.sp),                \
+                   [next_ip]  "m" (next->thread.ip),                \
+                                                                    \
+                   /* 为函数__switch_to()设置寄存器参数 */          \
+                   [prev]     "a" (prev),                           \
+                   [next]     "d" (next)                            \
+                                                                    \
+                   __switch_canary_iparam                           \
+                                                                    \
+                 : /* reloaded segment registers */                 \
+                "memory");                                          \
+    } while (0)
 
-What about the third parameter, last? Well, in any process switch three processes are involved, not just two. Suppose the kernel decides to switch off process A and to activate process B. In the schedule() function, prev points to A’s descriptor and next points to B’s descriptor. As soon as the switch_to macro deactivates A, the execution flow of A freezes.
+> 上面是一段GCC内嵌汇编代码，关于其详细的语法使用方法可以参考[GCC内嵌汇编使用手册](https://ibiblio.org/gferg/ldp/GCC-Inline-Assembly-HOWTO.html)。
+ 
 
-Later, when the kernel wants to reactivate A, it must switch off another process C (in general, this is different from B) by executing another switch_to macro with prev pointing to C and next pointing to A. When A resumes its execution flow, it finds its old Kernel Mode stack, so the prev local variable points to A’s descriptor and next points to B’s descriptor. The scheduler, which is now executing on behalf of process A, has lost any reference to C. This reference, however, turns out to be useful to complete the process switching (see Chapter 7 for more details).
+* 首先，该宏具有3个参数，`prev`、`next`和`last`
+    * `prev`和`next`这2个参数很容易理解，分别指向新旧进程的描述符地址；
+    * `last`，是一个输出参数，用来记录是从哪个进程切换来的。
 
-The last parameter of the switch_to macro is an output parameter that specifies a memory location in which the macro writes the descriptor address of process C (of course, this is done after A resumes its execution). Before the process switching, the macro saves in the eax CPU register the content of the variable identified by the first input parameter prev—that is, the prev local variable allocated on the Kernel Mode stack of A. After the process switching, when A has resumed its execution, the macro writes the content of the eax CPU register in the memory location of A identified by the third output parameter last. Because the CPU register doesn’t change across the process switch, this memory location receives the address of C’s descriptor. In the current implementation of schedule(), the last parameter identifies the prev local variable of A, so prev is overwritten with the address of C.
+* 为什么需要`last`参数呢？
 
-The contents of the Kernel Mode stacks of processes A, B, and C are shown in Figure 3-7, together with the values of the eax register; be warned that the figure shows the value of the prev local variable before its value is overwritten with the contents of the eax register.
+    当进程切换涉及到3个进程的时候，3个进程分别假设为A、B、C。假设内核决定关掉A进程，激活B进程。在schedule函数中，prev指向A的描述符，而next指向B的描述符。只要switch_to宏使A失效，A的执行流就会冻结。后面，当内核想要重新激活A，必须关掉C进程，就要再执行一次switch_to宏，此时prev指向C，next指向A。当A进程想要继续执行之前的执行流时，会查找原先的内核态栈，发现prev等于A进程描述符，next等于B进程描述符。此时，调度器失去了对C进程的引用。保留这个引用非常有用，我们后面再讨论。
+
+图3-7分别展示了进程A、B和C内核态栈的内容，及寄存器eax的值。还展示了last的值，随后被eax中的值覆盖。
 
 <img id="Figure_3_7" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_3_7.PNG">
 
-The switch_to macro is coded in extended inline assembly language that makes for rather complex reading: in fact, the code refers to registers by means of a special positional notation that allows the compiler to freely choose the general-purpose registers to be used. Rather than follow the cumbersome extended inline assembly language, we’ll describe what the switch_to macro typically does on an 80×86 microprocessor by using standard assembly language:
+`switch_to`宏的处理过程如下：
 
 1. 将新旧进程描述符存放到CPU寄存器中：
 
         movl prev, %eax
         movl next, %edx
 
-2. Saves the contents of the eflags and ebp registers in the prev Kernel Mode stack. They must be saved because the compiler assumes that they will stay unchanged until the end of switch_to:
-2. 保存旧进程的内核态栈中的`eflags`和`ebp`寄存器的内容。它们必须被保存，因为
+2. 保存旧进程的内核态栈，比如`eflags`和`ebp`寄存器的内容。
 
         pushfl
         pushl %ebp
 
-3. 保存旧进程的栈到`prev->thread.esp`中
+3. 保存旧进程栈指针`esp`到`prev->thread.esp`中
 
         movl %esp,484(%eax)
 
     操作数`484(%eax)`表明目的地址是寄存器`eax`中的地址加上`484`。
 
-4. 将新进程的栈指针加载到`esp`寄存器中。next->thread.esp in esp. From now on, the kernel operates on the Kernel Mode stack of next, so this instruction performs the actual process switch from prev to next. Because the address of a process descriptor is closely related to that of the Kernel Mode stack (as explained in the section “Identifying a Process” earlier in this chapter), changing the kernel stack means changing the current process:
+4. 将新进程的栈指针加载到`esp`寄存器中。
+
+    新进程的栈指针位于`next->thread.esp`中。从现在起，内核在新进程的内核态栈上操作，所以，这条指令才是执行旧进程切换到新进程的开始。因为内核态栈的地址和进程描述符的地址紧密相关，那么改变内核栈意味着改变了当前的进程。
 
         movl 484(%edx), %esp
 
-5. Saves the address labeled 1 (shown later in this section) in prev->thread.eip.
-When the process being replaced resumes its execution, the process executes the
-instruction labeled as 1:
+5. 保存标签`1`的地址->`prev->thread.eip`。
+
+    标签`1`标记进程当前执行的指令。这条指令意味着，再恢复进程A执行的时候，就从标签`1`处的地址中的指令开始执行。
 
         movl $1f, 480(%eax)
 
-6. On the Kernel Mode stack of next, the macro pushes the next->thread.eip
-value, which, in most cases, is the address labeled as 1:
+6. 加载新进程的指令流。
 
         pushl 480(%edx)
 
-7. Jumps to the __switch_to() C function (see next):
+    意义和第5步差不多，就是执行顺序相反。
+
+7. 跳转到`__switch_to()`函数执行，是一个C函数。
 
         jmp __switch_to
 
-8. Here process A that was replaced by B gets the CPU again: it executes a few
-instructions that restore the contents of the eflags and ebp registers. The first of
-these two instructions is labeled as 1:
+8. 至此，进程A被进程B取代：开始执行B进程的指令。第一步应该是先弹出`eflags`和ebp寄存器的值。
 
         1:
             popl %ebp
             popfl
 
-    Notice how these pop instructions refer to the kernel stack of the prev process. They will be executed when the scheduler selects prev as the new process to be executed on the CPU, thus invoking switch_to with prev as the second parameter. Therefore, the esp register points to the prev’s Kernel Mode stack.
-
-9. Copies the content of the eax register (loaded in step 1 above) into the memory location identified by the third parameter last of the switch_to macro:
+9. 拷贝eax寄存器的内容（第1步加载的）到last变量中。
 
         movl %eax, last
 
-    As discussed earlier, the eax register points to the descriptor of the process that has just been replaced.
+    也就是说，last记录了被取代的进程。
 
 <h4 id="3.3.3.2">3.3.3.2 __switch_to()函数</h4>
 
-The __switch_to() function does the bulk of the process switch started by the
-switch_to() macro. It acts on the prev_p and next_p parameters that denote the
-former process and the new process. This function call is different from the average
-function call, though, because __switch_to() takes the prev_p and next_p parameters
-from the eax and edx registers (where we saw they were stored), not from the
-stack like most functions. To force the function to go to the registers for its parameters,
-the kernel uses the __attribute__ and regparm keywords, which are nonstandard
-extensions of the C language implemented by the gcc compiler. The __switch_
-to() function is declared in the include/asm-i386/system.h header file as follows:
+实际上大部分的进程切换工作是由__switch_to()函数完成的，它的参数是prev_p和next_p，分别指向旧进程和新进程。这个函数和普通的函数有些差别，因为__switch_to()函数从eax和edx寄存器中获取prev_p和next_p这两个参数（在分析switch_to宏的时候已经讲过），而不是像普通函数那样，从栈中获取参数。为了强制函数从寄存器中获取参数，内核使用`__attribute__`和`regparm`进行声明。这是gcc编译器对C语言的一个非标准扩展。__switch_to()函数定义在`include/asm-i386/system.h`文件中：
 
     __switch_to(struct task_struct *prev_p,
             struct task_struct *next_p)
-        __attribute__(regparm(3));
+            __attribute__(regparm(3));
 
-The steps performed by the function are the following:
+这个函数执行的内容：
 
-1. Executes the code yielded by the __unlazy_fpu() macro (see the section “Saving
-and Loading the FPU, MMX, and XMM Registers” later in this chapter) to
-optionally save the contents of the FPU, MMX, and XMM registers of the prev_p
-process.
+1. 执行__unlazy_fpu()宏，保存旧进程的FPU、MMX和XMM寄存器
 
     __unlazy_fpu(prev_p);
 
-2. Executes the smp_processor_id() macro to get the index of the local CPU,
-namely the CPU that executes the code. The macro gets the index from the cpu
-field of the thread_info structure of the current process and stores it into the cpu
-local variable.
+2. 执行smp_processor_id()宏，获取正在执行代码的CPU的ID。从thread_info结构的cpu成员中获取。
 
-3. Loads next_p->thread.esp0 in the esp0 field of the TSS relative to the local CPU;
-as we’ll see in the section “Issuing a System Call via the sysenter Instruction” in
-Chapter 10, any future privilege level change from User Mode to Kernel Mode
-raised by a sysenter assembly instruction will copy this address in the esp register:
+3. 加载新进程的`next_p->thread.esp0`到当前CPU的TSS段中的esp0成员中。通过调用sysenter汇编指令从用户态切换到内核态引起的任何特权级别的改变都会导致将这个地址拷贝到esp寄存器中。
 
         init_tss[cpu].esp0 = next_p->thread.esp0;
 
-4. Loads in the Global Descriptor Table of the local CPU the Thread-Local Storage (TLS) segments used by the next_p process; the three Segment Selectors are stored in the tls_array array inside the process descriptor (see the section “Segmentation in Linux” in Chapter 2).
+4. 将新进程的线程本地存储（TLS）段加载到当前CPU的GDT中。3个段选择器存储在进程描述符的tls_array数组中。
 
         cpu_gdt_table[cpu][6] = next_p->thread.tls_array[0];
         cpu_gdt_table[cpu][7] = next_p->thread.tls_array[1];
         cpu_gdt_table[cpu][8] = next_p->thread.tls_array[2];
 
-5. Stores the contents of the fs and gs segmentation registers in prev_p->thread.fs
-and prev_p->thread.gs, respectively; the corresponding assembly language
-instructions are:
+5. 存储fs和gs段寄存器的内容到旧进程的prev_p->thread.fs和prev_p->thread.gs中。汇编指令如下：
 
         movl %fs, 40(%esi)
         movl %gs, 44(%esi)
 
-    The esi register points to the prev_p->thread structure.
+    寄存器esi指向prev_p->thread结构。gs寄存器用来存放TLS段的地址。fs寄存器实际上windows使用。
 
-6. If the fs or the gs segmentation register have been used either by the prev_p or
-by the next_p process (i.e., if they have a nonzero value), loads into these registers
-the values stored in the thread_struct descriptor of the next_p process. This
-step logically complements the actions performed in the previous step. The main
-assembly language instructions are:
+6. 加载新进程的fs或gs寄存器内容。数据来源是新进程的thread_struct描述符中对应的值。汇编语言如下：
 
         movl 40(%ebx),%fs
         movl 44(%ebx),%gs
 
-        The ebx register points to the next_p->thread structure. The code is actually
-more intricate, as an exception might be raised by the CPU when it detects an
-invalid segment register value. The code takes this possibility into account by
-adopting a “fix-up” approach (see the section “Dynamic Address Checking: The
-Fix-up Code” in Chapter 10).
+    ebx寄存器指向next_p->thread结构。
 
-7. Loads six of the dr0, ..., dr7 debug registers* with the contents of the next_p->
-thread.debugreg array. This is done only if next_p was using the debug registers
-when it was suspended (that is, field next_p->thread.debugreg[7] is not 0).
-These registers need not be saved, because the prev_p->thread.debugreg array is
-modified only when a debugger wants to monitor prev:
+7. 载入新进程的调式寄存器中的信息。
 
         if (next_p->thread.debugreg[7]){
             loaddebug(&next_p->thread, 0);
@@ -2925,57 +2947,23 @@ modified only when a debugger wants to monitor prev:
             loaddebug(&next_p->thread, 7);
         }
 
-8. Updates the I/O bitmap in the TSS, if necessary. This must be done when either
-next_p or prev_p has its own customized I/O Permission Bitmap:
+8. 更新TSS中的I/O权限位（如果有必要的话）。也就是如果新旧进程对I/O访问有自己特殊的要求的话就需要更改。
 
         if (prev_p->thread.io_bitmap_ptr || next_p->thread.io_bitmap_ptr)
             handle_io_bitmap(&next_p->thread, &init_tss[cpu]);
 
-    Because processes seldom modify the I/O Permission Bitmap, this bitmap is handled
-in a “lazy” mode: the actual bitmap is copied into the TSS of the local CPU
-only if a process actually accesses an I/O port in the current timeslice. The customized
-I/O Permission Bitmap of a process is stored in a buffer pointed to by
-the io_bitmap_ptr field of the thread_info structure. The handle_io_bitmap()
-function sets up the io_bitmap field of the TSS used by the local CPU for the
-next_p process as follows:
-
-    * If the next_p process does not have its own customized I/O Permission Bitmap, the io_bitmap field of the TSS is set to the value 0x8000.
-    * If the next_p process has its own customized I/O Permission Bitmap, the io_bitmap field of the TSS is set to the value 0x9000.
-
-    The io_bitmap field of the TSS should contain an offset inside the TSS where the
-actual bitmap is stored. The 0x8000 and 0x9000 values point outside of the TSS
-limit and will thus cause a “General protection” exception whenever the User
-Mode process attempts to access an I/O port (see the section “Exceptions” in
-Chapter 4). The do_general_protection() exception handler will check the value
-stored in the io_bitmap field: if it is 0x8000, the function sends a SIGSEGV signal to
-the User Mode process; otherwise, if it is 0x9000, the function copies the process
-bitmap (pointed to by the io_bitmap_ptr field in the thread_info structure) in the
-TSS of the local CPU, sets the io_bitmap field to the actual bitmap offset (104),
-and forces a new execution of the faulty assembly language instruction.
-
-9. Terminates. The __switch_to() C function ends by means of the statement:
+9. `__switch_to()`函数结束。
 
         return prev_p;
 
-    The corresponding assembly language instructions generated by the compiler are:
+    相应的汇编语言就是：
 
         movl %edi,%eax
         ret
 
-    The prev_p parameter (now in edi) is copied into eax, because by default the
-return value of any C function is passed in the eax register. Notice that the value
-of eax is thus preserved across the invocation of __switch_to(); this is quite
-important, because the invoking switch_to macro assumes that eax always stores
-the address of the process descriptor being replaced.
+    因为switch_to总是假设eax寄存器保存旧进程的进程描述符的地址。所以，这里把prev_p变量再次写入到eax寄存器中。
 
-    The ret assembly language instruction loads the eip program counter with the
-return address stored on top of the stack. However, the __switch_to() function
-has been invoked simply by jumping into it. Therefore, the ret instruction finds
-on the stack the address of the instruction labeled as 1, which was pushed by
-the switch_to macro. If next_p was never suspended before because it is being
-executed for the first time, the function finds the starting address of the ret_
-from_fork() function (see the section “The clone(), fork(), and vfork() System
-Calls” later in this chapter).
+    ret指令把栈上要返回的地址写入到eip寄存器中。其实，栈上的返回地址就是标签为`1`处的指令地址，这是由switch_to压栈的。如果新进程从来没挂起过，因为是第一次执行，然后就会跳转到ret_from_fork()函数返回的起始地址处（这部分等讲进程的创建时再细说）。至此，完成了进程的切换。
 
 <h3 id="3.3.4">3.3.4 保存和加载FPU、MMX和XMM寄存器</h3>
 <h4 id="3.3.4.1">3.3.4.1 保存FPU寄存器</h4>
@@ -3535,88 +3523,138 @@ A few examples of kernel threads (besides process 0 and process 1) are:
 
 <h1 id="4">4 中断和异常</h1>
 
-An interrupt is usually defined as an event that alters the sequence of instructions executed by a processor. Such events correspond to electrical signals generated by hardware circuits both inside and outside the CPU chip.
+中断定义：通常被定义为改变CPU指令执行序列的事件。
 
-Interrupts are often divided into synchronous and asynchronous interrupts:
+中断可以分为异步和同步中断：
 
-* Synchronous interrupts are produced by the CPU control unit while executing instructions and are called synchronous because the control unit issues them only after terminating the execution of an instruction.
+* **同步中断**，是由CPU在执行指令时由CPU控制单元产生的中断。这意味着，CPU必须停止指令的执行，转而响应中断。通常情况下，同步中断就是指 **异常**。
 
-* Asynchronous interrupts are generated by other hardware devices at arbitrary times with respect to the CPU clock signals.
+* **异步中断**，是由外部设备随机产生的，信号采样按照CPU时钟信号。异步中断就是我们通常情况下所指的中断。一般是定时器中断和I/O设备中断。
 
-Intel microprocessor manuals designate synchronous and asynchronous interrupts as exceptions and interrupts, respectively. We’ll adopt this classification, although we’ll occasionally use the term “interrupt signal” to designate both types together (synchronous as well as asynchronous).
-
-Interrupts are issued by interval timers and I/O devices; for instance, the arrival of a keystroke from a user sets off an interrupt.
-
-Exceptions, on the other hand, are caused either by programming errors or by anomalous conditions that must be handled by the kernel. In the first case, the kernel handles the exception by delivering to the current process one of the signals familiar to every Unix programmer. In the second case, the kernel performs all the steps needed to recover from the anomalous condition, such as a Page Fault or a request—via an assembly language instruction such as int or sysenter—for a kernel service.
-
-We start by describing in the next section the motivation for introducing such signals. We then show how the well-known IRQs (Interrupt ReQuests) issued by I/O devices give rise to interrupts, and we detail how 80×86 processors handle interrupts and exceptions at the hardware level. Then we illustrate, in the section “Initializing the Interrupt Descriptor Table,” how Linux initializes all the data structures required by the 80×86 interrupt architecture. The remaining three sections describe how Linux handles interrupt signals at the software level.
-
-One word of caution before moving on: in this chapter, we cover only “classic” interrupts common to all PCs; we do not cover the nonstandard interrupts of some architectures.
-
+异常通常分为2类：一类是编程错误，另外一类就是需要内核处理的异常情况。编程错误，比如程序异常终止，处理这种异常，内核只需要给当前进程发送一个信号即可。而需要内核处理的异常，比如页错误、通过汇编语言指令比如int或sysenter等请求内核服务等，需要内核作出相应的处理。
 
 <h2 id="4.1">4.1 中断信号的角色</h2>
 
-As the name suggests, interrupt signals provide a way to divert the processor to code
-outside the normal flow of control. When an interrupt signal arrives, the CPU must
-stop what it’s currently doing and switch to a new activity; it does this by saving the
-current value of the program counter (i.e., the content of the eip and cs registers) in
-the Kernel Mode stack and by placing an address related to the interrupt type into
-the program counter.
+**顾名思义，中断信号提供了一种使CPU跳出当前正在执行的代码流的方法**。这是对于轮询机制的一种有效补充，中断机制提高了系统效率。当中断信号来临时，CPU停止当前正在执行的指令，保存当前进程内核态栈中的PC寄存器值（例如，eip和cs寄存器），取而代之的是，将中断类型相关的地址写入到PC寄存器中，从而切换到新的中断上下文。
 
-There are some things in this chapter that will remind you of the context switch
-described in the previous chapter, carried out when a kernel substitutes one process
-for another. But there is a key difference between interrupt handling and process
-switching: the code executed by an interrupt or by an exception handler is not a process.
-Rather, it is a kernel control path that runs at the expense of the same process
-that was running when the interrupt occurred (see the later section “Nested Execution
-of Exception and Interrupt Handlers”). As a kernel control path, the interrupt
-handler is lighter than a process (it has less context and requires less time to set up or
-tear down).
+但是，需要注意的是中断处理和进程切换有着很大不同：中断或者异常处理程序不是进程。它的处理完全在内核态，而且处理的内容非常少，要求响应时间必须非常短。
 
-Interrupt handling is one of the most sensitive tasks performed by the kernel,
-because it must satisfy the following constraints:
+中断处理对时间高度敏感，有着严格要求：
 
-* Interrupts can come anytime, when the kernel may want to finish something else
-it was trying to do. The kernel’s goal is therefore to get the interrupt out of the
-way as soon as possible and defer as much processing as it can. For instance,
-suppose a block of data has arrived on a network line. When the hardware interrupts
-the kernel, it could simply mark the presence of data, give the processor
-back to whatever was running before, and do the rest of the processing later
-(such as moving the data into a buffer where its recipient process can find it, and
-then restarting the process). The activities that the kernel needs to perform in
-response to an interrupt are thus divided into a critical urgent part that the kernel
-executes right away and a deferrable part that is left for later.
+* 因为中断随时发生，打断内核的调度。因此，内核希望尽快处理完中断，然后回到正常的调度执行中。比如，假设从网络上接收一个数据包，硬件中断内核，标记数据已经接收，然后就把CPU的使用权交还给之前正在运行的任务。稍后，由负责数据接收的进程来搬运数据到缓冲区，并作进一步处理。由此可见，响应中断的任务就被分成了两部分：紧急部分，由内核立即处理；可延时处理部分留给其它任务处理。
 
-* Because interrupts can come anytime, the kernel might be handling one of them
-while another one (of a different type) occurs. This should be allowed as much
-as possible, because it keeps the I/O devices busy (see the later section “Nested
-Execution of Exception and Interrupt Handlers”). As a result, the interrupt handlers
-must be coded so that the corresponding kernel control paths can be executed
-in a nested manner. When the last kernel control path terminates, the kernel must be able to resume execution of the interrupted process or switch to
-another process if the interrupt signal has caused a rescheduling activity.
+* 因为中断会随时发生，有时候，内核正在处理一个中断的时候，另一个中断可能会发生。中断处理程序必须能够允许中断嵌套处理。
 
-* Although the kernel may accept a new interrupt signal while handling a previous
-one, some critical regions exist inside the kernel code where interrupts must
-be disabled. Such critical regions must be limited as much as possible because,
-according to the previous requirement, the kernel, and particularly the interrupt
-handlers, should run most of the time with the interrupts enabled.
-
-
+* 虽然内核允许中断嵌套处理，但是内核代码中，必须提供临界段代码，在其中，中断被禁止。因为有些时候，我们的代码是不允许被中断的，这也是内核同步的一种手段。
 
 <h2 id="4.2">4.2 中断和异常</h2>
 
-The Intel documentation classifies interrupts and exceptions as follows:
+Intel官方文档将中断和异常分类为：
 
-* Interrupts:
-    - Maskable interrupt
-    - Nonmaskable interrupts
-* Exceptions:
-    - Processor-detected exceptions
-    - Programmed exceptions
+* 中断：
 
-Each interrupt or exception is identified by a number ranging from 0 to 255; Intel calls this 8-bit unsigned number a vector. The vectors of nonmaskable interrupts and exceptions are fixed, while those of maskable interrupts can be altered by programming the Interrupt Controller (see the next section).
+    - 可屏蔽中断
+
+        所有I/O设备发出的IRQ都能产生可屏蔽中断。屏蔽掉的中断，中断控制器忽略其存在。
+
+    - 非可屏蔽中断
+
+        只有很少的重要事件会产生非屏蔽中断。比如，硬件错误。非屏蔽中断总是能够被硬件识别。
+
+* 异常：
+
+    - 处理器检测异常
+
+        当CPU在执行指令时，检测出的异常。依赖于异常发生时，内核态栈中的eip寄存器指令，又可以分为三类：
+
+        + Fault
+
+            这类异常可以纠正。因为这类错误就是eip指令造成的，所以，一旦异常处理程序正确处理异常后，就可以继续执行eip寄存器中的指令了。
+
+        + Trap
+
+            陷阱指令造成的异常。陷阱同Fault一样，因为没有破坏内核态栈中的任何东西，异常处理程序终止后，可以继续执行eip寄存器中的指令。它的设计目的主要是为了调试，告知调试器正在执行一个特殊的指令（比如，在程序里打一个断点）。一旦用户查看完断点处信息后，他就可以让程序继续执行了。
+
+        + Abort
+
+            发生严重错误时的异常。此时，CPU控制单元发生异常，但是无法确定发生错误的指令的准确位置，也就是说，在eip寄存器中的指令并不是造成错误的指令。这类错误一般是硬件错误或系统页表中非法或者不一致的地址等。控制单元发出信号，让CPU跳转到异常处理程序。Abort异常处理程序一般都是终止程序的执行。
+
+    - 编程异常
+
+        这类异常一般是由程序员故意造成的。可以使用int或int3指令触发，也可以使用into-溢出中断指令和bound-地址限制异常中断指令检查相应的条件，如果条件为假，也会产生异常。可编程错误一般被当作陷阱-trap处理，通常被称为软件中断。这类异常一般有两种作用：系统调用和告知调试器某个事件。
+
+中断或异常使用一张中断向量表进行管理，编号为0-255。非可屏蔽中断和异常编号是固定的；而可屏蔽中断是不固定的，可以通过对中断控制器进行编程进行修改。
 
 <h3 id="4.2.1">4.2.1 IRQ和中断</h3>
+
+Each hardware device controller capable of issuing interrupt requests usually has a
+single output line designated as the Interrupt ReQuest (IRQ) line.* All existing IRQ
+lines are connected to the input pins of a hardware circuit called the Programmable
+Interrupt Controller, which performs the following actions:
+
+1. Monitors the IRQ lines, checking for raised signals. If two or more IRQ lines are
+raised, selects the one having the lower pin number.
+2. If a raised signal occurs on an IRQ line:
+a. Converts the raised signal received into a corresponding vector.
+b. Stores the vector in an Interrupt Controller I/O port, thus allowing the CPU
+to read it via the data bus.
+c. Sends a raised signal to the processor INTR pin—that is, issues an interrupt.
+d. Waits until the CPU acknowledges the interrupt signal by writing into one
+of the Programmable Interrupt Controllers (PIC) I/O ports; when this occurs,
+clears the INTR line.
+3. Goes back to step 1.
+
+The IRQ lines are sequentially numbered starting from 0; therefore, the first IRQ line
+is usually denoted as IRQ0. Intel’s default vector associated with IRQn is n+32. As
+mentioned before, the mapping between IRQs and vectors can be modified by issuing
+suitable I/O instructions to the Interrupt Controller ports.
+
+Each IRQ line can be selectively disabled. Thus, the PIC can be programmed to disable
+IRQs. That is, the PIC can be told to stop issuing interrupts that refer to a given
+IRQ line, or to resume issuing them. Disabled interrupts are not lost; the PIC sends
+them to the CPU as soon as they are enabled again. This feature is used by most
+interrupt handlers, because it allows them to process IRQs of the same type serially.
+
+Selective enabling/disabling of IRQs is not the same as global masking/unmasking of
+maskable interrupts. When the IF flag of the eflags register is clear, each maskable
+interrupt issued by the PIC is temporarily ignored by the CPU. The cli and sti
+assembly language instructions, respectively, clear and set that flag.
+
+Traditional PICs are implemented by connecting “in cascade” two 8259A-style external
+chips. Each chip can handle up to eight different IRQ input lines. Because the
+INT output line of the slave PIC is connected to the IRQ2 pin of the master PIC, the
+number of available IRQ lines is limited to 15.
+
+<h4 id="4.2.1.2">4.2.1.2 高级可编程中断控制器-APIC</h4>
+
+The previous description refers to PICs designed for uniprocessor systems. If the system
+includes a single CPU, the output line of the master PIC can be connected in a
+straightforward way to the INTR pin the CPU. However, if the system includes two
+or more CPUs, this approach is no longer valid and more sophisticated PICs are
+needed.
+
+Being able to deliver interrupts to each CPU in the system is crucial for fully exploiting
+the parallelism of the SMParchitecture. For that reason, Intel introduced starting
+with Pentium III a new component designated as the I/O Advanced Programmable
+Interrupt Controller (I/O APIC). This chip is the advanced version of the old 8259A
+Programmable Interrupt Controller; to support old operating systems, recent motherboards
+include both types of chip. Moreover, all current 80 × 86 microprocessors
+include a local APIC. Each local APIC has 32-bit registers, an internal clock; a local
+timer device; and two additional IRQ lines, LINT0 and LINT1, reserved for local APIC interrupts. All local APICs are connected to an external I/O APIC, giving rise to
+a multi-APIC system.
+
+Figure 4-1 illustrates in a schematic way the structure of a multi-APIC system. An
+APIC bus connects the “frontend” I/O APIC to the local APICs. The IRQ lines coming
+from the devices are connected to the I/O APIC, which therefore acts as a router
+with respect to the local APICs. In the motherboards of the Pentium III and earlier
+processors, the APIC bus was a serial three-line bus; starting with the Pentium 4, the
+APIC bus is implemented by means of the system bus. However, because the APIC
+bus and its messages are invisible to software, we won’t give further details.
+
+
+
+
+
 
 <h2 id="4.3">4.3 嵌套中断和异常</h2>
 
@@ -3637,6 +3675,418 @@ Interrupt handling depends on the type of interrupt. For our purposes, we’ll d
 3. CPU之间的中断
 
 <h3 id="4.6.1">4.6.1 I/O中断处理</h3>
+
+In general, an I/O interrupt handler must be flexible enough to service several devices at the same time. In the PCI bus architecture, for instance, several devices may share the same IRQ line. This means that the interrupt vector alone does not tell the whole story. In the example shown in Table 4-3, the same vector 43 is assigned to the USB port and to the sound card. However, some hardware devices found in older PC architectures (such as ISA) do not reliably operate if their IRQ line is shared with other devices.
+
+Interrupt handler flexibility is achieved in two distinct ways, as discussed in the following list.
+
+* IRQ sharing
+
+    The interrupt handler executes several interrupt service routines (ISRs). Each ISR is a function related to a single device sharing the IRQ line. Because it is not possible to know in advance which particular device issued the IRQ, each ISR is executed to verify whether its device needs attention; if so, the ISR performs all the operations that need to be executed when the device raises an interrupt.
+
+* IRQ dynamic allocation
+
+    An IRQ line is associated with a device driver at the last possible moment; for instance, the IRQ line of the floppy device is allocated only when a user accesses the floppy disk device. In this way, the same IRQ vector may be used by several hardware devices even if they cannot share the IRQ line; of course, the hardware devices cannot be used at the same time. (See the discussion at the end of this section.)
+
+Not all actions to be performed when an interrupt occurs have the same urgency. In fact, the interrupt handler itself is not a suitable place for all kind of actions. Long noncritical operations should be deferred, because while an interrupt handler is running, the signals on the corresponding IRQ line are temporarily ignored. Most important, the process on behalf of which an interrupt handler is executed must always stay in the TASK_RUNNING state, or a system freeze can occur. Therefore, interrupt handlers cannot perform any blocking procedure such as an I/O disk operation. 
+
+Linux divides the actions to be performed following an interrupt into three classes:
+
+* Critical
+
+    Actions such as acknowledging an interrupt to the PIC, reprogramming the PIC or the device controller, or updating data structures accessed by both the device and the processor. These can be executed quickly and are critical, because they must be performed as soon as possible. Critical actions are executed within the interrupt handler immediately, with maskable interrupts disabled.
+
+* Noncritical
+
+    Actions such as updating data structures that are accessed only by the processor (for instance, reading the scan code after a keyboard key has been pushed). These actions can also finish quickly, so they are executed by the interrupt handler immediately, with the interrupts enabled.
+
+* Noncritical deferrable
+
+    Actions such as copying a buffer’s contents into the address space of a process (for instance, sending the keyboard line buffer to the terminal handler process). These may be delayed for a long time interval without affecting the kernel operations; the interested process will just keep waiting for the data. Noncritical deferrable actions are performed by means of separate functions that are discussed in the later section “Softirqs and Tasklets.”
+
+Regardless of the kind of circuit that caused the interrupt, all I/O interrupt handlers perform the same four basic actions:
+
+1. Save the IRQ value and the register’s contents on the Kernel Mode stack.
+2. Send an acknowledgment to the PIC that is servicing the IRQ line, thus allowing it to issue further interrupts.
+3. Execute the interrupt service routines (ISRs) associated with all the devices that share the IRQ.
+4. Terminate by jumping to the ret_from_intr( ) address.
+
+Several descriptors are needed to represent both the state of the IRQ lines and the functions to be executed when an interrupt occurs. Figure 4-4 represents in a schematic way the hardware circuits and the software functions used to handle an interrupt. These functions are discussed in the following sections.
+
+<img id="Figure_4-4" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_4.PNG">
+
+<h4 id="4.6.1.1">4.6.1.1 中断向量表</h4>
+
+As illustrated in Table 4-2, physical IRQs may be assigned any vector in the range 32–238. However, Linux uses vector 128 to implement system calls.
+
+The IBM-compatible PC architecture requires that some devices be statically connected to specific IRQ lines. In particular:
+
+1. The interval timer device must be connected to the IRQ0 line (see Chapter 6).
+2. The slave 8259A PIC must be connected to the IRQ2 line (although more advanced PICs are now being used, Linux still supports 8259A-style PICs).
+3. The external mathematical coprocessor must be connected to the IRQ13 line (although recent 80 × 86 processors no longer use such a device, Linux continues to support the hardy 80386 model).
+4. In general, an I/O device can be connected to a limited number of IRQ lines. (As a matter of fact, when playing with an old PC where IRQ sharing is not possible, you might not succeed in installing a new card because of IRQ conflicts with other already present hardware devices.)
+
+表4-2 Linux中断向量表
+
+| 中断线号 | 使用范围 |
+| -------- | -------- |
+| 0–19      | 不可屏蔽中断和异常 |
+| 20–31     | 为Intel保留 |
+| 32–127    | 外部中断 |
+| 128       | 系统调用专用 |
+| 129–238   | 外部中断 |
+| 239       | APIC定时器中断 |
+| 240       | APIC温度中断 |
+| 241–250   | 保留 |
+| 251–253   | CPU之间的中断 |
+| 254       | APIC错误中断 |
+| 255       | APIC伪中断 |
+
+There are three ways to select a line for an IRQ-configurable device:
+
+* By setting hardware jumpers (only on very old device cards).
+
+* By a utility program shipped with the device and executed when installing it. Such a program may either ask the user to select an available IRQ number or probe the system to determine an available number by itself.
+
+* By a hardware protocol executed at system startup. Peripheral devices declare which interrupt lines they are ready to use; the final values are then negotiated to reduce conflicts as much as possible. Once this is done, each interrupt handler can read the assigned IRQ by using a function that accesses some I/O ports of the device. For instance, drivers for devices that comply with the Peripheral Component Interconnect (PCI) standard use a group of functions such as pci_read_config_byte( ) to access the device configuration space.
+
+Table 4-3 shows a fairly arbitrary arrangement of devices and IRQs, such as those that might be found on one particular PC.
+
+Table 4-3. An example of IRQ assignment to I/O devices
+
+| IRQ | INT | Hardware device |
+| --- | --- | --------------- |
+| 0 | 32 | Timer |
+| 1 | 33 | Keyboard |
+| 2 | 34 | PIC cascading | 
+| 3 | 35 | Second serial port |
+| 4 | 36 | First serial port |
+| 6 | 38 | Floppy disk |
+| 8 | 40 | System clock |
+| 10| 42 | Network interface |
+| 11| 43 | USB port, sound card |
+| 12| 44 | PS/2 mouse |
+| 13| 45 | Mathematical coprocessor |
+| 14| 46 | EIDE disk controller’s first chain |
+| 15| 47 | EIDE disk controller’s second chain |
+
+The kernel must discover which I/O device corresponds to the IRQ number before enabling interrupts. Otherwise, for example, how could the kernel handle a signal from a SCSI disk without knowing which vector corresponds to the device? The correspondence is established while initializing each device driver (see Chapter 13).
+
+<h4 id="4.6.1.2">4.6.1.2 IRQ数据结构</h4>
+
+As always, when discussing complicated operations involving state transitions, it helps to understand first where key data is stored. Thus, this section explains the data structures that support interrupt handling and how they are laid out in various descriptors. Figure 4-5 illustrates schematically the relationships between the main descriptors that represent the state of the IRQ lines. (The figure does not illustrate the data structures needed to handle softirqs and tasklets; they are discussed later in this chapter.)
+
+<img id="Figure_4-5" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_5.PNG">
+
+Every interrupt vector has its own irq_desc_t descriptor, whose fields are listed in Table 4-4. All such descriptors are grouped together in the irq_desc array.
+
+Table 4-4. The irq_desc_t descriptor
+
+| 成员 | 描述 |
+| ---- | ---- |
+| handler | ---- |
+| handler_data | ---- |
+| action | ---- |
+| status | ---- |
+| depth | ---- |
+| irq_count | ---- |
+| irqs_unhandled | ---- |
+| lock | ---- |
+
+An interrupt is unexpected if it is not handled by the kernel, that is, either if there is no ISR associated with the IRQ line, or if no ISR associated with the line recognizes the interrupt as raised by its own hardware device. Usually the kernel checks the number of unexpected interrupts received on an IRQ line, so as to disable the line in case a faulty hardware device keeps raising an interrupt over and over. Because the IRQ line can be shared among several devices, the kernel does not disable the line as soon as it detects a single unhandled interrupt. Rather, the kernel stores in the irq_count and irqs_unhandled fields of the irq_desc_t descriptor the total number of interrupts and the number of unexpected interrupts, respectively; when the 100,000th interrupt is raised, the kernel disables the line if the number of unhandled interrupts is above 99,900 (that is, if less than 101 interrupts over the last 100,000 received are expected interrupts from hardware devices sharing the line).
+
+The status of an IRQ line is described by the flags listed in Table 4-5.
+
+Table 4-5. Flags describing the IRQ line status
+
+| 标志 | 描述 |
+| ---- | ---- |
+| IRQ_INPROGRESS | IRQ的服务程序正在被执行 |
+| IRQ_DISABLED   | IRQ线被禁止 |
+| IRQ_PENDING    | IRQ被挂起 |
+| IRQ_REPLAY     | IRQ的服务程序正在被执行 |
+| IRQ_AUTODETECT | IRQ的服务程序正在被执行 |
+| IRQ_WAITING    | IRQ的服务程序正在被执行 |
+| IRQ_LEVEL      | IRQ的服务程序正在被执行 |
+| IRQ_MASKED     | IRQ的服务程序正在被执行 |
+| IRQ_PER_CPU    | IRQ的服务程序正在被执行 |
+
+The depth field and the IRQ_DISABLED flag of the irq_desc_t descriptor specify whether the IRQ line is enabled or disabled. Every time the disable_irq() or disable_irq_nosync() function is invoked, the depth field is increased; if depth is equal to 0, the function disables the IRQ line and sets its IRQ_DISABLED flag.* Conversely, each invocation of the enable_irq() function decreases the field; if depth becomes 0, the function enables the IRQ line and clears its IRQ_DISABLED flag.
+
+During system initialization, the init_IRQ( ) function sets the status field of each IRQ main descriptor to IRQ_DISABLED. Moreover, init_IRQ( ) updates the IDT by replacing the interrupt gates set up by setup_idt() (see the section “Preliminary Initialization of the IDT,” earlier in this chapter) with new ones. This is accomplished through the following statements:
+
+    for (i = 0; i < NR_IRQS; i++)
+        if (i+32 != 128)
+            set_intr_gate(i+32,interrupt[i]);
+
+This code looks in the interrupt array to find the interrupt handler addresses that it uses to set up the interrupt gates. Each entry n of the interrupt array stores the address of the interrupt handler for IRQn (see the later section “Saving the registers for the interrupt handler”). Notice that the interrupt gate corresponding to vector 128 is left untouched, because it is used for the system call’s programmed exception.
+
+In addition to the 8259A chip that was mentioned near the beginning of this chapter, Linux supports several other PIC circuits such as the SMP IO-APIC, Intel PIIX4’s internal 8259 PIC, and SGI’s Visual Workstation Cobalt (IO-)APIC. To handle all such devices in a uniform way, Linux uses a PIC object, consisting of the PIC name and seven PIC standard methods. The advantage of this object-oriented approach is that drivers need not to be aware of the kind of PIC installed in the system. Each driver-visible interrupt source is transparently wired to the appropriate controller. The data structure that defines a PIC object is called hw_interrupt_type (also called hw_irq_controller).
+
+For the sake of concreteness, let’s assume that our computer is a uniprocessor with two 8259A PICs, which provide 16 standard IRQs. In this case, the handler field in each of the 16 irq_desc_t descriptors points to the i8259A_irq_type variable, which describes the 8259A PIC. This variable is initialized as follows:
+
+    struct hw_interrupt_type i8259A_irq_type = {
+        .typename = "XT-PIC",
+        .startup = startup_8259A_irq,
+        .shutdown = shutdown_8259A_irq,
+        .enable = enable_8259A_irq,
+        .disable = disable_8259A_irq,
+        .ack = mask_and_ack_8259A,
+        .end = end_8259A_irq,
+        .set_affinity = NULL
+    };
+
+The first field in this structure, "XT-PIC", is the PIC name. Next come the pointers to six different functions used to program the PIC. The first two functions start up and shut down an IRQ line of the chip, respectively. But in the case of the 8259A chip, these functions coincide with the third and fourth functions, which enable and disable the line. The mask_and_ack_8259A( ) function acknowledges the IRQ received by sending the proper bytes to the 8259A I/O ports. The end_8259A_irq() function is invoked when the interrupt handler for the IRQ line terminates. The last set_affinity method is set to NULL: it is used in multiprocessor systems to declare the “affinity” of CPUs for specified IRQs—that is, which CPUs are enabled to handle specific IRQs.
+
+As described earlier, multiple devices can share a single IRQ. Therefore, the kernel maintains irqaction descriptors (see Figure 4-5 earlier in this chapter), each of which refers to a specific hardware device and a specific interrupt. The fields included in such descriptor are shown in Table 4-6, and the flags are shown in Table 4-7.
+
+Table 4-6. Fields of the irqaction descriptor
+
+<h4 id="4.6.1.3">4.6.1.3 多核系统中的IRQ分配</h4>
+
+Linux sticks to the Symmetric Multiprocessing model (SMP); this means, essentially, that the kernel should not have any bias toward one CPU with respect to the others. As a consequence, the kernel tries to distribute the IRQ signals coming from the hardware devices in a round-robin fashion among all the CPUs. Therefore, all the CPUs should spend approximately the same fraction of their execution time servicing I/O interrupts.
+
+In the earlier section “The Advanced Programmable Interrupt Controller (APIC),” we said that the multi-APIC system has sophisticated mechanisms to dynamically distribute the IRQ signals among the CPUs.
+
+During system bootstrap, the booting CPU executes the setup_IO_APIC_irqs() function
+to initialize the I/O APIC chip. The 24 entries of the Interrupt Redirection Table
+of the chip are filled, so that all IRQ signals from the I/O hardware devices can be
+routed to each CPU in the system according to the “lowest priority” scheme (see the
+earlier section “IRQs and Interrupts”). During system bootstrap, moreover, all CPUs
+execute the setup_local_APIC() function, which takes care of initializing the local
+APICs. In particular, the task priority register (TPR) of each chip is initialized to a fixed
+value, meaning that the CPU is willing to handle every kind of IRQ signal, regardless
+of its priority. The Linux kernel never modifies this value after its initialization.
+
+All task priority registers contain the same value, thus all CPUs always have the same
+priority. To break a tie, the multi-APIC system uses the values in the arbitration priority
+registers of local APICs, as explained earlier. Because such values are automatically
+changed after every interrupt, the IRQ signals are, in most cases, fairly
+distributed among all CPUs.*
+
+In short, when a hardware device raises an IRQ signal, the multi-APIC system selects
+one of the CPUs and delivers the signal to the corresponding local APIC, which in
+turn interrupts its CPU. No other CPUs are notified of the event.
+
+All this is magically done by the hardware, so it should be of no concern for the kernel
+after multi-APIC system initialization. Unfortunately, in some cases the hardware
+fails to distribute the interrupts among the microprocessors in a fair way (for
+instance, some Pentium 4–based SMP motherboards have this problem). Therefore,
+Linux 2.6 makes use of a special kernel thread called kirqd to correct, if necessary,
+the automatic assignment of IRQs to CPUs.
+
+The kernel thread exploits a nice feature of multi-APIC systems, called the IRQ affinity
+of a CPU: by modifying the Interrupt Redirection Table entries of the I/O APIC, it
+is possible to route an interrupt signal to a specific CPU. This can be done by invoking
+the set_ioapic_affinity_irq() function, which acts on two parameters: the IRQ
+vector to be rerouted and a 32-bit mask denoting the CPUs that can receive the IRQ.
+The IRQ affinity of a given interrupt also can be changed by the system administrator by writing a new CPU bitmap mask into the /proc/irq/n/smp_affinity file (n being
+the interrupt vector).
+
+The kirqd kernel thread periodically executes the do_irq_balance() function, which
+keeps track of the number of interrupt occurrences received by every CPU in the
+most recent time interval. If the function discovers that the IRQ load imbalance
+between the heaviest loaded CPU and the least loaded CPU is significantly high, then
+it either selects an IRQ to be “moved” from a CPU to another, or rotates all IRQs
+among all existing CPUs.
+
+<h4 id="4.6.1.4">4.6.1.4 多核系统中的IRQ分配</h4>
+
+As mentioned in the section “Identifying a Process” in Chapter 3, the thread_info descriptor of each process is coupled with a Kernel Mode stack in a thread_union data structure composed by one or two page frames, according to an option selected when the kernel has been compiled. If the size of the thread_union structure is 8 KB, the Kernel Mode stack of the current process is used for every type of kernel control path: exceptions, interrupts, and deferrable functions (see the later section “Softirqs and Tasklets”). Conversely, if the size of the thread_union structure is 4 KB, the kernel makes use of three types of Kernel Mode stacks:
+
+* The exception stack is used when handling exceptions (including system calls). This is the stack contained in the per-process thread_union data structure, thus the kernel makes use of a different exception stack for each process in the system.
+* The hard IRQ stack is used when handling interrupts. There is one hard IRQ stack for each CPU in the system, and each stack is contained in a single page frame.
+* The soft IRQ stack is used when handling deferrable functions (softirqs or tasklets; see the later section “Softirqs and Tasklets”). There is one soft IRQ stack for each CPU in the system, and each stack is contained in a single page frame.
+
+All hard IRQ stacks are contained in the hardirq_stack array, while all soft IRQ
+stacks are contained in the softirq_stack array. Each array element is a union of type
+irq_ctx that span a single page. At the bottom of this page is stored a thread_info
+structure, while the spare memory locations are used for the stack; remember that
+each stack grows towards lower addresses. Thus, hard IRQ stacks and soft IRQ
+stacks are very similar to the exception stacks described in the section “Identifying a
+Process” in Chapter 3; the only difference is that the thread_info structure coupled
+with each stack is associated with a CPU rather than a process.
+
+The hardirq_ctx and softirq_ctx arrays allow the kernel to quickly determine the
+hard IRQ stack and soft IRQ stack of a given CPU, respectively: they contain pointers
+to the corresponding irq_ctx elements.
+
+<h4 id="4.6.1.5">4.6.1.5 为中断服务程序保存寄存器</h4>
+
+When a CPU receives an interrupt, it starts executing the code at the address found
+in the corresponding gate of the IDT (see the earlier section “Hardware Handling of
+Interrupts and Exceptions”).
+
+As with other context switches, the need to save registers leaves the kernel developer
+with a somewhat messy coding job, because the registers have to be saved and
+restored using assembly language code. However, within those operations, the processor
+is expected to call and return from a C function. In this section, we describe
+the assembly language task of handling registers; in the next, we show some of the
+acrobatics required in the C function that is subsequently invoked.
+
+Saving registers is the first task of the interrupt handler. As already mentioned, the
+address of the interrupt handler for IRQn is initially stored in the interrupt[n] entry
+and then copied into the interrupt gate included in the proper IDT entry.
+
+The interrupt array is built through a few assembly language instructions in the
+arch/i386/kernel/entry.S file. The array includes NR_IRQS elements, where the NR_IRQS
+macro yields either the number 224 if the kernel supports a recent I/O APIC chip,* or
+the number 16 if the kernel uses the older 8259A PIC chips. The element at index n
+in the array stores the address of the following two assembly language instructions:
+
+    pushl $n-256
+    jmp common_interrupt
+
+The result is to save on the stack the IRQ number associated with the interrupt
+minus 256. The kernel represents all IRQs through negative numbers, because it
+reserves positive interrupt numbers to identify system calls (see Chapter 10). The
+same code for all interrupt handlers can then be executed while referring to this
+number. The common code starts at label common_interrupt and consists of the following
+assembly language macros and instructions:
+
+    common_interrupt:
+        SAVE_ALL
+        movl %esp,%eax
+        call do_IRQ
+        jmp ret_from_intr
+
+The SAVE_ALL macro expands to the following fragment:
+
+    cld
+    push %es
+    push %ds
+    pushl %eax
+    pushl %ebp
+    pushl %edi
+    pushl %esi
+    pushl %edx
+    pushl %ecx
+    pushl %ebx
+    movl $__USER_DS,%edx
+    movl %edx,%ds
+    movl %edx,%es
+
+SAVE_ALL saves all the CPU registers that may be used by the interrupt handler on the
+stack, except for eflags, cs, eip, ss, and esp, which are already saved automatically by
+the control unit (see the earlier section “Hardware Handling of Interrupts and Exceptions”).
+The macro then loads the selector of the user data segment into ds and es.
+
+After saving the registers, the address of the current top stack location is saved in the
+eax register; then, the interrupt handler invokes the do_IRQ() function. When the ret
+instruction of do_IRQ() is executed (when that function terminates) control is transferred
+to ret_from_intr( ) (see the later section “Returning from Interrupts and
+Exceptions”).
+
+<h4 id="4.6.1.6">4.6.1.6 do_IRQ()函数</h4>
+
+<h4 id="4.6.1.7">4.6.1.7 __do_IRQ()函数</h4>
+
+<h4 id="4.6.1.8">4.6.1.8 Reviving a lost interrupt</h4>
+
+The _ _do_IRQ() function is small and simple, yet it works properly in most cases.
+Indeed, the IRQ_PENDING, IRQ_INPROGRESS, and IRQ_DISABLED flags ensure that interrupts
+are correctly handled even when the hardware is misbehaving. However, things
+may not work so smoothly in a multiprocessor system.
+
+Suppose that a CPU has an IRQ line enabled. A hardware device raises the IRQ line,
+and the multi-APIC system selects our CPU for handling the interrupt. Before the
+CPU acknowledges the interrupt, the IRQ line is masked out by another CPU; as a
+consequence, the IRQ_DISABLED flag is set. Right afterwards, our CPU starts handling
+the pending interrupt; therefore, the do_IRQ() function acknowledges the interrupt
+and then returns without executing the interrupt service routines because it finds the
+IRQ_DISABLED flag set. Therefore, even though the interrupt occurred before the IRQ
+line was disabled, it gets lost.
+
+To cope with this scenario, the enable_irq() function, which is used by the kernel to
+enable an IRQ line, checks first whether an interrupt has been lost. If so, the function
+forces the hardware to generate a new occurrence of the lost interrupt:
+
+    spin_lock_irqsave(&(irq_desc[irq].lock), flags);
+    if (--irq_desc[irq].depth == 0) {
+        irq_desc[irq].status &= ~IRQ_DISABLED;
+        if (irq_desc[irq].status & (IRQ_PENDING | IRQ_REPLAY))
+                == IRQ_PENDING) {
+            irq_desc[irq].status |= IRQ_REPLAY;
+            hw_resend_irq(irq_desc[irq].handler,irq);
+        }
+        irq_desc[irq].handler->enable(irq);
+    }
+    spin_lock_irqrestore(&(irq_desc[irq].lock), flags);
+
+The function detects that an interrupt was lost by checking the value of the IRQ_PENDING
+flag. The flag is always cleared when leaving the interrupt handler; therefore, if the IRQ
+line is disabled and the flag is set, then an interrupt occurrence has been acknowledged
+but not yet serviced. In this case the hw_resend_irq() function raises a new interrupt.
+This is obtained by forcing the local APIC to generate a self-interrupt (see the later section
+“Interprocessor Interrupt Handling”). The role of the IRQ_REPLAY flag is to ensure
+that exactly one self-interrupt is generated. Remember that the _ _do_IRQ() function
+clears that flag when it starts handling the interrupt.
+
+<h4 id="4.6.1.7">4.6.1.7 中断服务程序</h4>
+
+<h4 id="4.6.1.8">4.6.1.8 动态分配IRQ线</h4>
+
+As noted in section “Interrupt vectors,” a few vectors are reserved for specific
+devices, while the remaining ones are dynamically handled. There is, therefore, a way
+in which the same IRQ line can be used by several hardware devices even if they do
+not allow IRQ sharing. The trick is to serialize the activation of the hardware devices
+so that just one owns the IRQ line at a time.
+
+Before activating a device that is going to use an IRQ line, the corresponding driver
+invokes request_irq( ). This function creates a new irqaction descriptor and initializes
+it with the parameter values; it then invokes the setup_irq( ) function to insert
+the descriptor in the proper IRQ list. The device driver aborts the operation if setup_
+irq( ) returns an error code, which usually means that the IRQ line is already in use
+by another device that does not allow interrupt sharing. When the device operation
+is concluded, the driver invokes the free_irq( ) function to remove the descriptor
+from the IRQ list and release the memory area.
+
+Let’s see how this scheme works on a simple example. Assume a program wants to
+address the /dev/fd0 device file, which corresponds to the first floppy disk on the system.*
+The program can do this either by directly accessing /dev/fd0 or by mounting a
+filesystem on it. Floppy disk controllers are usually assigned IRQ6; given this, a
+floppy driver may issue the following request:
+
+    request_irq(6, floppy_interrupt,
+            SA_INTERRUPT|SA_SAMPLE_RANDOM, "floppy", NULL);
+
+As can be observed, the floppy_interrupt( ) interrupt service routine must execute
+with the interrupts disabled (SA_INTERRUPT flag set) and no sharing of the IRQ (SA_
+SHIRQ flag missing). The SA_SAMPLE_RANDOM flag set means that accesses to the floppy
+disk are a good source of random events to be used for the kernel random number
+generator. When the operation on the floppy disk is concluded (either the I/O operation
+on /dev/fd0 terminates or the filesystem is unmounted), the driver releases IRQ6:
+
+    free_irq(6, NULL);
+
+To insert an irqaction descriptor in the proper list, the kernel invokes the setup_irq(
+) function, passing to it the parameters irq_nr, the IRQ number, and new (the
+address of a previously allocated irqaction descriptor). This function:
+
+1. Checks whether another device is already using the irq_nr IRQ and, if so,
+whether the SA_SHIRQ flags in the irqaction descriptors of both devices specify
+that the IRQ line can be shared. Returns an error code if the IRQ line cannot be
+used.
+2. Adds *new (the new irqaction descriptor pointed to by new) at the end of the list
+to which irq_desc[irq_nr]->action points.
+3. If no other device is sharing the same IRQ, the function clears the IRQ_DISABLED,
+IRQ_AUTODETECT, IRQ_WAITING, and IRQ_INPROGRESS flags in the flags field of *new
+and invokes the startup method of the irq_desc[irq_nr]->handler PIC object to
+make sure that IRQ signals are enabled.
+
+Here is an example of how setup_irq( ) is used, drawn from system initialization.
+The kernel initializes the irq0 descriptor of the interval timer device by executing the
+following instructions in the time_init( ) function (see Chapter 6):
+
+    struct irqaction irq0 =
+        {timer_interrupt, SA_INTERRUPT, 0, "timer", NULL, NULL};
+    setup_irq(0, &irq0);
+
+First, the irq0 variable of type irqaction is initialized: the handler field is set to the
+address of the timer_interrupt( ) function, the flags field is set to SA_INTERRUPT, the
+name field is set to "timer", and the fifth field is set to NULL to show that no dev_id
+value is used. Next, the kernel invokes setup_irq( ) to insert irq0 in the list of
+irqaction descriptors associated with IRQ0.
 
 
 
