@@ -70,7 +70,7 @@
 <h1 id="3">3 定义</h1>
 
 1. DD Host Application
-    
+
     能够使用DD并理解DDL语言的主机应用程序。
 
 
@@ -86,11 +86,11 @@
 <h1 id="5">5 综述</h1>
 
 1. DDL结构
-    
+
     从逻辑上划分为`data`、`HMI`、`通信模型`。另外，和维护、校正、试运行和配置设备有关的标准操作过程（SOP）使用`METHOD`结构实现。
 
 2. 数据模型
-    
+
     使用`VARIABLE`、`ARRAY`、`COLLECTION`、`FILE`、`LIST`组织数据。
 
     关系（比如`UNIT`和`REFRESH`）用来表示数据之间的依赖。
@@ -102,14 +102,14 @@
     `FILE`允许DD指定一些数据存储在主机上，这些数据可以表示一个现场设备。
 
 3. 通信模型-COMMAND
-    
+
     包含：HART命令号，transaction，response code。
 
     * 事务 - 使用数据引用定义。这些引用可以是直接引用（`VARIABLE`）或间接引用（`ARRAY`、`COLLECTION`和`LIST`。
     * 主机应用程序使用命令访问设备数据，保持数据更新。由DD描述的设备模型为主机应用程序提供了提供了足够的信息，由其决定何时发送哪个命令。
 
 4. HMI支持
-    
+
     就是提供信息，明确指出设备应该如何呈现给终端用户。
 
     * `MENU`是HMI的基本结构。每个MENU包含一组逻辑相关的项以及指导如何呈现给用户的指令。可以通过为大部分的DD项（菜单、变量、图片等）提供内容帮助信息，从而为用户提供指导和支持。
@@ -118,11 +118,11 @@
         - `GRAPH`用来刻画`WAVEFORM`数据。
         - `CHART`用来刻画一项数据随时间的变化曲线。
     * HMI相关结构本身是可移植的、技术上是独立的，可以运行在任何主机平台上，不管是手持设备还是计算机。
- 
+
 5. SOP-标准操作过程
-    
+
     使用`METHOD`表示。
-    
+
 第6章描述了DD的基本元素。其余章节描述了DDL语言的语法和语义。第8到11章描述了语言的基本结构：变量、数组、列表、集合、文件、关系、命令、菜单、编辑显示对话框、图形数据表示和方法。第7章描述了DDL语言的条件、表达式、字符串和词法约定。
 
 <h1 id="6">6 DD基本元素</h1>
@@ -160,14 +160,14 @@ DD描述的基本结构如下：
 <h2 id="6.1">6.1 识别符</h2>
 
 用来获取menufacturer、device-type、device-revision、DD-revision的信息，其中
-    
+
 1. **menufacturer**: HART通信基金会获取；
 2. **device-type**: 制造商指定，但是需要遵循HART协议要求；
 
     `menufacturer`和`device-type`的值都是大写，且`device-type`的值前面前缀一个下划线。定义位于`Devices.cfg`文件中，具体的格式如下：
 
         menufacturer-block:
-            menufacturer-definition device-type-list 
+            menufacturer-definition device-type-list
 
         menufacturer-definition:
             MENUFACTURER hexadecimal-integer = uppercase-identifier
@@ -311,19 +311,19 @@ DDL支持整数和浮点数常量以及字符串。
 
 1. 字符串常量
 2. 枚举标识符
-    
+
     语法：`enumeration-identifier (integer)`
 
 3. 字典引用，用于从字典中获取的显示字符，比如之前的多国语开发。
-    
+
     语法：`[ identifier ]`
 
 4. 字符串变量标识符
-    
+
     语法：`string-variable-identifier`
 
 5. 属性字符串引用
-    
+
     语法：`attribute-string-reference`
 
 <h3 id="7.6.2">7.6.2 标准字典</h3>
@@ -436,7 +436,7 @@ DDL支持整数和浮点数常量以及字符串。
 其中，浮点型和整形统称为算术型。
 
 1. 算术型示例
-    
+
         TYPE FLOAT
         {
             DISPLAY_FORMAT "6.4f";   /* ##.#### */
@@ -451,7 +451,7 @@ DDL支持整数和浮点数常量以及字符串。
     5. SCALING_FACTOR
 
 2. 枚举型
-    
+
     通用语法：
 
         TYPE ENUMERATED (size)_opt {
@@ -463,7 +463,7 @@ DDL支持整数和浮点数常量以及字符串。
     2. value 是整数值，和设备中的合法值匹配
     3. description 显示的字符串
     4. help 提示信息。
-    
+
     举例：
 
         TYPE ENUMERATED
@@ -483,7 +483,7 @@ DDL支持整数和浮点数常量以及字符串。
         TYPE BIT_ENUMERATED (size)_opt {
             { value, description, help_opt, class_opt, status-class_opt, actions_opt },
             ...
-        }    
+        }
 
     1. size =枚举型。
     2. value 指定第几位
@@ -505,7 +505,7 @@ DDL支持整数和浮点数常量以及字符串。
 
     举例：
 
-        TYPE    BIT_ENUMERATED(4) 
+        TYPE    BIT_ENUMERATED(4)
         {
             { 0x00000008,   [ykgw_enum_13_mbrd_eep_default_on] }
             { 0x00010000,   [ykgw_enum_21_pwm1_stop_on] }
@@ -523,8 +523,8 @@ DDL支持整数和浮点数常量以及字符串。
         }
 
 4. INDEX类型
-    
-    index类型标志在array或者list中的索引（查看[8.2](#8.2)和[8.3](#8.3)）。它的值只能是数据或者列表中的值。如果超出边界自动会有一个FALSE的VALIDITY。
+
+    index类型的变量是一个无符号整数，作为array或者list中的索引（查看[8.2](#8.2)和[8.3](#8.3)）。它的值只能是数组或者列表中的值。如果index被绑定到一个列表上，那么列表为空时，index类型的变量自动无效；如果绑定到引用数组上并要显示给用户时，显示的是索引变量的描述而不是变量的值。
 
     语法：
 
@@ -535,7 +535,7 @@ DDL支持整数和浮点数常量以及字符串。
         TYPE INDEX (2) ASCII_32_array;
 
 5. 字符串类型
-    
+
     ASCII、Packed-ASCII、password有这3种。
 
     语法：
@@ -545,7 +545,7 @@ DDL支持整数和浮点数常量以及字符串。
         TYPE PASSWORD length;
 
 6. DATE类型
-    
+
     语法：
 
         TYPE DATE;
@@ -553,7 +553,7 @@ DDL支持整数和浮点数常量以及字符串。
     DATE类型的VARIABLE被标识为3个字节的无符号整数。第1个字节->day；第2个字节->month；第3个字节->year，其中year=真实年-1900。
 
 7. TIME类型
-    
+
     语法：
 
         TYPE TIME_VALUE {
@@ -590,7 +590,7 @@ DDL支持整数和浮点数常量以及字符串。
 <h1 id="9">9 COMMAND</h1>
 
 语法如下：
-    
+
     COMMAND name {
         NUMBER unsigned-integer;
         OPERATION operation-type;
@@ -879,7 +879,7 @@ WAVEFORM描述GRAPH显示的一个数据集。
             Y_VALUES { value, value, ... }
         }
         TYPE [XY, YT, HORIZONTAL, VERTICAL] {    /* 类型必须支持，其余的属性都是可选的 */
-            waveform-type-attribute, waveform-type-attribute, ... 
+            waveform-type-attribute, waveform-type-attribute, ...
         }
         INIT_ACTIONS_opt { method-reference, method-reference, ... }
         REFRESH_ACTIONS_opt { method-reference, method-reference, ... }
@@ -999,7 +999,7 @@ AXIS和CHART或GRAPH有关，用来指定参考坐标的。DD开发者如果想�
         float
         double
 
-    integer-types: one of 
+    integer-types: one of
         char int long short
 
 
