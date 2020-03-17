@@ -111,7 +111,7 @@ IRQ线一般从0开始编号，也就是说，第一条IRQ线标记为IRQ0。Int
 
 上面的讨论我们主要考虑的单处理器系统，如果是多处理器系统，主PIC控制器的INTR管脚是如何接到CPU上的？我们接下来讨论这个话题。
 
-我们知道，多核处理系统的价值在于 **并行处理**。所以，如何把中断派发到每一个CPU上就至关重要了。基于这个原因，Intel从奔腾III开始，引入一个新的高级可编程中断控制器（`I/O-APIC`）。这个控制器是8259A中断控制器的加强版。为了兼容旧版本的操作系统，有些主板包含这两种芯片。x86架构中，每个处理器包含自己的APIC，每个APIC具有32位的寄存器，内部时钟，内部定时器以及2个额外的IRQ线，LINT0和LINT1，用作APIC的中断。所有私有的APIC都连接到`I/O-APIC`，组成一个多APIC系统。
+我们知道，多核处理系统的价值在于 **并行处理**。所以，如何把中断分配到每一个CPU上就至关重要了。基于这个原因，Intel从奔腾III开始，引入一个新的高级可编程中断控制器（`I/O-APIC`）。这个控制器是8259A中断控制器的加强版。为了兼容旧版本的操作系统，有些主板包含这两种芯片。x86架构中，每个处理器包含自己的APIC，每个APIC具有32位的寄存器，内部时钟，内部定时器以及2个额外的IRQ线，LINT0和LINT1，用作APIC的中断。所有私有的APIC都连接到`I/O-APIC`，组成一个多APIC系统。
 
 图4-1展示了一个多APIC系统的原理图。`I/O-APIC`通过APIC总线和各个APIC连接在一起。`I/O-APIC`相等于一个中继的角色。
 
@@ -121,42 +121,39 @@ IRQ线一般从0开始编号，也就是说，第一条IRQ线标记为IRQ0。Int
 
 `I/O-APIC`由24条中断线，中断重定向表，可编程寄存器和一个通过APIC总线收发数据的消息单元组成。与8259A中断控制器不同，管脚编号不再具有优先级：重定向表中的每一项都可以被独立设置中断向量和优先级，目的处理器以及处理器如何处理该中断。也就是说，中断重定向表就是外部IRQ到私有APIC的映射关系。
 
-中断请求被派发到CPU上的方式有两种：
+中断请求被分配到CPU上的方式有两种：
 
-1. 静态派发
+1. 静态分配
 
-    The IRQ signal is delivered to the local APICs listed in the corresponding Redirection Table entry. The interrupt is delivered to one specific CPU, to a subset of CPUs, or to all CPUs at once (broadcast mode).
+    按照重定向表中的定义把IRQ请求分配到相应的私有APIC高级可编程中断控制器上。中断可以指定给单个CPU，或者一组CPU，或者所有的CPU（相当于广播）。
 
-2. 动态派发
+2. 动态分配
 
-    The IRQ signal is delivered to the local APIC of the processor that is executing the process with the lowest priority.
+    IRQ请求被发送给正在运行低优先级进程的处理器的私有APIC中断控制器上。通俗地说，就是哪个处理器正在运行低优先级任务，IRQ请求就发送给谁。
 
-    Every local APIC has a programmable task priority register (TPR), which is used to compute the priority of the currently running process. Intel expects this register to be modified in an operating system kernel by each process switch.
+    每个私有APIC都有一个可编程任务优先级寄存器，用来保存当前运行任务的优先级。Intel期望每次进程切换的时候，操作系统内核修改这个寄存器。
 
-    If two or more CPUs share the lowest priority, the load is distributed between them using a technique called arbitration. Each CPU is assigned a different arbitration priority ranging from 0 (lowest) to 15 (highest) in the arbitration priority register of the local APIC.
+    如果有多个CPU拥有相同的最低任务优先级，则使用仲裁技术分配中断请求。根据仲裁，每个CPU被分配一个不同的优先级（0-15，数字越小，优先级越大），这个优先级存储在私有APIC的任务优先级寄存器中。
 
-    Every time an interrupt is delivered to a CPU, its corresponding arbitration priority is automatically set to 0, while the arbitration priority of any other CPU is increased. When the arbitration priority register becomes greater than 15, it is set to the previous arbitration priority of the winning CPU increased by 1. Therefore, interrupts are distributed in a round-robin fashion among CPUs with the same task priority.
+    **分配策略**是，每当分配一个中断请求给一个CPU，则它对应的仲裁优先级被自动设为0，而其它CPU的仲裁优先级则被增加。当优先级寄存器中的值大于15时，则设为1。因为具有相同任务优先级的CPU的中断分配使用循环方式进行。
 
-Besides distributing interrupts among processors, the multi-APIC system allows CPUs to generate interprocessor interrupts. When a CPU wishes to send an interrupt to another CPU, it stores the interrupt vector and the identifier of the target’s local APIC in the Interrupt Command Register (ICR) of its own local APIC. A message is then sent via the APIC bus to the target’s local APIC, which therefore issues a corresponding interrupt to its own CPU.
+    > 动态分配的策略就是负载均衡的一种手段。关于负载均衡的算法以后再研究。
 
-Interprocessor interrupts (in short, IPIs) are a crucial component of the SMP architecture. They are actively used by Linux to exchange messages among CPUs (see later in this chapter).
+除了CPU与外设之间的中断，多APIC系统还允许CPU产生CPU之间的中断。当一个CPU想给另一个CPU发送中断时，它就会把目标CPU的私有APIC的标识符和中断号存储到自己APIC的中断命令寄存器（ICR）中。然后通过APIC总线发送给目标APIC，该APIC就会给自己的CPU发送一个相应的中断。
 
-Many of the current uniprocessor systems include an I/O APIC chip, which may be configured in two distinct ways:
+CPU间的中断（简称IPI）是多核系统一个重要组成部分。Linux有效地利用它们，在CPU之间传递消息。
 
-1. As a standard 8259A-style external PIC connected to the CPU. The local APIC is disabled and the two LINT0 and LINT1 local IRQ lines are configured, respectively, as the INTR and NMI pins.
+目前，大部分的单核系统也都包含一个I/O-APIC芯片，可以使用两种不同的方式配置它：
 
-2. As a standard external I/O APIC. The local APIC is enabled, and all external interrupts are received through the I/O APIC.
+1. 当一个标准的8259A类型的外部PIC使用。私有APIC被禁止，LINT0和LINT1这两个IRQ请求线被分别配置为INTR和NMI管脚。
+
+2. 作为标准的I/O-APIC使用，只不过只有一个CPU而已。
 
 <h3 id="4.2.2">4.2.2 异常</h3>
 
-The 80×86 microprocessors issue roughly 20 different exceptions.* The kernel must
-provide a dedicated exception handler for each exception type. For some exceptions,
-the CPU control unit also generates a hardware error code and pushes it on the Kernel
-Mode stack before starting the exception handler.
+The 80×86 microprocessors issue roughly 20 different exceptions.* The kernel must provide a dedicated exception handler for each exception type. For some exceptions, the CPU control unit also generates a hardware error code and pushes it on the Kernel Mode stack before starting the exception handler.
 
-The following list gives the vector, the name, the type, and a brief description of the
-exceptions found in 80×86 processors. Additional information may be found in the
-Intel technical documentation.
+The following list gives the vector, the name, the type, and a brief description of the exceptions found in 80×86 processors. Additional information may be found in the Intel technical documentation.
 
 * 0 - “Divide error” (fault)
 * 1 - “Debug” (trap or fault)
@@ -179,28 +176,17 @@ Intel technical documentation.
 * 18 - “Machine check” (abort)
 * 19 - “SIMD floating point exception” (fault)
 
-The values from 20 to 31 are reserved by Intel for future development. As illustrated
-in Table 4-1, each exception is handled by a specific exception handler (see the section
-“Exception Handling” later in this chapter), which usually sends a Unix signal
-to the process that caused the exception.
+The values from 20 to 31 are reserved by Intel for future development. As illustrated in Table 4-1, each exception is handled by a specific exception handler (see the section “Exception Handling” later in this chapter), which usually sends a Unix signal to the process that caused the exception.
 
 <h3 id="4.2.3">4.2.3 中断描述符表</h3>
 
-A system table called Interrupt Descriptor Table (IDT) associates each interrupt or
-exception vector with the address of the corresponding interrupt or exception handler.
-The IDT must be properly initialized before the kernel enables interrupts.
+A system table called Interrupt Descriptor Table (IDT) associates each interrupt or exception vector with the address of the corresponding interrupt or exception handler. The IDT must be properly initialized before the kernel enables interrupts.
 
-The IDT format is similar to that of the GDT and the LDTs examined in Chapter 2.
-Each entry corresponds to an interrupt or an exception vector and consists of an 8-byte
-descriptor. Thus, a maximum of 256×8=2048 bytes are required to store the IDT.
+The IDT format is similar to that of the GDT and the LDTs examined in Chapter 2. Each entry corresponds to an interrupt or an exception vector and consists of an 8-byte descriptor. Thus, a maximum of 256×8=2048 bytes are required to store the IDT.
 
-The idtr CPU register allows the IDT to be located anywhere in memory: it specifies
-both the IDT base linear address and its limit (maximum length). It must be initialized
-before enabling interrupts by using the lidt assembly language instruction.
+The idtr CPU register allows the IDT to be located anywhere in memory: it specifies both the IDT base linear address and its limit (maximum length). It must be initialized before enabling interrupts by using the lidt assembly language instruction.
 
-The IDT may include three types of descriptors; Figure 4-2 illustrates the meaning of
-the 64 bits included in each of them. In particular, the value of the Type field encoded
-in the bits 40–43 identifies the descriptor type.
+The IDT may include three types of descriptors; Figure 4-2 illustrates the meaning of the 64 bits included in each of them. In particular, the value of the Type field encoded in the bits 40–43 identifies the descriptor type.
 
 <img id="Figure_4-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_2.PNG">
 
@@ -264,53 +250,23 @@ After the interrupt or exception is processed, the corresponding handler must re
 
 <h2 id="4.3">4.3 嵌套中断和异常</h2>
 
-Every interrupt or exception gives rise to a kernel control path or separate sequence of
-instructions that execute in Kernel Mode on behalf of the current process. For instance,
-when an I/O device raises an interrupt, the first instructions of the corresponding kernel
-control path are those that save the contents of the CPU registers in the Kernel
-Mode stack, while the last are those that restore the contents of the registers.
+Every interrupt or exception gives rise to a kernel control path or separate sequence of instructions that execute in Kernel Mode on behalf of the current process. For instance, when an I/O device raises an interrupt, the first instructions of the corresponding kernel control path are those that save the contents of the CPU registers in the Kernel Mode stack, while the last are those that restore the contents of the registers.
 
-Kernel control paths may be arbitrarily nested; an interrupt handler may be interrupted
-by another interrupt handler, thus giving rise to a nested execution of kernel
-control paths, as shown in Figure 4-3. As a result, the last instructions of a kernel
-control path that is taking care of an interrupt do not always put the current process
-back into User Mode: if the level of nesting is greater than 1, these instructions will
-put into execution the kernel control path that was interrupted last, and the CPU
-will continue to run in Kernel Mode.
+Kernel control paths may be arbitrarily nested; an interrupt handler may be interrupted by another interrupt handler, thus giving rise to a nested execution of kernel control paths, as shown in Figure 4-3. As a result, the last instructions of a kernel control path that is taking care of an interrupt do not always put the current process back into User Mode: if the level of nesting is greater than 1, these instructions will put into execution the kernel control path that was interrupted last, and the CPU will continue to run in Kernel Mode.
 
 <img id="Figure_4-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_3.PNG">
 
 Figure 4-3. An example of nested execution of kernel control paths
 
-The price to pay for allowing nested kernel control paths is that an interrupt handler
-must never block, that is, no process switch can take place until an interrupt handler
-is running. In fact, all the data needed to resume a nested kernel control path is
-stored in the Kernel Mode stack, which is tightly bound to the current process.
+The price to pay for allowing nested kernel control paths is that an interrupt handler must never block, that is, no process switch can take place until an interrupt handler is running. In fact, all the data needed to resume a nested kernel control path is stored in the Kernel Mode stack, which is tightly bound to the current process.
 
-Assuming that the kernel is bug free, most exceptions can occur only while the CPU
-is in User Mode. Indeed, they are either caused by programming errors or triggered
-by debuggers. However, the “Page Fault” exception may occur in Kernel Mode. This
-happens when the process attempts to address a page that belongs to its address
-space but is not currently in RAM. While handling such an exception, the kernel
-may suspend the current process and replace it with another one until the requested
-page is available. The kernel control path that handles the “Page Fault” exception
-resumes execution as soon as the process gets the processor again.
+Assuming that the kernel is bug free, most exceptions can occur only while the CPU  is in User Mode. Indeed, they are either caused by programming errors or triggered by debuggers. However, the “Page Fault” exception may occur in Kernel Mode. This happens when the process attempts to address a page that belongs to its address space but is not currently in RAM. While handling such an exception, the kernel may suspend the current process and replace it with another one until the requested page is available. The kernel control path that handles the “Page Fault” exception resumes execution as soon as the process gets the processor again.
 
-Because the “Page Fault” exception handler never gives rise to further exceptions, at
-most two kernel control paths associated with exceptions (the first one caused by a
-system call invocation, the second one caused by a Page Fault) may be stacked, one
-on top of the other.
+Because the “Page Fault” exception handler never gives rise to further exceptions, at most two kernel control paths associated with exceptions (the first one caused by a system call invocation, the second one caused by a Page Fault) may be stacked, one on top of the other.
 
-In contrast to exceptions, interrupts issued by I/O devices do not refer to data structures
-specific to the current process, although the kernel control paths that handle
-them run on behalf of that process. As a matter of fact, it is impossible to predict
-which process will be running when a given interrupt occurs.
+In contrast to exceptions, interrupts issued by I/O devices do not refer to data structures specific to the current process, although the kernel control paths that handle them run on behalf of that process. As a matter of fact, it is impossible to predict which process will be running when a given interrupt occurs.
 
-An interrupt handler may preempt both other interrupt handlers and exception handlers.
-Conversely, an exception handler never preempts an interrupt handler. The
-only exception that can be triggered in Kernel Mode is “Page Fault,” which we just
-described. But interrupt handlers never perform operations that can induce page
-faults, and thus, potentially, a process switch.
+An interrupt handler may preempt both other interrupt handlers and exception handlers. Conversely, an exception handler never preempts an interrupt handler. The only exception that can be triggered in Kernel Mode is “Page Fault,” which we just described. But interrupt handlers never perform operations that can induce page faults, and thus, potentially, a process switch.
 
 Linux interleaves kernel control paths for two major reasons:
 
@@ -321,25 +277,13 @@ On multiprocessor systems, several kernel control paths may execute concurrently
 
 <h2 id="4.4">4.4 初始化中断描述符表</h2>
 
-Now that we understand what the 80×86 microprocessors do with interrupts and
-exceptions at the hardware level, we can move on to describe how the Interrupt
-Descriptor Table is initialized.
+Now that we understand what the 80×86 microprocessors do with interrupts and exceptions at the hardware level, we can move on to describe how the Interrupt Descriptor Table is initialized.
 
-Remember that before the kernel enables the interrupts, it must load the initial
-address of the IDT table into the idtr register and initialize all the entries of that
-table. This activity is done while initializing the system (see Appendix A).
+Remember that before the kernel enables the interrupts, it must load the initial address of the IDT table into the idtr register and initialize all the entries of that table. This activity is done while initializing the system (see Appendix A).
 
-The int instruction allows a User Mode process to issue an interrupt signal that has
-an arbitrary vector ranging from 0 to 255. Therefore, initialization of the IDT must
-be done carefully, to block illegal interrupts and exceptions simulated by User Mode
-processes via int instructions. This can be achieved by setting the DPL field of the
-particular Interrupt or Trap Gate Descriptor to 0. If the process attempts to issue one
-of these interrupt signals, the control unit checks the CPL value against the DPL field
-and issues a “General protection” exception.
+The int instruction allows a User Mode process to issue an interrupt signal that has an arbitrary vector ranging from 0 to 255. Therefore, initialization of the IDT must be done carefully, to block illegal interrupts and exceptions simulated by User Mode processes via int instructions. This can be achieved by setting the DPL field of the particular Interrupt or Trap Gate Descriptor to 0. If the process attempts to issue one of these interrupt signals, the control unit checks the CPL value against the DPL field and issues a “General protection” exception.
 
-In a few cases, however, a User Mode process must be able to issue a programmed
-exception. To allow this, it is sufficient to set the DPL field of the corresponding
-Interrupt or Trap Gate Descriptors to 3—that is, as high as possible.
+In a few cases, however, a User Mode process must be able to issue a programmed exception. To allow this, it is sufficient to set the DPL field of the corresponding Interrupt or Trap Gate Descriptors to 3—that is, as high as possible.
 
 Let’s now see how Linux implements this strategy.
 
