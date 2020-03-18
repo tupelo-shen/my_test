@@ -151,102 +151,99 @@ CPU间的中断（简称IPI）是多核系统一个重要组成部分。Linux有
 
 <h3 id="4.2.2">4.2.2 异常</h3>
 
-The 80×86 microprocessors issue roughly 20 different exceptions.* The kernel must provide a dedicated exception handler for each exception type. For some exceptions, the CPU control unit also generates a hardware error code and pushes it on the Kernel Mode stack before starting the exception handler.
+x86架构大约有20种不同的异常。内核必须为每种异常提供专用的处理函数。对于某些异常，CPU控制单元也会产生硬件错误码，并将其压入内核态栈，然后再启动异常处理函数。
 
-The following list gives the vector, the name, the type, and a brief description of the exceptions found in 80×86 processors. Additional information may be found in the Intel technical documentation.
+下表是异常列表，列出了异常号，名称，类型等等。更多信息请参考Intel技术手册。
 
-* 0 - “Divide error” (fault)
-* 1 - “Debug” (trap or fault)
-* 2 - Not used
-* 3 - “Breakpoint” (trap)
-* 4 - “Overflow” (trap)
-* 5 - “Bounds check” (fault)
-* 6 - “Invalid opcode” (fault)
-* 7 - “Device not available” (fault)
-* 8 - “Double fault” (abort)
-* 9 - “Coprocessor segment overrun” (abort)
-* 10 - “Invalid TSS” (fault)
-* 11 - “Segment not present” (fault)
-* 12 - “Stack segment fault” (fault)
-* 13 - “General protection” (fault)
-* 14 - “Page Fault” (fault)
-* 15 - Reserved by Intel
-* 16 - “Floating-point error” (fault)
-* 17 - “Alignment check” (fault)
-* 18 - “Machine check” (abort)
-* 19 - “SIMD floating point exception” (fault)
+|#| 异常          | 类型    | 异常处理函数 | 信号 |
+|-| ------------- | ------ | --------- | ------ |
+|0| 除法错误        | fault| divide_error() | SIGFPE |
+|1| Debug         | trap/fault| debug( ) | SIGTRAP |
+|2| NMI           | -     | nmi( ) | - |
+|3| 断点           | trap | int3( ) | SIGTRAP |
+|4| 溢出           | trap | overflow( ) | SIGSEGV |
+|5| 边界检查        | fault | bounds( ) | SIGSEGV |
+|6| 非法操作码      | fault | invalid_op( ) | SIGILL |
+|7| 设备不可用      | fault | device_not_available( ) | - |
+|8| 串行处理异常错误 | abort | doublefault_fn() | - |
+|9| 协处理器错误    | abort | coprocessor_segment_overrun( ) | SIGFPE |
+|10| 非法TSS       | fault | invalid_TSS( ) | SIGSEGV |
+|11| 段引用错误     | fault | segment_not_present( ) | SIGBUS |
+|12| 栈段错误       | fault | stack_segment( ) | SIGBUS |
+|13| 通用保护       | fault | general_protection( ) | SIGSEGV |
+|14| 页错误         | fault | page_fault( ) | SIGSEGV |
+|15| Intel保留     | -     | - | - |
+|16| 浮点错误       | fault | coprocessor_error( ) | SIGFPE |
+|17| 对齐检查       | fault | alignment_check( ) | SIGBUS |
+|18| 机器检查       | abort | machine_check() | - |
+|19| SIMD浮点异常   | fault | simd_coprocessor_error() | SIGFPE |
 
-The values from 20 to 31 are reserved by Intel for future development. As illustrated in Table 4-1, each exception is handled by a specific exception handler (see the section “Exception Handling” later in this chapter), which usually sends a Unix signal to the process that caused the exception.
+Intel保留20-31未来使用。如上表所示，每个异常都有一个专门的处理函数处理，并给造成异常的进程发送一个信号。
 
 <h3 id="4.2.3">4.2.3 中断描述符表</h3>
 
-A system table called Interrupt Descriptor Table (IDT) associates each interrupt or exception vector with the address of the corresponding interrupt or exception handler. The IDT must be properly initialized before the kernel enables interrupts.
+现在，我们已经知道了中断信号是如何从设备发出，然后经过高级可编程中断控制器的分配，到达各个指定的CPU中。那么，剩下的工作就是内核的了，内核使用一个中断描述符表（IDT），记录每个中断或者异常编号以及相应的处理函数。那么，收到中断信号后，将相应的处理函数的地址加载到eip寄存器中执行即可。
 
-The IDT format is similar to that of the GDT and the LDTs examined in Chapter 2. Each entry corresponds to an interrupt or an exception vector and consists of an 8-byte descriptor. Thus, a maximum of 256×8=2048 bytes are required to store the IDT.
+IDT表中，每一项对应一个中断或者异常，大小8个字节。因而，IDT需要256x8=2048个字节大小的存储空间。
 
-The idtr CPU register allows the IDT to be located anywhere in memory: it specifies both the IDT base linear address and its limit (maximum length). It must be initialized before enabling interrupts by using the lidt assembly language instruction.
+IDT表的物理地址存储在CPU寄存器`idtr`中：包括IDT的基地址和最大长度。在使能中断之前，必须使用lidt汇编指令初始化IDT表。
 
-The IDT may include three types of descriptors; Figure 4-2 illustrates the meaning of the 64 bits included in each of them. In particular, the value of the Type field encoded in the bits 40–43 identifies the descriptor type.
+IDT表包含三种类型的描述符，使用Type位域表示（40-43位）。下图分别解释了这三种描述符各个位的意义。
 
 <img id="Figure_4-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_2.PNG">
 
-Figure 4-2. Gate descriptors’ format
+三种描述符分别为：
 
-The descriptors are:
+1. 任务门
 
-1. Task gate
+    包含中断发生时要替换当前进程的新进程的TSS选择器。
 
-    Includes the TSS selector of the process that must replace the current one when an interrupt signal occurs.
+2. 中断门
 
-2. Interrupt gate
+    包含段选择器和在段中的偏移量。设置了正确的段后，处理器清除IF标志，禁止可屏蔽中断。
 
-    Includes the Segment Selector and the offset inside the segment of an interrupt or exception handler. While transferring control to the proper segment, the processor clears the IF flag, thus disabling further maskable interrupts.
+3. 陷阱门
 
-3. Trap gate
-
-    Similar to an interrupt gate, except that while transferring control to the proper segment, the processor does not modify the IF flag.
-
-As we’ll see in the later section “Interrupt, Trap, and System Gates,” Linux uses interrupt gates to handle interrupts and trap gates to handle exceptions.*
+    同中断门类似，只是不会修改IF标志。
 
 <h3 id="4.2.4">4.2.4 中断和异常的硬件处理</h3>
 
-We now describe how the CPU control unit handles interrupts and exceptions. We assume that the kernel has been initialized, and thus the CPU is operating in Protected Mode.
+现在，我们来探究以下CPU控制单元是如何处理中断和异常的。我们假设内核已经完成初始化，CPU工作在保护模式下。
 
-After executing an instruction, the cs and eip pair of registers contain the logical address of the next instruction to be executed. Before dealing with that instruction, the control unit checks whether an interrupt or an exception occurred while the control unit executed the previous instruction. If one occurred, the control unit does the following:
+CPU控制单元，在取指令之前，检查控制单元在执行前一条指令的时候是否有中断或异常发生。如果发生中断，控制单元就会做如下处理：
 
-1. Determines the vector i (0≤i ≤255) associated with the interrupt or the exception.
+1. 确定中断或异常的编号N；
 
-2. Reads the ith entry of the IDT referred by the idtr register (we assume in the following description that the entry contains an interrupt or a trap gate).
+2. 读取IDT表中的第N项；（在后面的描述中，假设包含的是中断门或陷阱门）
 
-3. Gets the base address of the GDT from the gdtr register and looks in the GDT to read the Segment Descriptor identified by the selector in the IDT entry. This descriptor specifies the base address of the segment that includes the interrupt or exception handler.
+3. 获取GDT的基地址，遍历GDT找到IDT表第N项中的段选择器标识的段描述符。这个描述符指定了包含中断或异常处理程序的段的基地址。
 
-4. Makes sure the interrupt was issued by an authorized source. First, it compares the Current Privilege Level (CPL), which is stored in the two least significant bits of the cs register, with the Descriptor Privilege Level (DPL) of the Segment Descriptor included in the GDT. Raises a “General protection” exception if the CPL is lower than the DPL, because the interrupt handler cannot have a lower privilege than the program that caused the interrupt. For programmed exceptions, makes a further security check: compares the CPL with the DPL of the gate descriptor included in the IDT and raises a “General protection” exception if the DPL is lower than the CPL. This last check makes it possible to prevent access by user applications to specific trap or interrupt gates.
+4. 确保中断合法性。
 
-5. Checks whether a change of privilege level is taking place—that is, if CPL is different from the selected Segment Descriptor’s DPL. If so, the control unit must start using the stack that is associated with the new privilege level. It does this by performing the following steps:
+    首先比较cs寄存器中的CPL（当前特权等级）和包含在GDT中的段描述符的DPL（描述符特权等级），如果CPL小于DPL，产生 *通用保护* 异常，因为中断处理程序的特权等级不能比造成中断的程序的低。对于可编程异常，还会做进一步的安全检查：比较当前特权等级（CPL）和IDT表中包含的描述符的DPL，如果DPL小于CPL，则产生通用保护的异常。后一项检查，可以阻止用户应用程序访问特定的trap或中断门。
 
-    1. Reads the tr register to access the TSS segment of the running process.
-    2. Loads the ss and esp registers with the proper values for the stack segment and stack pointer associated with the new privilege level. These values are found in the TSS (see the section “Task State Segment” in Chapter 3).
-    3. In the new stack, it saves the previous values of ss and esp, which define the logical address of the stack associated with the old privilege level.
+5. 检查特权等级是否发生变化。如果CPL与描述符中的DPL不同，控制单元应该使用新特权等级下的堆栈。
 
-6. If a fault has occurred, it loads cs and eip with the logical address of the instruction that caused the exception so that it can be executed again.
+    1. 读取tr寄存器，访问运行中的进程的TSS段；
+    2. 使用新特权等级对应的堆栈段和堆栈指针加载ss和esp寄存器；（这些值存储在TSS中）
+    3. 在新的堆栈中，保存旧任务的ss和esp寄存器值。（处理完中断或异常后，还要恢复到旧任务执行）
 
-7. Saves the contents of eflags, cs, and eip in the stack.
+    > 其实对于Linux来说，只使用了supervisor和user两种特权等级。所以中断应该都是在supervisor特权等级下运行。
 
-8. If the exception carries a hardware error code, it saves it on the stack.
+6. 根据造成异常的指令的逻辑地址，加载cs和eip寄存器（异常解决后，程序可以继续从这儿执行）；
 
-9. Loads cs and eip, respectively, with the Segment Selector and the Offset fields of the Gate Descriptor stored in the ith entry of the IDT. These values define the logical address of the first instruction of the interrupt or exception handler.
+7. 保存eflags、cs和eip到堆栈中；
 
-The last step performed by the control unit is equivalent to a jump to the interrupt or exception handler. In other words, the instruction processed by the control unit after dealing with the interrupt signal is the first instruction of the selected handler.
+8. 如果异常携带异常错误码，将其保存在堆栈中；
 
-After the interrupt or exception is processed, the corresponding handler must relinquish control to the interrupted process by issuing the iret instruction, which forces the control unit to:
+9. 根据IDT表中的第N项内容，加载cs和eip寄存器。
 
-1. Load the cs, eip, and eflags registers with the values saved on the stack. If a hardware error code has been pushed in the stack on top of the eip contents, it must be popped before executing iret.
+至此，CPU控制单元跳转到中断或异常处理程序处开始执行。等到中断或异常处理完成后，把CPU的使用权让给之前被中断的进程，使用iret指令，该指令强迫控制单元执行下面步骤：
 
-2. Check whether the CPL of the handler is equal to the value contained in the two least significant bits of cs (this means the interrupted process was running at the same privilege level as the handler). If so, iret concludes execution; otherwise, go to the next step.
-
-3. Load the ss and esp registers from the stack and return to the stack associated with the old privilege level.
-
-4. Examine the contents of the ds, es, fs, and gs segment registers; if any of them contains a selector that refers to a Segment Descriptor whose DPL value is lower than CPL, clear the corresponding segment register. The control unit does this to forbid User Mode programs that run with a CPL equal to 3 from using segment registers previously used by kernel routines (with a DPL equal to 0). If these registers were not cleared, malicious User Mode programs could exploit them in order to access the kernel address space.
+1. 加载被中断进程的cs，eip和eflags寄存器。（如果压栈过异常错误码，应该在执行iret指令之前弹出）
+2. 检查CPL是否等于cs寄存器中的CPL，如果相等，则iret指令结束执行；否则，继续。
+3. 加载旧特权等级的ss和esp寄存器值。
+4. 检查ds、es、fs和gs寄存器中的值。如果它们之中任何一个的描述符中的DPL小于CPL，则清除相应的段寄存器。这么做，可以禁止用户态程序使用先前内核态的段寄存器。如果这些寄存器没有被清除，恶意用户态程序就可以利用它们访问内核地址空间。
 
 <h2 id="4.3">4.3 嵌套中断和异常</h2>
 
