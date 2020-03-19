@@ -668,12 +668,12 @@ Process 2 switches to Kernel Mode and services the interrupt.
 
 图1-2 用户态和内核模式之间的转换
 
-Unix kernels do much more than handle system calls; in fact, kernel routines can be activated in several ways:
+Unix内核程序可以被以下几种方式激活：
 
-* A process invokes a system call.
-* The CPU executing the process signals an exception, which is an unusual condition such as an invalid instruction. The kernel handles the exception on behalf of the process that caused it.
-* A peripheral device issues an interrupt signal to the CPU to notify it of an event such as a request for attention, a status change, or the completion of an I/O operation. Each interrupt signal is dealt by a kernel program called an interrupt handler. Because peripheral devices operate asynchronously with respect to the CPU, interrupts occur at unpredictable times.
-* A kernel thread is executed. Because it runs in Kernel Mode, the corresponding program must be considered part of the kernel.
+* 用户进程调用系统调用；
+* 正在执行进程的CPU发生异常，内核会进入异常处理程序；
+* 外部中断，内核会进入中断处理程序；
+* 内核线程。因为运行在内核态，也被认为是内核程序的一部分。
 
 <h3 id="1.6.2">1.6.2 进程实现</h3>
 

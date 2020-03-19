@@ -158,23 +158,23 @@ x86架构大约有20种不同的异常。内核必须为每种异常提供专用
 |#| 异常          | 类型    | 异常处理函数 | 信号 |
 |-| ------------- | ------ | --------- | ------ |
 |0| 除法错误        | fault| divide_error() | SIGFPE |
-|1| Debug         | trap/fault| debug( ) | SIGTRAP |
-|2| NMI           | -     | nmi( ) | - |
-|3| 断点           | trap | int3( ) | SIGTRAP |
-|4| 溢出           | trap | overflow( ) | SIGSEGV |
-|5| 边界检查        | fault | bounds( ) | SIGSEGV |
-|6| 非法操作码      | fault | invalid_op( ) | SIGILL |
-|7| 设备不可用      | fault | device_not_available( ) | - |
+|1| Debug         | trap/fault| debug() | SIGTRAP |
+|2| NMI           | -     | nmi() | - |
+|3| 断点           | trap | int3() | SIGTRAP |
+|4| 溢出           | trap | overflow() | SIGSEGV |
+|5| 边界检查        | fault | bounds() | SIGSEGV |
+|6| 非法操作码      | fault | invalid_op() | SIGILL |
+|7| 设备不可用      | fault | device_not_available() | - |
 |8| 串行处理异常错误 | abort | doublefault_fn() | - |
-|9| 协处理器错误    | abort | coprocessor_segment_overrun( ) | SIGFPE |
-|10| 非法TSS       | fault | invalid_TSS( ) | SIGSEGV |
-|11| 段引用错误     | fault | segment_not_present( ) | SIGBUS |
-|12| 栈段错误       | fault | stack_segment( ) | SIGBUS |
-|13| 通用保护       | fault | general_protection( ) | SIGSEGV |
-|14| 页错误         | fault | page_fault( ) | SIGSEGV |
+|9| 协处理器错误    | abort | coprocessor_segment_overrun() | SIGFPE |
+|10| 非法TSS       | fault | invalid_TSS() | SIGSEGV |
+|11| 段引用错误     | fault | segment_not_present() | SIGBUS |
+|12| 栈段错误       | fault | stack_segment() | SIGBUS |
+|13| 常规保护       | fault | general_protection() | SIGSEGV |
+|14| 页错误         | fault | page_fault() | SIGSEGV |
 |15| Intel保留     | -     | - | - |
-|16| 浮点错误       | fault | coprocessor_error( ) | SIGFPE |
-|17| 对齐检查       | fault | alignment_check( ) | SIGBUS |
+|16| 浮点错误       | fault | coprocessor_error() | SIGFPE |
+|17| 对齐检查       | fault | alignment_check() | SIGBUS |
 |18| 机器检查       | abort | machine_check() | - |
 |19| SIMD浮点异常   | fault | simd_coprocessor_error() | SIGFPE |
 
@@ -184,11 +184,11 @@ Intel保留20-31未来使用。如上表所示，每个异常都有一个专门�
 
 现在，我们已经知道了中断信号是如何从设备发出，然后经过高级可编程中断控制器的分配，到达各个指定的CPU中。那么，剩下的工作就是内核的了，内核使用一个中断描述符表（IDT），记录每个中断或者异常编号以及相应的处理函数。那么，收到中断信号后，将相应的处理函数的地址加载到eip寄存器中执行即可。
 
-IDT表中，每一项对应一个中断或者异常，大小8个字节。因而，IDT需要256x8=2048个字节大小的存储空间。
+IDT中，每一项对应一个中断或者异常，大小8个字节。因而，IDT需要256x8=2048个字节大小的存储空间。
 
-IDT表的物理地址存储在CPU寄存器`idtr`中：包括IDT的基地址和最大长度。在使能中断之前，必须使用lidt汇编指令初始化IDT表。
+IDT的物理地址存储在CPU寄存器`idtr`中：包括IDT的基地址和最大长度。在使能中断之前，必须使用lidt汇编指令初始化IDT。
 
-IDT表包含三种类型的描述符，使用Type位域表示（40-43位）。下图分别解释了这三种描述符各个位的意义。
+IDT包含三种类型的描述符，使用Type位域表示（40-43位）。下图分别解释了这三种描述符各个位的意义。
 
 <img id="Figure_4-2" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_2.PNG">
 
@@ -214,13 +214,13 @@ CPU控制单元，在取指令之前，检查控制单元在执行前一条指�
 
 1. 确定中断或异常的编号N；
 
-2. 读取IDT表中的第N项；（在后面的描述中，假设包含的是中断门或陷阱门）
+2. 读取IDT中的第N项；（在后面的描述中，假设包含的是中断门或陷阱门）
 
-3. 获取GDT的基地址，遍历GDT找到IDT表第N项中的段选择器标识的段描述符。这个描述符指定了包含中断或异常处理程序的段的基地址。
+3. 获取GDT的基地址，遍历GDT找到IDT第N项中的段选择器标识的段描述符。这个描述符指定了包含中断或异常处理程序的段的基地址。
 
 4. 确保中断合法性。
 
-    首先比较cs寄存器中的CPL（当前特权等级）和包含在GDT中的段描述符的DPL（描述符特权等级），如果CPL小于DPL，产生 *通用保护* 异常，因为中断处理程序的特权等级不能比造成中断的程序的低。对于可编程异常，还会做进一步的安全检查：比较当前特权等级（CPL）和IDT表中包含的描述符的DPL，如果DPL小于CPL，则产生通用保护的异常。后一项检查，可以阻止用户应用程序访问特定的trap或中断门。
+    首先比较cs寄存器中的CPL（当前特权等级）和包含在GDT中的段描述符的DPL（描述符特权等级），如果CPL小于DPL，产生`常规保护`异常，因为中断处理程序的特权等级不能比造成中断的程序的低。对于可编程异常，还会做进一步的安全检查：比较当前特权等级（CPL）和IDT中包含的描述符的DPL，如果DPL小于CPL，则产生`常规保护`的异常。后一项检查，可以阻止用户应用程序访问特定的trap或中断门。
 
 5. 检查特权等级是否发生变化。如果CPL与描述符中的DPL不同，控制单元应该使用新特权等级下的堆栈。
 
@@ -236,7 +236,7 @@ CPU控制单元，在取指令之前，检查控制单元在执行前一条指�
 
 8. 如果异常携带异常错误码，将其保存在堆栈中；
 
-9. 根据IDT表中的第N项内容，加载cs和eip寄存器。
+9. 根据IDT中的第N项内容，加载cs和eip寄存器。
 
 至此，CPU控制单元跳转到中断或异常处理程序处开始执行。等到中断或异常处理完成后，把CPU的使用权让给之前被中断的进程，使用iret指令，该指令强迫控制单元执行下面步骤：
 
@@ -247,48 +247,207 @@ CPU控制单元，在取指令之前，检查控制单元在执行前一条指�
 
 <h2 id="4.3">4.3 嵌套中断和异常</h2>
 
-Every interrupt or exception gives rise to a kernel control path or separate sequence of instructions that execute in Kernel Mode on behalf of the current process. For instance, when an I/O device raises an interrupt, the first instructions of the corresponding kernel control path are those that save the contents of the CPU registers in the Kernel Mode stack, while the last are those that restore the contents of the registers.
+讲解这部分之前，我们先阐述一个概念-**内核控制路径：就是一段在内核态执行的代码**。我们知道，内核态程序被激活的方式有：
 
-Kernel control paths may be arbitrarily nested; an interrupt handler may be interrupted by another interrupt handler, thus giving rise to a nested execution of kernel control paths, as shown in Figure 4-3. As a result, the last instructions of a kernel control path that is taking care of an interrupt do not always put the current process back into User Mode: if the level of nesting is greater than 1, these instructions will put into execution the kernel control path that was interrupted last, and the CPU will continue to run in Kernel Mode.
+1. 系统调用（异常的一种）
+2. 异常
+3. 中断
+4. 内核线程
+
+上面的任意一种方式，都可以让CPU执行内核态的代码。比如，I/O设备引发一个中断，相应的内核态程序的开头部分的代码应该是保存内核态堆栈中的CPU寄存器的内容；结尾部分的代码应该是再恢复这些寄存器的内容。所以，在后面的描述中，我们使用`内核控制路径`这个术语代替一段可执行的内核态代码这种表述。使用`内核控制路径`的好处就是，它是从英语直译过来的，可能会更好地表达程序代码执行的顺序性，是一个过程；这样在描述中断嵌套时更有意义。
+
+内核控制路径可以任意嵌套；如下图所示，用户态的程序被中断打断，进入内核态响应中断；而这时候又来了其它中断，就会响应最新的中断，以此类推；但是，执行完一个中断处理程序之后，会回到之前的状态执行。这样，最后又回到了用户态。
 
 <img id="Figure_4-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_3.PNG">
 
-Figure 4-3. An example of nested execution of kernel control paths
+图4-3 内核控制路径的一个嵌套异常的示例
 
-The price to pay for allowing nested kernel control paths is that an interrupt handler must never block, that is, no process switch can take place until an interrupt handler is running. In fact, all the data needed to resume a nested kernel control path is stored in the Kernel Mode stack, which is tightly bound to the current process.
+允许内核控制路径嵌套的代价就是中断处理程序不能阻塞，也就是说，中断处理程序运行时不能发生进程切换。恢复执行嵌套内核控制路径的所有数据都存储在内核态堆栈中，而该堆栈又和当前进程紧紧绑定在一起。通俗的说，中断处理程序相当于当前进程的资源，切换进程之前该中断资源必须释放掉。
 
-Assuming that the kernel is bug free, most exceptions can occur only while the CPU  is in User Mode. Indeed, they are either caused by programming errors or triggered by debuggers. However, the “Page Fault” exception may occur in Kernel Mode. This happens when the process attempts to address a page that belongs to its address space but is not currently in RAM. While handling such an exception, the kernel may suspend the current process and replace it with another one until the requested page is available. The kernel control path that handles the “Page Fault” exception resumes execution as soon as the process gets the processor again.
+假设内核没有bug，那么大部分的异常发生在用户态。实际上，要么是编程错误，要么是调试器故意触发的。而`页错误`异常发生在内核态，它是内核在访问物理地址时不存在引发的异常。处理这样的异常，内核挂起当前进程，切换到新进程，直到该请求页可用。因为`页错误`异常绝不会引发进一步的异常，所以，有关系的内核控制路径最多是2个（第一个是系统调用造成的，第二个是页错误造成的）。也就是说，页错误的异常最多嵌套2层。
 
-Because the “Page Fault” exception handler never gives rise to further exceptions, at most two kernel control paths associated with exceptions (the first one caused by a system call invocation, the second one caused by a Page Fault) may be stacked, one on top of the other.
+和异常相反，I/O设备引发的中断和当前进程没有数据上的关系，尽管内核代表当前进程处理这些中断。事实上，给定某个中断，无法推断出是哪个进程在运行。
 
-In contrast to exceptions, interrupts issued by I/O devices do not refer to data structures specific to the current process, although the kernel control paths that handle them run on behalf of that process. As a matter of fact, it is impossible to predict which process will be running when a given interrupt occurs.
+中断处理程序可以打断中断或异常处理程序执行，但是反过来，异常不能打断中断处理程序。中断处理程序绝对不能包含`页错误`的操作，因为这会诱发进程切换。
 
-An interrupt handler may preempt both other interrupt handlers and exception handlers. Conversely, an exception handler never preempts an interrupt handler. The only exception that can be triggered in Kernel Mode is “Page Fault,” which we just described. But interrupt handlers never perform operations that can induce page faults, and thus, potentially, a process switch.
+Linux嵌套执行中断或异常处理程序的两个主要原因是：
 
-Linux interleaves kernel control paths for two major reasons:
+* 为了提高可编程中断控制器和设备控制器的吞吐量。内核正在处理一个中断的时候，能够及时响应另一个中断。
+* 实现没有中断优先级的模型。这可以简化内核代码并提高可移植性。
 
-* To improve the throughput of programmable interrupt controllers and device controllers. Assume that a device controller issues a signal on an IRQ line: the PIC transforms it into an external interrupt, and then both the PIC and the device controller remain blocked until the PIC receives an acknowledgment from the CPU. Thanks to kernel control path interleaving, the kernel is able to send the acknowledgment even when it is handling a previous interrupt.
-* To implement an interrupt model without priority levels. Because each interrupt handler may be deferred by another one, there is no need to establish predefined priorities among hardware devices. This simplifies the kernel code and improves its portability.
-
-On multiprocessor systems, several kernel control paths may execute concurrently. Moreover, a kernel control path associated with an exception may start executing on a CPU and, due to a process switch, migrate to another CPU.
+在多核系统中，几个中断或异常处理程序可能会并发执行。更重要的是，异常处理程序可能由于进程切换，造成在一个CPU上启动，然后迁移到另一个CPU上执行。
 
 <h2 id="4.4">4.4 初始化中断描述符表</h2>
 
-Now that we understand what the 80×86 microprocessors do with interrupts and exceptions at the hardware level, we can move on to describe how the Interrupt Descriptor Table is initialized.
+至此，我们已经理解了X86架构如何在硬件层面处理中断和异常，那么接下来，我们看看内核如何初始化IDT。
 
-Remember that before the kernel enables the interrupts, it must load the initial address of the IDT table into the idtr register and initialize all the entries of that table. This activity is done while initializing the system (see Appendix A).
+同所有的设备一样，我们在使能硬件之前，必须先初始化其相关的数据结构。那么，对于中断来说，首先应该把IDT的起始地址写入idtr寄存器，并初始化所有的表项。这一步在初始化系统时完成。
 
-The int instruction allows a User Mode process to issue an interrupt signal that has an arbitrary vector ranging from 0 to 255. Therefore, initialization of the IDT must be done carefully, to block illegal interrupts and exceptions simulated by User Mode processes via int instructions. This can be achieved by setting the DPL field of the particular Interrupt or Trap Gate Descriptor to 0. If the process attempts to issue one of these interrupt signals, the control unit checks the CPL value against the DPL field and issues a “General protection” exception.
+汇编指令int允许用户进程发送任意编号的中断（0-255）。为此，IDT的初始化必须考虑阻止由用户进程int指令引发的非法中断和异常。可以通过将中断描述符表中的DPL域设为0来实现。如果用户进程试图发送非法中断信号，CPU控制单元比较CPL和DPL的值，发出`常规保护`的异常。
 
-In a few cases, however, a User Mode process must be able to issue a programmed exception. To allow this, it is sufficient to set the DPL field of the corresponding Interrupt or Trap Gate Descriptors to 3—that is, as high as possible.
+但是，有时候，用户态进程必须能够发送可编程异常。那么把相应的中断或陷阱门描述符的DPL域设为3即可。比如系统调用。
 
-Let’s now see how Linux implements this strategy.
+让我们看看Linux如何实现这种策略。
 
 <h3 id="4.4.1">4.4.1 中断、陷阱和系统门</h3>
 
-<h3 id="4.4.2">4.4.2 IDT初始化</h3>
+在之前的文章中，我们已经介绍过，Intel提供了三种类型的中断描述符：任务，中断和陷阱门描述符。Linux的分类有些不同：
+
+1. 中断门
+
+    和Intel的中断门相同。所有的用户进程不能访问（该门的DPL设为0）。所有Linux的中断处理程序都是通过中断门激活的，也就是说只能在内核态访问。
+
+2. 系统门
+
+    属于Intel的陷阱门，可以被用户态进程访问（该门的DPL设为3）。三个Linux异常处理程序对应的中断号分别是4、5和128，分别使用`into`、`bound`和`int $0x80`三条汇编指令发出对应的中断信号。
+
+3. 系统中断门
+
+    属于Intel的中断门，用户态进程可以访问（该门的DPL域设为3）。中断号为3的异常处理程序通过系统中断门激活，可以使用在用户态使用int3指令实现。
+
+4. 陷阱门
+
+    属于Intel陷阱门，不能被用户态程序访问（该门的DPL设为0）。用来访问大部分的异常处理程序。
+
+5. 任务门
+
+    属于Intel任务门，用户态进程不能访问（该门的DPL设为0）。专门访问处理`Double fault`异常的处理程序。
+
+对应上面的5种分类，分别有相应的函数可以初始化IDT（这些函数与硬件架构息息相关），如下所示：
+
+* set_intr_gate(n,addr)
+
+    插入中断门。该门内的端选择器设为内核态代码所在的段。Offset被设为addr，就是中断处理程序的地址。DPL域设为0。
+
+* set_system_gate(n,addr)
+
+    插入系统门。其余描述与上面的函数相同。
+
+* set_system_intr_gate(n,addr)
+
+    插入系统中断门。该门内的端选择器设为内核态代码所在的段。Offset被设为addr，就是异常处理程序的地址。DPL域设为3。
+
+* set_trap_gate(n,addr)
+
+    插入陷阱门，DPL被设为3。其余与上面函数相同。
+
+* set_task_gate(n,gdt)
+
+    插入任务门。段选择器设为要执行的函数所在的段。Offset设为0，而DPL设为3。
+
+<h3 id="4.4.2">4.4.2 IDT初次初始化</h3>
+
+其实，IDT被初始化两次。第一次是在BIOS程序中，此时CPU还工作在实模式下。一旦Linux启动，IDT会被搬运到RAM的受保护区域并被第二次初始化，因为Linux不会使用任何BIOS程序。
+
+IDT结构被存储在idt_table表中，包含256项。idt_descr变量存储IDT的大小和它的地址，在系统的初始化阶段，内核用来设置idtr寄存器，专用汇编指令是lidt。
+
+内核初始化的时候，汇编函数setup_idt()用相同的中断门填充idt_table表的所有项，都指向ignore_int()中断处理函数：
+
+    setup_idt:
+        lea ignore_int, %edx
+        movl $(__KERNEL_CS << 16), %eax
+        movw %dx, %ax           /*  = 0x0010 = cs */
+        movw $0x8e00, %dx       /* 中断门，DPL=0 */
+        lea idt_table, %edi     /* 加载idt表的地址到寄存器edi中 */
+        mov $256, %ecx
+    rp_sidt:
+        movl %eax, (%edi)       /* 设置中断处理函数 */
+        movl %edx, 4(%edi)      /* 设置段描述符 */
+        addl $8, %edi           /* 跳转到IDT表的下一项 */
+        dec %ecx                /* 自减 */
+        jne rp_sidt
+        ret
+
+中断处理函数`ignore_int()`，也是一个汇编语言编写的函数，相当于一个null函数，它执行：
+
+1. 保存一些寄存器到堆栈中。
+2. 调用printk()函数打印`Unknown interrupt`系统消息`。
+3. 从堆栈中恢复寄存器的内容。
+4. 执行iret指令回到调用处。
+
+正常情况下，此时的中断处理函数ignore_int()是不应该被执行的。如果在console或者log日志中出现`Unknown interrupt`的消息，说明发生硬件错误或者内核错误。
+
+完成这次IDT表的初始化之后，内核还会进行第二次初始化，用真正的trap或中断处理函数代替刚才的null函数。一旦这两步初始化都完成，IDT表就包含具体的中断、陷阱和系统门，用以控制每个中断请求。
+
+接下来，我们分别从异常和中断进行详细的说明。
 
 <h2 id="4.5">4.5 异常处理</h2>
+
+Most exceptions issued by the CPU are interpreted by Linux as error conditions. When one of them occurs, the kernel sends a signal to the process that caused the exception to notify it of an anomalous condition. If, for instance, a process performs a division by zero, the CPU raises a “Divide error” exception, and the corresponding exception handler sends a SIGFPE signal to the current process, which then takes the necessary steps to recover or (if no signal handler is set for that signal) abort.
+
+There are a couple of cases, however, where Linux exploits CPU exceptions to manage hardware resources more efficiently. A first case is already described in the section “Saving and Loading the FPU, MMX, and XMM Registers” in Chapter 3. The “Device not available” exception is used together with the TS flag of the cr0 register to force the kernel to load the floating point registers of the CPU with new values. A second case involves the “Page Fault” exception, which is used to defer allocating new page frames to the process until the last possible moment. The corresponding handler is complex because the exception may, or may not, denote an error condition (see the section “Page Fault Exception Handler” in Chapter 9).
+
+Exception handlers have a standard structure consisting of three steps:
+
+1. Save the contents of most registers in the Kernel Mode stack (this part is coded in assembly language).
+2. Handle the exception by means of a high-level C function.
+3. Exit from the handler by means of the ret_from_exception() function.
+
+To take advantage of exceptions, the IDT must be properly initialized with an exception handler function for each recognized exception. It is the job of the trap_init() function to insert the final values—the functions that handle the exceptions—into all IDT entries that refer to nonmaskable interrupts and exceptions. This is accomplished through the set_trap_gate(), set_intr_gate(), set_system_gate(), set_system_intr_gate(), and set_task_gate() functions:
+
+    set_trap_gate(0,&divide_error);
+    set_trap_gate(1,&debug);
+    set_intr_gate(2,&nmi);
+    set_system_intr_gate(3,&int3);
+    set_system_gate(4,&overflow);
+    set_system_gate(5,&bounds);
+    set_trap_gate(6,&invalid_op);
+    set_trap_gate(7,&device_not_available);
+    set_task_gate(8,31);
+    set_trap_gate(9,&coprocessor_segment_overrun);
+    set_trap_gate(10,&invalid_TSS);
+    set_trap_gate(11,&segment_not_present);
+    set_trap_gate(12,&stack_segment);
+    set_trap_gate(13,&general_protection);
+    set_intr_gate(14,&page_fault);
+    set_trap_gate(16,&coprocessor_error);
+    set_trap_gate(17,&alignment_check);
+    set_trap_gate(18,&machine_check);
+    set_trap_gate(19,&simd_coprocessor_error);
+    set_system_gate(128,&system_call);
+
+The “Double fault” exception is handled by means of a task gate instead of a trap or system gate, because it denotes a serious kernel misbehavior. Thus, the exception handler that tries to print out the register values does not trust the current value of the esp register. When such an exception occurs, the CPU fetches the Task Gate Descriptor stored in the entry at index 8 of the IDT. This descriptor points to the special TSS segment descriptor stored in the 32nd entry of the GDT. Next, the CPU loads the eip and esp registers with the values stored in the corresponding TSS segment. As a result, the processor executes the doublefault_fn() exception handler on its own private stack.
+
+Now we will look at what a typical exception handler does once it is invoked. Our description of exception handling will be a bit sketchy for lack of space. In particular we won’t be able to cover:
+
+1. The signal codes (see Table 11-8 in Chapter 11) sent by some handlers to the User Mode processes.
+2. Exceptions that occur when the kernel is operating in MS-DOS emulation mode(vm86 mode), which must be dealt with differently.
+3. “Debug” exceptions.
+
+<h3 id="4.5.1">4.5.1 保存寄存器</h3>
+
+Let’s use handler_name to denote the name of a generic exception handler. (The actual names of all the exception handlers appear on the list of macros in the previous section.) Each exception handler starts with the following assembly language instructions:
+
+    handler_name:
+        pushl $0                /* only for some exceptions */
+        pushl $do_handler_name
+        jmp error_code
+
+If the control unit is not supposed to automatically insert a hardware error code on the stack when the exception occurs, the corresponding assembly language fragment includes a pushl $0 instruction to pad the stack with a null value. Then the address of the high-level C function is pushed on the stack; its name consists of the exception handler name prefixed by do_.
+
+The assembly language fragment labeled as error_code is the same for all exception handlers except the one for the “Device not available” exception (see the section “Saving and Loading the FPU, MMX, and XMM Registers” in Chapter 3). The code performs the following steps:
+
+1. Saves the registers that might be used by the high-level C function on the stack.
+2. Issues a cld instruction to clear the direction flag DF of eflags, thus making sure that autoincreases on the edi and esi registers will be used with string instructions.*
+3. Copies the hardware error code saved in the stack at location esp+36 in edx. Stores the value –1 in the same stack location. As we’ll see in the section “Reexecution of System Calls” in Chapter 11, this value is used to separate 0x80 exceptions from other exceptions.
+4. Loads edi with the address of the high-level do_handler_name() C function saved in the stack at location esp+32; writes the contents of es in that stack location.
+5. Loads in the eax register the current top location of the Kernel Mode stack. This address identifies the memory cell containing the last register value saved in step 1.
+6. Loads the user data Segment Selector into the ds and es registers.
+7. Invokes the high-level C function whose address is now stored in edi. The invoked function receives its arguments from the eax and edx registers rather than from the stack. We have already run into a function that gets its arguments from the CPU registers: the _ _switch_to() function, discussed in the section “Performing the Process Switch” in Chapter 3.
+
+<h3 id="4.5.2">4.5.2 进入和离开异常处理程序</h3>
+
+As already explained, the names of the C functions that implement exception handlers always consist of the prefix do_ followed by the handler name. Most of these functions invoke the do_trap() function to store the hardware error code and the exception vector in the process descriptor of current, and then send a suitable signal to that process:
+
+    current->thread.error_code = error_code;
+    current->thread.trap_no = vector;
+    force_sig(sig_number, current);
+
+The current process takes care of the signal right after the termination of the exception handler. The signal will be handled either in User Mode by the process’s own signal handler (if it exists) or in Kernel Mode. In the latter case, the kernel usually kills the process (see Chapter 11). The signals sent by the exception handlers are listed in Table 4-1.
+
+The exception handler always checks whether the exception occurred in User Mode or in Kernel Mode and, in the latter case, whether it was due to an invalid argument passed to a system call. We’ll describe in the section “Dynamic Address Checking: The Fix-up Code” in Chapter 10 how the kernel defends itself against invalid arguments passed to system calls. Any other exception raised in Kernel Mode is due to a kernel bug. In this case, the exception handler knows the kernel is misbehaving. In order to avoid data corruption on the hard disks, the handler invokes the die() function, which prints the contents of all CPU registers on the console (this dump is called kernel oops) and terminates the current process by calling do_exit() (see “Process Termination” in Chapter 3).
+
+When the C function that implements the exception handling terminates, the code performs a jmp instruction to the ret_from_exception() function. This function is described in the later section “Returning from Interrupts and Exceptions.”
 
 <h2 id="4.6">4.6 中断处理</h2>
 
@@ -337,7 +496,7 @@ Regardless of the kind of circuit that caused the interrupt, all I/O interrupt h
 1. Save the IRQ value and the register’s contents on the Kernel Mode stack.
 2. Send an acknowledgment to the PIC that is servicing the IRQ line, thus allowing it to issue further interrupts.
 3. Execute the interrupt service routines (ISRs) associated with all the devices that share the IRQ.
-4. Terminate by jumping to the ret_from_intr( ) address.
+4. Terminate by jumping to the ret_from_intr() address.
 
 Several descriptors are needed to represent both the state of the IRQ lines and the functions to be executed when an interrupt occurs. Figure 4-4 represents in a schematic way the hardware circuits and the software functions used to handle an interrupt. These functions are discussed in the following sections.
 
@@ -376,7 +535,7 @@ There are three ways to select a line for an IRQ-configurable device:
 
 * By a utility program shipped with the device and executed when installing it. Such a program may either ask the user to select an available IRQ number or probe the system to determine an available number by itself.
 
-* By a hardware protocol executed at system startup. Peripheral devices declare which interrupt lines they are ready to use; the final values are then negotiated to reduce conflicts as much as possible. Once this is done, each interrupt handler can read the assigned IRQ by using a function that accesses some I/O ports of the device. For instance, drivers for devices that comply with the Peripheral Component Interconnect (PCI) standard use a group of functions such as pci_read_config_byte( ) to access the device configuration space.
+* By a hardware protocol executed at system startup. Peripheral devices declare which interrupt lines they are ready to use; the final values are then negotiated to reduce conflicts as much as possible. Once this is done, each interrupt handler can read the assigned IRQ by using a function that accesses some I/O ports of the device. For instance, drivers for devices that comply with the Peripheral Component Interconnect (PCI) standard use a group of functions such as pci_read_config_byte() to access the device configuration space.
 
 Table 4-3 shows a fairly arbitrary arrangement of devices and IRQs, such as those that might be found on one particular PC.
 
@@ -441,7 +600,7 @@ Table 4-5. Flags describing the IRQ line status
 
 The depth field and the IRQ_DISABLED flag of the irq_desc_t descriptor specify whether the IRQ line is enabled or disabled. Every time the disable_irq() or disable_irq_nosync() function is invoked, the depth field is increased; if depth is equal to 0, the function disables the IRQ line and sets its IRQ_DISABLED flag.* Conversely, each invocation of the enable_irq() function decreases the field; if depth becomes 0, the function enables the IRQ line and clears its IRQ_DISABLED flag.
 
-During system initialization, the init_IRQ( ) function sets the status field of each IRQ main descriptor to IRQ_DISABLED. Moreover, init_IRQ( ) updates the IDT by replacing the interrupt gates set up by setup_idt() (see the section “Preliminary Initialization of the IDT,” earlier in this chapter) with new ones. This is accomplished through the following statements:
+During system initialization, the init_IRQ() function sets the status field of each IRQ main descriptor to IRQ_DISABLED. Moreover, init_IRQ() updates the IDT by replacing the interrupt gates set up by setup_idt() (see the section “Preliminary Initialization of the IDT,” earlier in this chapter) with new ones. This is accomplished through the following statements:
 
     for (i = 0; i < NR_IRQS; i++)
         if (i+32 != 128)
@@ -464,7 +623,7 @@ For the sake of concreteness, let’s assume that our computer is a uniprocessor
         .set_affinity = NULL
     };
 
-The first field in this structure, "XT-PIC", is the PIC name. Next come the pointers to six different functions used to program the PIC. The first two functions start up and shut down an IRQ line of the chip, respectively. But in the case of the 8259A chip, these functions coincide with the third and fourth functions, which enable and disable the line. The mask_and_ack_8259A( ) function acknowledges the IRQ received by sending the proper bytes to the 8259A I/O ports. The end_8259A_irq() function is invoked when the interrupt handler for the IRQ line terminates. The last set_affinity method is set to NULL: it is used in multiprocessor systems to declare the “affinity” of CPUs for specified IRQs—that is, which CPUs are enabled to handle specific IRQs.
+The first field in this structure, "XT-PIC", is the PIC name. Next come the pointers to six different functions used to program the PIC. The first two functions start up and shut down an IRQ line of the chip, respectively. But in the case of the 8259A chip, these functions coincide with the third and fourth functions, which enable and disable the line. The mask_and_ack_8259A() function acknowledges the IRQ received by sending the proper bytes to the 8259A I/O ports. The end_8259A_irq() function is invoked when the interrupt handler for the IRQ line terminates. The last set_affinity method is set to NULL: it is used in multiprocessor systems to declare the “affinity” of CPUs for specified IRQs—that is, which CPUs are enabled to handle specific IRQs.
 
 As described earlier, multiple devices can share a single IRQ. Therefore, the kernel maintains irqaction descriptors (see Figure 4-5 earlier in this chapter), each of which refers to a specific hardware device and a specific interrupt. The fields included in such descriptor are shown in Table 4-6, and the flags are shown in Table 4-7.
 
@@ -602,7 +761,7 @@ The macro then loads the selector of the user data segment into ds and es.
 After saving the registers, the address of the current top stack location is saved in the
 eax register; then, the interrupt handler invokes the do_IRQ() function. When the ret
 instruction of do_IRQ() is executed (when that function terminates) control is transferred
-to ret_from_intr( ) (see the later section “Returning from Interrupts and
+to ret_from_intr() (see the later section “Returning from Interrupts and
 Exceptions”).
 
 <h4 id="4.6.1.6">4.6.1.6 do_IRQ()函数</h4>
@@ -661,12 +820,12 @@ not allow IRQ sharing. The trick is to serialize the activation of the hardware 
 so that just one owns the IRQ line at a time.
 
 Before activating a device that is going to use an IRQ line, the corresponding driver
-invokes request_irq( ). This function creates a new irqaction descriptor and initializes
-it with the parameter values; it then invokes the setup_irq( ) function to insert
+invokes request_irq(). This function creates a new irqaction descriptor and initializes
+it with the parameter values; it then invokes the setup_irq() function to insert
 the descriptor in the proper IRQ list. The device driver aborts the operation if setup_
-irq( ) returns an error code, which usually means that the IRQ line is already in use
+irq() returns an error code, which usually means that the IRQ line is already in use
 by another device that does not allow interrupt sharing. When the device operation
-is concluded, the driver invokes the free_irq( ) function to remove the descriptor
+is concluded, the driver invokes the free_irq() function to remove the descriptor
 from the IRQ list and release the memory area.
 
 Let’s see how this scheme works on a simple example. Assume a program wants to
@@ -678,7 +837,7 @@ floppy driver may issue the following request:
     request_irq(6, floppy_interrupt,
             SA_INTERRUPT|SA_SAMPLE_RANDOM, "floppy", NULL);
 
-As can be observed, the floppy_interrupt( ) interrupt service routine must execute
+As can be observed, the floppy_interrupt() interrupt service routine must execute
 with the interrupts disabled (SA_INTERRUPT flag set) and no sharing of the IRQ (SA_
 SHIRQ flag missing). The SA_SAMPLE_RANDOM flag set means that accesses to the floppy
 disk are a good source of random events to be used for the kernel random number
@@ -702,18 +861,18 @@ IRQ_AUTODETECT, IRQ_WAITING, and IRQ_INPROGRESS flags in the flags field of *new
 and invokes the startup method of the irq_desc[irq_nr]->handler PIC object to
 make sure that IRQ signals are enabled.
 
-Here is an example of how setup_irq( ) is used, drawn from system initialization.
+Here is an example of how setup_irq() is used, drawn from system initialization.
 The kernel initializes the irq0 descriptor of the interval timer device by executing the
-following instructions in the time_init( ) function (see Chapter 6):
+following instructions in the time_init() function (see Chapter 6):
 
     struct irqaction irq0 =
         {timer_interrupt, SA_INTERRUPT, 0, "timer", NULL, NULL};
     setup_irq(0, &irq0);
 
 First, the irq0 variable of type irqaction is initialized: the handler field is set to the
-address of the timer_interrupt( ) function, the flags field is set to SA_INTERRUPT, the
+address of the timer_interrupt() function, the flags field is set to SA_INTERRUPT, the
 name field is set to "timer", and the fifth field is set to NULL to show that no dev_id
-value is used. Next, the kernel invokes setup_irq( ) to insert irq0 in the list of
+value is used. Next, the kernel invokes setup_irq() to insert irq0 in the list of
 irqaction descriptors associated with IRQ0.
 
 
