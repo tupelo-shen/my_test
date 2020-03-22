@@ -30,7 +30,7 @@
 
 * **异步中断**，是由外部设备随机产生的，信号采样按照CPU时钟信号。异步中断就是我们通常情况下所指的中断。一般是定时器中断和I/O设备中断。
 
-异常通常分为2类：一类是编程错误，另外一类就是需要内核处理的异常情况。编程错误，比如程序异常终止，处理这种异常，内核只需要给当前进程发送一个信号即可。而需要内核处理的异常，比如页错误、通过汇编语言指令比如int或sysenter等请求内核服务等，需要内核作出相应的处理。
+异常通常分为2类：一类是编程错误，另外一类就是需要内核处理的异常情况。编程错误，比如程序异常中止，处理这种异常，内核只需要给当前进程发送一个信号即可。而需要内核处理的异常，比如页错误、通过汇编语言指令比如int或sysenter等请求内核服务等，需要内核作出相应的处理。
 
 <h2 id="4.1">4.1 中断信号的角色</h2>
 
@@ -72,11 +72,11 @@ Intel官方文档将中断和异常分类为：
 
         + Trap
 
-            陷阱指令造成的异常。陷阱同Fault一样，因为没有破坏内核态栈中的任何东西，异常处理程序终止后，可以继续执行eip寄存器中的指令。它的设计目的主要是为了调试，告知调试器正在执行一个特殊的指令（比如，在程序里打一个断点）。一旦用户查看完断点处信息后，他就可以让程序继续执行了。
+            陷阱指令造成的异常。陷阱同Fault一样，因为没有破坏内核态栈中的任何东西，异常处理程序中止后，可以继续执行eip寄存器中的指令。它的设计目的主要是为了调试，告知调试器正在执行一个特殊的指令（比如，在程序里打一个断点）。一旦用户查看完断点处信息后，他就可以让程序继续执行了。
 
         + Abort
 
-            发生严重错误时的异常。此时，CPU控制单元发生异常，但是无法确定发生错误的指令的准确位置，也就是说，在eip寄存器中的指令并不是造成错误的指令。这类错误一般是硬件错误或系统页表中非法或者不一致的地址等。控制单元发出信号，让CPU跳转到异常处理程序。Abort异常处理程序一般都是终止程序的执行。
+            发生严重错误时的异常。此时，CPU控制单元发生异常，但是无法确定发生错误的指令的准确位置，也就是说，在eip寄存器中的指令并不是造成错误的指令。这类错误一般是硬件错误或系统页表中非法或者不一致的地址等。控制单元发出信号，让CPU跳转到异常处理程序。Abort异常处理程序一般都是中止程序的执行。
 
     - 编程异常
 
@@ -373,17 +373,17 @@ IDT结构被存储在idt_table表中，包含256项。idt_descr变量存储IDT�
 
 <h2 id="4.5">4.5 异常处理</h2>
 
-Most exceptions issued by the CPU are interpreted by Linux as error conditions. When one of them occurs, the kernel sends a signal to the process that caused the exception to notify it of an anomalous condition. If, for instance, a process performs a division by zero, the CPU raises a “Divide error” exception, and the corresponding exception handler sends a SIGFPE signal to the current process, which then takes the necessary steps to recover or (if no signal handler is set for that signal) abort.
+当异常发生时，Linux内核给造成异常的进程发送一个信号，告知其发生了异常。比如，如果一个进程尝试除零操作，CPU会产生`除法错误`异常，相应的异常处理程序发送SIGFPE信号给当前进程，然后由其采取必要的步骤，恢复还是中止（如果该信号没有对应的处理程序，则中止）。
 
-There are a couple of cases, however, where Linux exploits CPU exceptions to manage hardware resources more efficiently. A first case is already described in the section “Saving and Loading the FPU, MMX, and XMM Registers” in Chapter 3. The “Device not available” exception is used together with the TS flag of the cr0 register to force the kernel to load the floating point registers of the CPU with new values. A second case involves the “Page Fault” exception, which is used to defer allocating new page frames to the process until the last possible moment. The corresponding handler is complex because the exception may, or may not, denote an error condition (see the section “Page Fault Exception Handler” in Chapter 9).
+但是，除了这些常规的异常以外，Linux有时候会特意利用某些CPU异常管理硬件资源。比如，可以使用`Device not available`这个异常，结合cr0寄存器中的TS标志，强迫内核重新加载CPU的浮点寄存器，从而更新最新的值。还可以使用`Page Fault`页错误异常，用来推迟给进程分配新的页帧，直到该分配的时候。因为它的异常处理程序极其复杂，我们在后续的文章中再详细叙述这一部分的内容。
 
-Exception handlers have a standard structure consisting of three steps:
+异常处理程序一般会执行下面三步：
 
-1. Save the contents of most registers in the Kernel Mode stack (this part is coded in assembly language).
-2. Handle the exception by means of a high-level C function.
-3. Exit from the handler by means of the ret_from_exception() function.
+1. 保存内核态堆栈中的大部分寄存器内容（这一部分一般是汇编语言编写）；
+2. 处理异常（一般使用C语言函数实现）；
+3. 退出异常处理程序（调用ret_from_exception()函数）。
 
-To take advantage of exceptions, the IDT must be properly initialized with an exception handler function for each recognized exception. It is the job of the trap_init() function to insert the final values—the functions that handle the exceptions—into all IDT entries that refer to nonmaskable interrupts and exceptions. This is accomplished through the set_trap_gate(), set_intr_gate(), set_system_gate(), set_system_intr_gate(), and set_task_gate() functions:
+为了更好地处理异常，必须正确地初始化IDT表中的每一项。这部分的工作都是由`trap_init()`函数实现的，通过调用set_trap_gate()、set_intr_gate()、set_system_gate()、set_system_intr_gate()和set_task_gate()这些辅助函数完成，`trap_init()`函数的一部分代码片段，如下所示： 
 
     set_trap_gate(0,&divide_error);
     set_trap_gate(1,&debug);
@@ -406,56 +406,52 @@ To take advantage of exceptions, the IDT must be properly initialized with an ex
     set_trap_gate(19,&simd_coprocessor_error);
     set_system_gate(128,&system_call);
 
-The “Double fault” exception is handled by means of a task gate instead of a trap or system gate, because it denotes a serious kernel misbehavior. Thus, the exception handler that tries to print out the register values does not trust the current value of the esp register. When such an exception occurs, the CPU fetches the Task Gate Descriptor stored in the entry at index 8 of the IDT. This descriptor points to the special TSS segment descriptor stored in the 32nd entry of the GDT. Next, the CPU loads the eip and esp registers with the values stored in the corresponding TSS segment. As a result, the processor executes the doublefault_fn() exception handler on its own private stack.
+值得特殊注意的是，中断号为8的异常`Double fault`，将其设为一个任务门，而不是陷阱门或系统门，这是因为它标志着内核发生了一个严重的错误。此时，内核认为堆栈中的值已经不可信，异常处理程序会尝试直接从寄存器中打印各个寄存器的值。当发生这个异常的时候，CPU从IDT表中的第9项中取出任务门描述符。该描述符指向存储在GDT表中的第32项的特定TSS段描述符。接下来，CPU从该TSS段描述符中加载eip和esp寄存器的值，然后处理器在此堆栈上，执行doublefault_fn()异常处理程序。
 
-Now we will look at what a typical exception handler does once it is invoked. Our description of exception handling will be a bit sketchy for lack of space. In particular we won’t be able to cover:
+现在，让我们看看典型的异常处理程序到底执行什么操作吧。
 
-1. The signal codes (see Table 11-8 in Chapter 11) sent by some handlers to the User Mode processes.
-2. Exceptions that occur when the kernel is operating in MS-DOS emulation mode(vm86 mode), which must be dealt with differently.
-3. “Debug” exceptions.
+<h3 id="4.5.1">4.5.1 为调用C函数准备环境</h3>
 
-<h3 id="4.5.1">4.5.1 保存寄存器</h3>
-
-Let’s use handler_name to denote the name of a generic exception handler. (The actual names of all the exception handlers appear on the list of macros in the previous section.) Each exception handler starts with the following assembly language instructions:
+下面的描述中我们使用`handler_name`作为异常处理程序的名称。异常处理程序基本上都是下面这样的代码：（所有的异常和中断处理函数都可以在`linux\arch\x86\entry\entry_32.S`文件中找到）
 
     handler_name:
-        pushl $0                /* only for some exceptions */
+        pushl $0        /* 部分异常处理程序 */
         pushl $do_handler_name
         jmp error_code
 
-If the control unit is not supposed to automatically insert a hardware error code on the stack when the exception occurs, the corresponding assembly language fragment includes a pushl $0 instruction to pad the stack with a null value. Then the address of the high-level C function is pushed on the stack; its name consists of the exception handler name prefixed by do_.
+上面的`pushl $0`汇编指令的作用就是在堆栈中本应该由控制单元自动插入硬件错误码的位置插入一个null值。然后就是把异常处理程序（C代码）的地址压栈。这个函数的命名方式是在异常处理函数的名称前缀`do_`字符。除了异常`Device not available`之外，`error_code`对于所有的异常处理程序都是一样的。`error_code`处的代码执行如下内容：
 
-The assembly language fragment labeled as error_code is the same for all exception handlers except the one for the “Device not available” exception (see the section “Saving and Loading the FPU, MMX, and XMM Registers” in Chapter 3). The code performs the following steps:
+1. 保存上面提到的C函数可能使用的寄存器。
+2. 发送cld指令，清除eflags中的DF方向标志，保证使用字符串指令的时候，edi和esi寄存器自增加。 
+3. 拷贝保存在堆栈`esp+36`处的硬件错误码写入到edx寄存器中，并将该堆栈中的值改写为-1。后面我们还要研究内核如何使用这个值区分出0x80异常。
+4. 将堆栈`esp+32`处的C函数`do_handler_name()`的地址写入到edi寄存器中，将es的内容写入到堆栈中。
+5. 将内核态堆栈的栈顶位置加载到eax寄存器中。
+6. 将用户数据段选择器加载到ds和es寄存器中。
+7. 调用edi寄存器中的C函数，此时，这个函数从eax和edx寄存器中获取参数，而不是从堆栈中。这种函数的调用方式，我们在学习__switch_to()函数时，已经了解过了。
 
-1. Saves the registers that might be used by the high-level C function on the stack.
-2. Issues a cld instruction to clear the direction flag DF of eflags, thus making sure that autoincreases on the edi and esi registers will be used with string instructions.*
-3. Copies the hardware error code saved in the stack at location esp+36 in edx. Stores the value –1 in the same stack location. As we’ll see in the section “Reexecution of System Calls” in Chapter 11, this value is used to separate 0x80 exceptions from other exceptions.
-4. Loads edi with the address of the high-level do_handler_name() C function saved in the stack at location esp+32; writes the contents of es in that stack location.
-5. Loads in the eax register the current top location of the Kernel Mode stack. This address identifies the memory cell containing the last register value saved in step 1.
-6. Loads the user data Segment Selector into the ds and es registers.
-7. Invokes the high-level C function whose address is now stored in edi. The invoked function receives its arguments from the eax and edx registers rather than from the stack. We have already run into a function that gets its arguments from the CPU registers: the _ _switch_to() function, discussed in the section “Performing the Process Switch” in Chapter 3.
+> 总结：
+>
+> 我们前面已经提到过，异常处理程序和普通的进程是不一样的，它没有所谓的堆栈。但是，现在异常处理程序又是使用C语言编写的。要想使用C函数，必须手动构建好堆栈，所以，上面这7步的内容其实就是为执行`do_handler_name`函数构建好堆栈，而这个函数的特殊之处就是，参数是通过eax和edx寄存器传递过来的。
 
-<h3 id="4.5.2">4.5.2 进入和离开异常处理程序</h3>
+<h3 id="4.5.2">4.5.2 真正的异常处理程序</h3>
 
-As already explained, the names of the C functions that implement exception handlers always consist of the prefix do_ followed by the handler name. Most of these functions invoke the do_trap() function to store the hardware error code and the exception vector in the process descriptor of current, and then send a suitable signal to that process:
+那`do_handler_name`之类的函数到底要执行什么内容呢？其实，它们最终也是调用一个统一处理函数`do_trap()`，它的主要代码如下所示。就是保存硬件错误码和异常号到当前进程描述符中，然后发送相应的信号给进程：
 
     current->thread.error_code = error_code;
     current->thread.trap_no = vector;
     force_sig(sig_number, current);
 
-The current process takes care of the signal right after the termination of the exception handler. The signal will be handled either in User Mode by the process’s own signal handler (if it exists) or in Kernel Mode. In the latter case, the kernel usually kills the process (see Chapter 11). The signals sent by the exception handlers are listed in Table 4-1.
+异常处理程序终止后，当前进程接收到信号。如果进程是在用户态，则信号交给进程自身的信号处理程序（如果存在的话）；如果是在内核态，则内核通常会杀死进程。
 
-The exception handler always checks whether the exception occurred in User Mode or in Kernel Mode and, in the latter case, whether it was due to an invalid argument passed to a system call. We’ll describe in the section “Dynamic Address Checking: The Fix-up Code” in Chapter 10 how the kernel defends itself against invalid arguments passed to system calls. Any other exception raised in Kernel Mode is due to a kernel bug. In this case, the exception handler knows the kernel is misbehaving. In order to avoid data corruption on the hard disks, the handler invokes the die() function, which prints the contents of all CPU registers on the console (this dump is called kernel oops) and terminates the current process by calling do_exit() (see “Process Termination” in Chapter 3).
-
-When the C function that implements the exception handling terminates, the code performs a jmp instruction to the ret_from_exception() function. This function is described in the later section “Returning from Interrupts and Exceptions.”
+最后异常处理程序跳转到`ret_from_exception()`函数地址处，从异常状态返回。
 
 <h2 id="4.6">4.6 中断处理</h2>
 
-As we explained earlier, most exceptions are handled simply by sending a Unix signal to the process that caused the exception. The action to be taken is thus deferred until the process receives the signal; as a result, the kernel is able to process the exception quickly.
+如前所述，我们知道异常的处理还是比较简单的，就是给相关的进程发送信号，而且不存在进程调度的问题，所以内核很快就处理完了异常。
 
-This approach does not hold for interrupts, because they frequently arrive long after the process to which they are related (for instance, a process that requested a data transfer) has been suspended and a completely unrelated process is running. So it would make no sense to send a Unix signal to the current process.
+但是，这种方法不适用于中断，因为当一个不相关的进程正在运行的时候，发送给特定进程的中断信号会被挂起，等到该进程执行的时候才会处理。所以，给中断发送一个信号没有太大意义。
 
-Interrupt handling depends on the type of interrupt. For our purposes, we’ll distinguish three main classes of interrupts:
+另外，中断的处理与中断类型息息相关。所以，我们将中断分为3类：
 
 1. I/O中断
 2. 定时器中断
@@ -463,55 +459,48 @@ Interrupt handling depends on the type of interrupt. For our purposes, we’ll d
 
 <h3 id="4.6.1">4.6.1 I/O中断处理</h3>
 
-In general, an I/O interrupt handler must be flexible enough to service several devices at the same time. In the PCI bus architecture, for instance, several devices may share the same IRQ line. This means that the interrupt vector alone does not tell the whole story. In the example shown in Table 4-3, the same vector 43 is assigned to the USB port and to the sound card. However, some hardware devices found in older PC architectures (such as ISA) do not reliably operate if their IRQ line is shared with other devices.
+中断资源是有限的，所以对于I/O中断处理程序来说，应该尽量为尽可能多的设备提供服务。比如PCI总线架构，几个设备共享同一个IRQ请求线。这意味中断矢量表是共享的，不能一一覆盖所有设备。比如下面的表4-3中，中断号43就被分配给了USB端口和声卡。但是，对于一些旧的架构来说，共享IRQ请求线不是那么可靠，比如ISA总线。
 
-Interrupt handler flexibility is achieved in two distinct ways, as discussed in the following list.
+增强中断处理程序的灵活性，有下面两种方式：
 
-* IRQ sharing
+* IRQ共享
 
-    The interrupt handler executes several interrupt service routines (ISRs). Each ISR is a function related to a single device sharing the IRQ line. Because it is not possible to know in advance which particular device issued the IRQ, each ISR is executed to verify whether its device needs attention; if so, the ISR performs all the operations that need to be executed when the device raises an interrupt.
+    在每个中断处理程序中罗列所有共享该IRQ的设备的中断服务例程（ISR）。每次轮询一遍这些服务例程，判断是哪个设备发送的中断请求。所以，每次中断请求都要把所有的中断服务例程执行一遍。
 
-* IRQ dynamic allocation
+* IRQ动态分配
 
-    An IRQ line is associated with a device driver at the last possible moment; for instance, the IRQ line of the floppy device is allocated only when a user accesses the floppy disk device. In this way, the same IRQ vector may be used by several hardware devices even if they cannot share the IRQ line; of course, the hardware devices cannot be used at the same time. (See the discussion at the end of this section.)
+    直到最后时刻，IRQ中断请求线才会与设备驱动程序关联起来。比如，只有当用户访问软盘涉笔的时候才会给软盘设备分配中断请求线IRQ。使用这种方法，即使不共享IRQ中断请求线，几个硬件设备也能使用相同的中断号。
 
-Not all actions to be performed when an interrupt occurs have the same urgency. In fact, the interrupt handler itself is not a suitable place for all kind of actions. Long noncritical operations should be deferred, because while an interrupt handler is running, the signals on the corresponding IRQ line are temporarily ignored. Most important, the process on behalf of which an interrupt handler is executed must always stay in the TASK_RUNNING state, or a system freeze can occur. Therefore, interrupt handlers cannot perform any blocking procedure such as an I/O disk operation.
+众所周知，中断有轻重缓急之分，而且中断处理程序的执行时间不能过长。因为中断处理程序运行时，IRQ中断请求线的信号会被暂时忽略，所以，长时间执行且非重要的操作应该被延后执行。更为重要的是，代表中断处理程序执行的进程必须总是处于TASK_RUNING状态，或`系统冻结`中，因此，中断处理程序不能执行阻塞程序，比如I/O硬盘操作。
 
-Linux divides the actions to be performed following an interrupt into three classes:
+Linux将中断要执行的操作分为三类：
 
-* Critical
+* 关键中断
 
-    Actions such as acknowledging an interrupt to the PIC, reprogramming the PIC or the device controller, or updating data structures accessed by both the device and the processor. These can be executed quickly and are critical, because they must be performed as soon as possible. Critical actions are executed within the interrupt handler immediately, with maskable interrupts disabled.
+    比如响应PIC控制器发送的中断，重新编程设置PIC或者设备控制器，更新设备和处理器访问的数据结构等。这些中断能够被快速执行且是关键数据，因为它们都必须被尽可能快的执行。在中断处理程序中立即执行这些关键操作，此时可屏蔽中断被禁止。
 
-* Noncritical
+* 非关键中断
 
-    Actions such as updating data structures that are accessed only by the processor (for instance, reading the scan code after a keyboard key has been pushed). These actions can also finish quickly, so they are executed by the interrupt handler immediately, with the interrupts enabled.
+    更新只有处理器访问的数据结构的中断请求（比如，读取键盘按键按下后的键码）。这类中断在中断处理程序中也能很快完成处理。
 
-* Noncritical deferrable
+* 非关键可延时中断
 
-    Actions such as copying a buffer’s contents into the address space of a process (for instance, sending the keyboard line buffer to the terminal handler process). These may be delayed for a long time interval without affecting the kernel operations; the interested process will just keep waiting for the data. Noncritical deferrable actions are performed by means of separate functions that are discussed in the later section “Softirqs and Tasklets.”
+    比如拷贝缓存中的内容到进程的地址空间中的操作就是非关键可延时中断操作（比如，发送键盘的一行缓存到终端处理进程中）。这类操作完全可以延时一段时间执行，并不会影响内核操作。对于这类操作一般使用`软中断和tasklet`机制完成。
 
-Regardless of the kind of circuit that caused the interrupt, all I/O interrupt handlers perform the same four basic actions:
+I/O中断处理的基本步骤是：
 
-1. Save the IRQ value and the register’s contents on the Kernel Mode stack.
-2. Send an acknowledgment to the PIC that is servicing the IRQ line, thus allowing it to issue further interrupts.
-3. Execute the interrupt service routines (ISRs) associated with all the devices that share the IRQ.
-4. Terminate by jumping to the ret_from_intr() address.
+1. 保存IRQ值和内核态堆栈中寄存器值->恢复进程的时候使用。
+2. 给PIC控制器发送应答，告知正在响应IRQ请求线，允许继续发送中断。
+3. 执行中断服务例程（ISR）。
+4. 从中断返回（跳转到ret_from_intr()函数地址）。
 
-Several descriptors are needed to represent both the state of the IRQ lines and the functions to be executed when an interrupt occurs. Figure 4-4 represents in a schematic way the hardware circuits and the software functions used to handle an interrupt. These functions are discussed in the following sections.
+为了响应中断处理，需要几个数据结构和函数去描述IRQ请求线的状态和要执行的函数功能。图4-4展示了处理中断的过程原理图。其中的函数，后面描述。
 
 <img id="Figure_4-4" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_4.PNG">
 
 <h4 id="4.6.1.1">4.6.1.1 中断向量表</h4>
 
-As illustrated in Table 4-2, physical IRQs may be assigned any vector in the range 32–238. However, Linux uses vector 128 to implement system calls.
-
-The IBM-compatible PC architecture requires that some devices be statically connected to specific IRQ lines. In particular:
-
-1. The interval timer device must be connected to the IRQ0 line (see Chapter 6).
-2. The slave 8259A PIC must be connected to the IRQ2 line (although more advanced PICs are now being used, Linux still supports 8259A-style PICs).
-3. The external mathematical coprocessor must be connected to the IRQ13 line (although recent 80 × 86 processors no longer use such a device, Linux continues to support the hardy 80386 model).
-4. In general, an I/O device can be connected to a limited number of IRQ lines. (As a matter of fact, when playing with an old PC where IRQ sharing is not possible, you might not succeed in installing a new card because of IRQ conflicts with other already present hardware devices.)
+在表4-2中，我们列出了IRQ的分配，中断号对应32-238。另外，Linux使用中断号128实现系统调用。
 
 表4-2 Linux中断向量表
 
@@ -529,17 +518,15 @@ The IBM-compatible PC architecture requires that some devices be statically conn
 | 254       | APIC错误中断 |
 | 255       | APIC伪中断 |
 
-There are three ways to select a line for an IRQ-configurable device:
+对于IRQ可配置的设备，有三种方法选择IRQ中断请求线：
 
-* By setting hardware jumpers (only on very old device cards).
+* 通过跳线帽（一般旧计算机时代使用）。
 
-* By a utility program shipped with the device and executed when installing it. Such a program may either ask the user to select an available IRQ number or probe the system to determine an available number by itself.
+* 通过设备的程序进行设置。用户可以选择可用的IRQ请求线或者自行探查系统可用的IRQ中断请求线。
 
-* By a hardware protocol executed at system startup. Peripheral devices declare which interrupt lines they are ready to use; the final values are then negotiated to reduce conflicts as much as possible. Once this is done, each interrupt handler can read the assigned IRQ by using a function that accesses some I/O ports of the device. For instance, drivers for devices that comply with the Peripheral Component Interconnect (PCI) standard use a group of functions such as pci_read_config_byte() to access the device configuration space.
+* 在系统启动阶段，按照硬件协议进行申请，然后通过协商，尽可能减少冲突。完成分配后，每个中断处理程序通过函数读取访问I/O设备的IRQ中断请求线。比如，遵循PCI总线标准的设备，可以使用一组类似pci_read_config_byte()的函数读取设备的配置空间。
 
-Table 4-3 shows a fairly arbitrary arrangement of devices and IRQs, such as those that might be found on one particular PC.
-
-Table 4-3. An example of IRQ assignment to I/O devices
+表4-3展示了一个分配设备和IRQ的示例：
 
 | IRQ | INT | Hardware device |
 | --- | --- | --------------- |
@@ -557,48 +544,47 @@ Table 4-3. An example of IRQ assignment to I/O devices
 | 14| 46 | EIDE disk controller’s first chain |
 | 15| 47 | EIDE disk controller’s second chain |
 
-The kernel must discover which I/O device corresponds to the IRQ number before enabling interrupts. Otherwise, for example, how could the kernel handle a signal from a SCSI disk without knowing which vector corresponds to the device? The correspondence is established while initializing each device driver (see Chapter 13).
+也就是说，内核必须在使能中断之前，知道哪个I/O设备对应哪个IRQ号。然后在设备驱动初始化的时候才能对应上正确的中断处理程序。
 
 <h4 id="4.6.1.2">4.6.1.2 IRQ数据结构</h4>
 
-As always, when discussing complicated operations involving state transitions, it helps to understand first where key data is stored. Thus, this section explains the data structures that support interrupt handling and how they are laid out in various descriptors. Figure 4-5 illustrates schematically the relationships between the main descriptors that represent the state of the IRQ lines. (The figure does not illustrate the data structures needed to handle softirqs and tasklets; they are discussed later in this chapter.)
+那么，IRQ数据结构是什么样子呢？下图展示了IRQ数据结构以及它们之间的关系。该图中没有展示`软中断和tasklet`相关的数据结构和关系。因为我们后面会单独写文章对其进行阐述。
 
 <img id="Figure_4-5" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_4_5.PNG">
 
-Every interrupt vector has its own irq_desc_t descriptor, whose fields are listed in Table 4-4. All such descriptors are grouped together in the irq_desc array.
+中断矢量表中的每一项都包含一个`irq_desc_t`类型的描述符，它的成员如表4-4所示。所有的项都存储到`irq_desc`数组中。
 
-Table 4-4. The irq_desc_t descriptor
+表4-4 irq_desc_t结构成员
 
 | 成员 | 描述 |
 | ---- | ---- |
-| handler | ---- |
-| handler_data | ---- |
-| action | ---- |
-| status | ---- |
-| depth | ---- |
-| irq_count | ---- |
-| irqs_unhandled | ---- |
-| lock | ---- |
+| handler | 指向PIC对象，响应PIC发送的中断请求 |
+| handler_data | handler需要的数据 |
+| action | 指向具体的中断服务例程 |
+| status | 表明IRQ请求线的状态 |
+| depth | IRQ线禁止使能标志 |
+| irq_count | 中断计数（诊断使用） |
+| irqs_unhandled | 未处理中断计数 |
+| lock | 自旋锁，保护该数据结构的访问 |
 
-An interrupt is unexpected if it is not handled by the kernel, that is, either if there is no ISR associated with the IRQ line, or if no ISR associated with the line recognizes the interrupt as raised by its own hardware device. Usually the kernel checks the number of unexpected interrupts received on an IRQ line, so as to disable the line in case a faulty hardware device keeps raising an interrupt over and over. Because the IRQ line can be shared among several devices, the kernel does not disable the line as soon as it detects a single unhandled interrupt. Rather, the kernel stores in the irq_count and irqs_unhandled fields of the irq_desc_t descriptor the total number of interrupts and the number of unexpected interrupts, respectively; when the 100,000th interrupt is raised, the kernel disables the line if the number of unhandled interrupts is above 99,900 (that is, if less than 101 interrupts over the last 100,000 received are expected interrupts from hardware devices sharing the line).
+非预期中断，就是那些可能没有中断服务例程（ISR）或者中断服务例程和中断请求线不匹配的中断。内核对于这类中断是不作处理的。但是内核如何检测这类中断呢？又是如何禁止这类中断呢？因为中断号是共享的，所以，内核不会一检测到非预期中断就禁止它，而是对于总的中断请求次数和未处理的中断次数进行计数。当总的中断次数达到100000次，而未处理的中断是99900次时，内核就会禁止该中断。
 
-The status of an IRQ line is described by the flags listed in Table 4-5.
-
-Table 4-5. Flags describing the IRQ line status
+表4-5 展示了中断请求线的状态标志
 
 | 标志 | 描述 |
 | ---- | ---- |
 | IRQ_INPROGRESS | IRQ的服务程序正在被执行 |
 | IRQ_DISABLED   | IRQ线被禁止 |
 | IRQ_PENDING    | IRQ被挂起 |
-| IRQ_REPLAY     | IRQ的服务程序正在被执行 |
-| IRQ_AUTODETECT | IRQ的服务程序正在被执行 |
-| IRQ_WAITING    | IRQ的服务程序正在被执行 |
-| IRQ_LEVEL      | IRQ的服务程序正在被执行 |
-| IRQ_MASKED     | IRQ的服务程序正在被执行 |
-| IRQ_PER_CPU    | IRQ的服务程序正在被执行 |
+| IRQ_REPLAY     | IRQ被禁止，但是上一次还没有响应PIC |
+| IRQ_AUTODETECT | 自动检测IRQ |
+| IRQ_WAITING    | 内核在执行硬件设备探测时使用IRQ线;而且，相应的中断还没有被触发 |
+| IRQ_LEVEL      | X86架构未使用 |
+| IRQ_MASKED     | 未使用 |
+| IRQ_PER_CPU    | X86架构未使用 |
 
 The depth field and the IRQ_DISABLED flag of the irq_desc_t descriptor specify whether the IRQ line is enabled or disabled. Every time the disable_irq() or disable_irq_nosync() function is invoked, the depth field is increased; if depth is equal to 0, the function disables the IRQ line and sets its IRQ_DISABLED flag.* Conversely, each invocation of the enable_irq() function decreases the field; if depth becomes 0, the function enables the IRQ line and clears its IRQ_DISABLED flag.
+`depth`和标志`IRQ_DISABLED`表明IRQ线被使能还是禁止。每次调用`disable_irq()`和`disable_irq_nosync()`函数，`depth`都会增加；如果`depth`等于0，则函数禁止IRQ线并且设置`IRQ_DISABLED`标志。相反，如果调用`enable_irq()`函数，`depth`会递减，如果`depth`等于
 
 During system initialization, the init_IRQ() function sets the status field of each IRQ main descriptor to IRQ_DISABLED. Moreover, init_IRQ() updates the IDT by replacing the interrupt gates set up by setup_idt() (see the section “Preliminary Initialization of the IDT,” earlier in this chapter) with new ones. This is accomplished through the following statements:
 
