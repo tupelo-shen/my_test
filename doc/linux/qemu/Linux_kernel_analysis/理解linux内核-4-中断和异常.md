@@ -383,7 +383,7 @@ IDT结构被存储在idt_table表中，包含256项。idt_descr变量存储IDT�
 2. 处理异常（一般使用C语言函数实现）；
 3. 退出异常处理程序（调用ret_from_exception()函数）。
 
-为了更好地处理异常，必须正确地初始化IDT表中的每一项。这部分的工作都是由`trap_init()`函数实现的，通过调用set_trap_gate()、set_intr_gate()、set_system_gate()、set_system_intr_gate()和set_task_gate()这些辅助函数完成，`trap_init()`函数的一部分代码片段，如下所示： 
+为了更好地处理异常，必须正确地初始化IDT表中的每一项。这部分的工作都是由`trap_init()`函数实现的，通过调用set_trap_gate()、set_intr_gate()、set_system_gate()、set_system_intr_gate()和set_task_gate()这些辅助函数完成，`trap_init()`函数的一部分代码片段，如下所示：
 
     set_trap_gate(0,&divide_error);
     set_trap_gate(1,&debug);
@@ -422,7 +422,7 @@ IDT结构被存储在idt_table表中，包含256项。idt_descr变量存储IDT�
 上面的`pushl $0`汇编指令的作用就是在堆栈中本应该由控制单元自动插入硬件错误码的位置插入一个null值。然后就是把异常处理程序（C代码）的地址压栈。这个函数的命名方式是在异常处理函数的名称前缀`do_`字符。除了异常`Device not available`之外，`error_code`对于所有的异常处理程序都是一样的。`error_code`处的代码执行如下内容：
 
 1. 保存上面提到的C函数可能使用的寄存器。
-2. 发送cld指令，清除eflags中的DF方向标志，保证使用字符串指令的时候，edi和esi寄存器自增加。 
+2. 发送cld指令，清除eflags中的DF方向标志，保证使用字符串指令的时候，edi和esi寄存器自增加。
 3. 拷贝保存在堆栈`esp+36`处的硬件错误码写入到edx寄存器中，并将该堆栈中的值改写为-1。后面我们还要研究内核如何使用这个值区分出0x80异常。
 4. 将堆栈`esp+32`处的C函数`do_handler_name()`的地址写入到edi寄存器中，将es的内容写入到堆栈中。
 5. 将内核态堆栈的栈顶位置加载到eax寄存器中。
@@ -546,7 +546,7 @@ I/O中断处理的基本步骤是：
 
 也就是说，内核必须在使能中断之前，知道哪个I/O设备对应哪个IRQ号。然后在设备驱动初始化的时候才能对应上正确的中断处理程序。
 
-<h4 id="4.6.1.2">4.6.1.2 IRQ数据结构</h4>
+<h4 id="4.6.1.2">4.6.1.2 IRQ相关数据结构</h4>
 
 那么，IRQ数据结构是什么样子呢？下图展示了IRQ数据结构以及它们之间的关系。该图中没有展示`软中断和tasklet`相关的数据结构和关系。因为我们后面会单独写文章对其进行阐述。
 
@@ -583,23 +583,22 @@ I/O中断处理的基本步骤是：
 | IRQ_MASKED     | 未使用 |
 | IRQ_PER_CPU    | X86架构未使用 |
 
-The depth field and the IRQ_DISABLED flag of the irq_desc_t descriptor specify whether the IRQ line is enabled or disabled. Every time the disable_irq() or disable_irq_nosync() function is invoked, the depth field is increased; if depth is equal to 0, the function disables the IRQ line and sets its IRQ_DISABLED flag.* Conversely, each invocation of the enable_irq() function decreases the field; if depth becomes 0, the function enables the IRQ line and clears its IRQ_DISABLED flag.
-`depth`和标志`IRQ_DISABLED`表明IRQ线被使能还是禁止。每次调用`disable_irq()`和`disable_irq_nosync()`函数，`depth`都会增加；如果`depth`等于0，则函数禁止IRQ线并且设置`IRQ_DISABLED`标志。相反，如果调用`enable_irq()`函数，`depth`会递减，如果`depth`等于
+`depth`和标志`IRQ_DISABLED`表明IRQ线被使能还是禁止。每次调用`disable_irq()`和`disable_irq_nosync()`函数，`depth`都会增加；如果`depth`大于0，则函数禁止IRQ线并且设置`IRQ_DISABLED`标志。相反，如果调用`enable_irq()`函数，`depth`会递减，如果`depth`等于0，则使能IRQ线并且清除`IRQ_DISABLED`标志。
 
-During system initialization, the init_IRQ() function sets the status field of each IRQ main descriptor to IRQ_DISABLED. Moreover, init_IRQ() updates the IDT by replacing the interrupt gates set up by setup_idt() (see the section “Preliminary Initialization of the IDT,” earlier in this chapter) with new ones. This is accomplished through the following statements:
+系统启动时，调用`init_IRQ()`函数设置IRQ描述符中的`status`成员为`IRQ_DISABLED`。与讲解异常处理一样，也会调用`setup_idt()`类似的函数初始化IDT表，通过下面的代码段完成：
 
     for (i = 0; i < NR_IRQS; i++)
         if (i+32 != 128)
             set_intr_gate(i+32,interrupt[i]);
 
-This code looks in the interrupt array to find the interrupt handler addresses that it uses to set up the interrupt gates. Each entry n of the interrupt array stores the address of the interrupt handler for IRQn (see the later section “Saving the registers for the interrupt handler”). Notice that the interrupt gate corresponding to vector 128 is left untouched, because it is used for the system call’s programmed exception.
+这段代码的功能就是遍历`interrupt`数组，查找各个中断处理程序的地址。需要注意的是，中断号128没有分配，留给系统调用作为异常使用。
 
-In addition to the 8259A chip that was mentioned near the beginning of this chapter, Linux supports several other PIC circuits such as the SMP IO-APIC, Intel PIIX4’s internal 8259 PIC, and SGI’s Visual Workstation Cobalt (IO-)APIC. To handle all such devices in a uniform way, Linux uses a PIC object, consisting of the PIC name and seven PIC standard methods. The advantage of this object-oriented approach is that drivers need not to be aware of the kind of PIC installed in the system. Each driver-visible interrupt source is transparently wired to the appropriate controller. The data structure that defines a PIC object is called hw_interrupt_type (also called hw_irq_controller).
+除了8259A芯片之外，Linux还支持其它的PIC控制器，比如`SMP IO-APIC`、`Intel PIIX4内部的8259中断控制器`、`SGI的Visual Workstation Cobalt (IO-)APIC`。为了统一处理这些硬件，Linux内核使用了面向对象的编程思想，构建了一个PIC对象，包含PIC名称和7个PIC标准方法。这种设计的优点是驱动程序无需关注系统中到底是什么中断控制器，硬件的差异被屏蔽掉了。这个PIC对象的数据结构类型称为`hw_interrupt_type`。
 
-For the sake of concreteness, let’s assume that our computer is a uniprocessor with two 8259A PICs, which provide 16 standard IRQs. In this case, the handler field in each of the 16 irq_desc_t descriptors points to the i8259A_irq_type variable, which describes the 8259A PIC. This variable is initialized as follows:
+我们更好理解，举一个具体的实例，假设计算机是单核，带有2个8259A中断控制器，提供16个标准的IRQ。那么`irq_desc_t`类型的描述符中的`handler`指向`hw_interrupt_type`类型的结构对象`i8259A_irq_type`，其成员如下所示：
 
     struct hw_interrupt_type i8259A_irq_type = {
-        .typename = "XT-PIC",
+        .typename = "XT-PIC",           /* PIC名称 */
         .startup = startup_8259A_irq,
         .shutdown = shutdown_8259A_irq,
         .enable = enable_8259A_irq,
@@ -609,113 +608,79 @@ For the sake of concreteness, let’s assume that our computer is a uniprocessor
         .set_affinity = NULL
     };
 
-The first field in this structure, "XT-PIC", is the PIC name. Next come the pointers to six different functions used to program the PIC. The first two functions start up and shut down an IRQ line of the chip, respectively. But in the case of the 8259A chip, these functions coincide with the third and fourth functions, which enable and disable the line. The mask_and_ack_8259A() function acknowledges the IRQ received by sending the proper bytes to the 8259A I/O ports. The end_8259A_irq() function is invoked when the interrupt handler for the IRQ line terminates. The last set_affinity method is set to NULL: it is used in multiprocessor systems to declare the “affinity” of CPUs for specified IRQs—that is, which CPUs are enabled to handle specific IRQs.
+`"XT-PIC"`，中断控制器名称。`startup`和`shutdown`分别表示启动和关闭IRQ线，但是对于8259A来说，这两个函数与`enable`和`disable`两个函数相同。 `mask_and_ack_8259A()`应答中断控制器，`end_8259A_irq()`函数在中断处理程序结束时调用。`set_affinity`方法设为`NULL`， 这个方法是为多核系统设计的，用来声明CPU的亲和力`affinity`，也就是说为某个IRQ指定在哪个CPU上处理。
 
-As described earlier, multiple devices can share a single IRQ. Therefore, the kernel maintains irqaction descriptors (see Figure 4-5 earlier in this chapter), each of which refers to a specific hardware device and a specific interrupt. The fields included in such descriptor are shown in Table 4-6, and the flags are shown in Table 4-7.
+我们知道，多个设备可以共享一个IRQ。因此，内核必须为每个设备及其对应的中断维护一个数据结构，称为`irqaction`描述符。它的成员如下表所示：
 
-Table 4-6. Fields of the irqaction descriptor
+表4-6 `irqaction`描述符的各个成员
+
+| 成员 | 描述 |
+| ---- | ---- |
+| handler   | 中断服务例程（ISR） |
+| flags     | 描述IRQ和设备之间的关系 |
+| mask      | 未使用 |
+| name      | I/O设备的名称 |
+| dev_id    | 指向设备本身 |
+| next      | 指向下一个irqaction |
+| irq       | IRQ线 |
+| dir       | 指向目录/proc/irq/n |
+
+表4-7 `irqaction`的标志位
+
+| 成员 | 描述 |
+| ---- | ---- |
+| SA_INTERRUPT | 执行中断处理程序时必须禁止中断 |
+| SA_SHIRQ | 允许共享IRQ |
+| SA_SAMPLE_RANDOM | 可以被当做随机数发生器 |
+
+> `init_IRQ()`的代码实现随着硬件架构的发展，以及内核的不断优化升级，会不断变化，且变得越来越复杂。但是，万变不离其宗，核心的设计思想没变。
 
 <h4 id="4.6.1.3">4.6.1.3 多核系统中的IRQ分配</h4>
 
-Linux sticks to the Symmetric Multiprocessing model (SMP); this means, essentially, that the kernel should not have any bias toward one CPU with respect to the others. As a consequence, the kernel tries to distribute the IRQ signals coming from the hardware devices in a round-robin fashion among all the CPUs. Therefore, all the CPUs should spend approximately the same fraction of their execution time servicing I/O interrupts.
+我们知道SMP的全称是对称多处理系统，这意味，Linux内核不应该对一个CPU有任何偏向。于是，内核在CPU之间采用循环法（round-robin）分配IRQ。因此，所有的CPU响应中断的时间都差不多。
 
-In the earlier section “The Advanced Programmable Interrupt Controller (APIC),” we said that the multi-APIC system has sophisticated mechanisms to dynamically distribute the IRQ signals among the CPUs.
+之前我们已经了解过，多APIC系统的分配IRQ机制非常复杂。
 
-During system bootstrap, the booting CPU executes the setup_IO_APIC_irqs() function
-to initialize the I/O APIC chip. The 24 entries of the Interrupt Redirection Table
-of the chip are filled, so that all IRQ signals from the I/O hardware devices can be
-routed to each CPU in the system according to the “lowest priority” scheme (see the
-earlier section “IRQs and Interrupts”). During system bootstrap, moreover, all CPUs
-execute the setup_local_APIC() function, which takes care of initializing the local
-APICs. In particular, the task priority register (TPR) of each chip is initialized to a fixed
-value, meaning that the CPU is willing to handle every kind of IRQ signal, regardless
-of its priority. The Linux kernel never modifies this value after its initialization.
+在系统引导阶段，负责引导的CPU执行`setup_IO_APIC_irqs()`函数初始化`I/O-APIC`芯片。也就是初始化其中断重定向表（24项），然后所有来自I/O设备的IRQ就可以被中继到各个CPU上，分配原则是`最低优先级优先`原则。在此期间，所有的CPU执行`setup_local_APIC()`函数，初始化自身的APIC控制器。当然也可以将中断控制器中的TPR（任务优先级寄存器）写入相同值，从而公平地对待每个CPU，按照循环的方式分配IRQ。一旦初始化完成，内核就不能再修改这个值了。至于实现循环，前面我们讲过了，请参考之前的文章。
 
-All task priority registers contain the same value, thus all CPUs always have the same
-priority. To break a tie, the multi-APIC system uses the values in the arbitration priority
-registers of local APICs, as explained earlier. Because such values are automatically
-changed after every interrupt, the IRQ signals are, in most cases, fairly
-distributed among all CPUs.*
+简而言之，设备发出IRQ信号，多APIC系统选择一个CPU，并把中断信号发送给响应的私有APIC，继而，私有APIC中断CPU。
 
-In short, when a hardware device raises an IRQ signal, the multi-APIC system selects
-one of the CPUs and delivers the signal to the corresponding local APIC, which in
-turn interrupts its CPU. No other CPUs are notified of the event.
+虽说初始化之后，内核本不应该在关心IRQ分配问题。但是不幸的是，有时候硬件在分配中断时会发生错误（比如，基于奔腾4的SMP主板就有这样的问题）。因此，Linux2.6内核使用一个特定的内核线程叫`kirqd`进行纠正IRQ的自动分配（如果有必要的话）。
 
-All this is magically done by the hardware, so it should be of no concern for the kernel
-after multi-APIC system initialization. Unfortunately, in some cases the hardware
-fails to distribute the interrupts among the microprocessors in a fair way (for
-instance, some Pentium 4–based SMP motherboards have this problem). Therefore,
-Linux 2.6 makes use of a special kernel thread called kirqd to correct, if necessary,
-the automatic assignment of IRQs to CPUs.
+内核线程使用多APIC系统一个很棒的功能，叫做CPU的IRQ亲和力：通过修改`I/O-APIC`的中断重定向表，将中断信号指定到新的CPU上。具体操作就是调用`set_ioapic_affinity_irq()`函数，它需要两个参数：需要重定向的IRQ矢量表和一个32位的掩码（用来表示接收IRQ的CPU）。系统管理员也可以通过写新的CPU位掩码到`/proc/irq/n/smp_affinity`文件中，修改响应中断的CPU。
 
-The kernel thread exploits a nice feature of multi-APIC systems, called the IRQ affinity
-of a CPU: by modifying the Interrupt Redirection Table entries of the I/O APIC, it
-is possible to route an interrupt signal to a specific CPU. This can be done by invoking
-the set_ioapic_affinity_irq() function, which acts on two parameters: the IRQ
-vector to be rerouted and a 32-bit mask denoting the CPUs that can receive the IRQ.
-The IRQ affinity of a given interrupt also can be changed by the system administrator by writing a new CPU bitmap mask into the /proc/irq/n/smp_affinity file (n being
-the interrupt vector).
+`kirqd`内核线程周期性地执行`do_irq_balance()`函数，追踪最近一段时间内，每个CPU上接收到的中断次数。如果发现CPU的中断负载不均衡了，它就会选择将某个IRQ移到另一个负载低的CPU上，或者采用在所有的CPU上循环响应IRQ。
 
-The kirqd kernel thread periodically executes the do_irq_balance() function, which
-keeps track of the number of interrupt occurrences received by every CPU in the
-most recent time interval. If the function discovers that the IRQ load imbalance
-between the heaviest loaded CPU and the least loaded CPU is significantly high, then
-it either selects an IRQ to be “moved” from a CPU to another, or rotates all IRQs
-among all existing CPUs.
+<h4 id="4.6.1.4">4.6.1.4 内核态堆栈</h4>
 
-<h4 id="4.6.1.4">4.6.1.4 多核系统中的IRQ分配</h4>
+在学习标识进程的时候，我们已经知道每个进程的`thread_info`描述符和内核态堆栈使用一个联合体结构组合在一起，占用内存一个或者两个页帧，这取决于编译内核时的配置。如果这个联合体的大小是8KB，内核态堆栈可以被任何一种内核控制路径使用：异常处理程序，中断处理程序和可延时函数。相反，如果这个联合体的大小是4KB，内核使用三种类型的内核态堆栈：
 
-As mentioned in the section “Identifying a Process” in Chapter 3, the thread_info descriptor of each process is coupled with a Kernel Mode stack in a thread_union data structure composed by one or two page frames, according to an option selected when the kernel has been compiled. If the size of the thread_union structure is 8 KB, the Kernel Mode stack of the current process is used for every type of kernel control path: exceptions, interrupts, and deferrable functions (see the later section “Softirqs and Tasklets”). Conversely, if the size of the thread_union structure is 4 KB, the kernel makes use of three types of Kernel Mode stacks:
+* 异常堆栈
 
-* The exception stack is used when handling exceptions (including system calls). This is the stack contained in the per-process thread_union data structure, thus the kernel makes use of a different exception stack for each process in the system.
-* The hard IRQ stack is used when handling interrupts. There is one hard IRQ stack for each CPU in the system, and each stack is contained in a single page frame.
-* The soft IRQ stack is used when handling deferrable functions (softirqs or tasklets; see the later section “Softirqs and Tasklets”). There is one soft IRQ stack for each CPU in the system, and each stack is contained in a single page frame.
+    处理异常时使用，包含系统调用。每个进程都有一个异常处理使用的堆栈。
 
-All hard IRQ stacks are contained in the hardirq_stack array, while all soft IRQ
-stacks are contained in the softirq_stack array. Each array element is a union of type
-irq_ctx that span a single page. At the bottom of this page is stored a thread_info
-structure, while the spare memory locations are used for the stack; remember that
-each stack grows towards lower addresses. Thus, hard IRQ stacks and soft IRQ
-stacks are very similar to the exception stacks described in the section “Identifying a
-Process” in Chapter 3; the only difference is that the thread_info structure coupled
-with each stack is associated with a CPU rather than a process.
+* 硬IRQ堆栈
 
-The hardirq_ctx and softirq_ctx arrays allow the kernel to quickly determine the
-hard IRQ stack and soft IRQ stack of a given CPU, respectively: they contain pointers
-to the corresponding irq_ctx elements.
+    用于处理中断。每个CPU具有一个硬IRQ堆栈。
+
+* 软IRQ堆栈
+
+    处理可延时函数时使用。比如，软中断或tasklet。每个CPU都有一个软IRQ堆栈。
+
+软、硬IRQ堆栈分别使用`hardirq_stack`和`softirq_stack`两个数组存储。每个数组元素对应一个`irq_ctx`类型的联合体，占用一个页帧。该页帧的底部存储`thread_info`结构，其余的内存存储堆栈；因为堆栈的增长方向是递减的。因此软、硬IRQ堆栈与进程的堆栈非常相似，只是`thread_info`不同，一个是描述CPU，而另一个是描述进程。
 
 <h4 id="4.6.1.5">4.6.1.5 为中断服务程序保存寄存器</h4>
 
-When a CPU receives an interrupt, it starts executing the code at the address found
-in the corresponding gate of the IDT (see the earlier section “Hardware Handling of
-Interrupts and Exceptions”).
+我们已经知道，当CPU收到中断，它就会执行IDT表中对应的中断处理程序。
 
-As with other context switches, the need to save registers leaves the kernel developer
-with a somewhat messy coding job, because the registers have to be saved and
-restored using assembly language code. However, within those operations, the processor
-is expected to call and return from a C function. In this section, we describe
-the assembly language task of handling registers; in the next, we show some of the
-acrobatics required in the C function that is subsequently invoked.
+执行中断处理程序，意味着上下文切换。这部分的内容需要汇编语言编写，然后才能调用C函数。前面我们已经知道，中断处理程序的地址首先存储在`interrupt[]`数组中，然后才会被拷贝到IDT表中的某项对应的中断门。
 
-Saving registers is the first task of the interrupt handler. As already mentioned, the
-address of the interrupt handler for IRQn is initially stored in the interrupt[n] entry
-and then copied into the interrupt gate included in the proper IDT entry.
-
-The interrupt array is built through a few assembly language instructions in the
-arch/i386/kernel/entry.S file. The array includes NR_IRQS elements, where the NR_IRQS
-macro yields either the number 224 if the kernel supports a recent I/O APIC chip,* or
-the number 16 if the kernel uses the older 8259A PIC chips. The element at index n
-in the array stores the address of the following two assembly language instructions:
+中断数组的构建在`arch/i386/kernel/entry.S`文件中，都是汇编指令。数组的个数是`NR_IRQS`，如果内核支持`I/O-APIC`芯片，则`NR_IRQS`等于224，如果内核支持的是较旧的8259A中断控制器，则`NR_IRQS`等于16。数组的每一项包含的汇编函数的地址处的内容如下所示：
 
     pushl $n-256
     jmp common_interrupt
 
-The result is to save on the stack the IRQ number associated with the interrupt
-minus 256. The kernel represents all IRQs through negative numbers, because it
-reserves positive interrupt numbers to identify system calls (see Chapter 10). The
-same code for all interrupt handlers can then be executed while referring to this
-number. The common code starts at label common_interrupt and consists of the following
-assembly language macros and instructions:
+存储在堆栈上的IRQ号是中断减去256。也就是说，内核使用负数表示IRQ号，因为内核保留正数表示系统调用。对于通用中断代码，如下所示：
 
     common_interrupt:
         SAVE_ALL
@@ -723,7 +688,7 @@ assembly language macros and instructions:
         call do_IRQ
         jmp ret_from_intr
 
-The SAVE_ALL macro expands to the following fragment:
+宏`SAVE_ALL`展开如下所示：
 
     cld
     push %es
@@ -739,24 +704,112 @@ The SAVE_ALL macro expands to the following fragment:
     movl %edx,%ds
     movl %edx,%es
 
-SAVE_ALL saves all the CPU registers that may be used by the interrupt handler on the
-stack, except for eflags, cs, eip, ss, and esp, which are already saved automatically by
-the control unit (see the earlier section “Hardware Handling of Interrupts and Exceptions”).
-The macro then loads the selector of the user data segment into ds and es.
+`SAVE_ALL`保存中断处理程序可能用到的所有的CPU寄存器到堆栈上，除了eflags、cs、eip、ss和esp这些寄存器之外，因为这些寄存器是由CPU控制单元自动保存的。该宏用户代码段的选择符到ds寄存器中。
 
-After saving the registers, the address of the current top stack location is saved in the
-eax register; then, the interrupt handler invokes the do_IRQ() function. When the ret
-instruction of do_IRQ() is executed (when that function terminates) control is transferred
-to ret_from_intr() (see the later section “Returning from Interrupts and
-Exceptions”).
+保存完所有的寄存器之后，栈顶位置就被存储在eax寄存器中；然后中断处理程序调用`do_IRQ()`函数。
 
 <h4 id="4.6.1.6">4.6.1.6 do_IRQ()函数</h4>
 
+函数`do_IRQ()`执行和中断有关的所有的服务例程，声明如下：
+
+    __attribute__((regparm(3))) unsigned int do_IRQ(struct pt_regs *regs)
+
+关键字`regparm`指示函数去eax寄存器中获取参数`regs`的值，如前所述，eax寄存器存储着中断使用的堆栈的栈顶位置。
+
+函数`do_IRQ()`主要执行以下内容：
+
+1. 执行`irq_enter()`宏，增加嵌套中断计数；
+2. 如果堆栈的大小等于4KB，切换到硬IRQ堆栈；
+3. 调用`__do_IRQ()`函数，然后把regs指针和IRQ号（regs->orig_eax）传递给它；
+4. 如果在第2步切换到硬IRQ堆栈中，则拷贝ebx寄存器中的原始堆栈指针到esp寄存器中，以便切换回之前使用的异常堆栈或软IRQ堆栈中；
+5. 执行`irq_exit()`宏，减少中断计数，检查是否有可延时处理的函数正在等待处理；
+6. 终止：跳转到`ret_from_intr()`函数地址。
+
 <h4 id="4.6.1.7">4.6.1.7 __do_IRQ()函数</h4>
+
+The _ _do_IRQ() function receives as its parameters an IRQ number (through the eax
+register) and a pointer to the pt_regs structure where the User Mode register values
+have been saved (through the edx register).
+
+The function is equivalent to the following code fragment:
+
+    spin_lock(&(irq_desc[irq].lock));
+    irq_desc[irq].handler->ack(irq);
+    irq_desc[irq].status &= ~(IRQ_REPLAY | IRQ_WAITING);
+    irq_desc[irq].status |= IRQ_PENDING;
+    if (!(irq_desc[irq].status & (IRQ_DISABLED | IRQ_INPROGRESS))
+            && irq_desc[irq].action) {
+        irq_desc[irq].status |= IRQ_INPROGRESS;
+        do {
+            irq_desc[irq].status &= ~IRQ_PENDING;
+            spin_unlock(&(irq_desc[irq].lock));
+            handle_IRQ_event(irq, regs, irq_desc[irq].action);
+            spin_lock(&(irq_desc[irq].lock));
+        } while (irq_desc[irq].status & IRQ_PENDING);
+        irq_desc[irq].status &= ~IRQ_INPROGRESS;
+    }
+    irq_desc[irq].handler->end(irq);
+    spin_unlock(&(irq_desc[irq].lock));
+
+Before accessing the main IRQ descriptor, the kernel acquires the corresponding spin lock. We’ll see in Chapter 5 that the spin lock protects against concurrent accesses by different CPUs. This spin lock is necessary in a multiprocessor system, because other interrupts of the same kind may be raised, and other CPUs might take care of the new interrupt occurrences. Without the spin lock, the main IRQ descriptor would be accessed concurrently by several CPUs. As we’ll see, this situation must be absolutely avoided.
+
+After acquiring the spin lock, the function invokes the ack method of the main IRQ descriptor. When using the old 8259A PIC, the corresponding mask_and_ack_8259A() function acknowledges the interrupt on the PIC and also disables the IRQ line. Masking the IRQ line ensures that the CPU does not accept further occurrences of this type of interrupt until the handler terminates. Remember that the _ _do_IRQ() function runs with local interrupts disabled; in fact, the CPU control unit automatically clears the IF flag of the eflags register because the interrupt handler is invoked through an IDT’s interrupt gate. However, we’ll see shortly that the kernel might re-enable local interrupts before executing the interrupt service routines of this interrupt.
+
+When using the I/O APIC, however, things are much more complicated. Depending on the type of interrupt, acknowledging the interrupt could either be done by the ack method or delayed until the interrupt handler terminates (that is, acknowledgement could be done by the end method). In either case, we can take for granted that the local APIC doesn’t accept further interrupts of this type until the handler terminates, although further occurrences of this type of interrupt may be accepted by other CPUs.
+
+The _ _do_IRQ() function then initializes a few flags of the main IRQ descriptor. It sets the IRQ_PENDING flag because the interrupt has been acknowledged (well, sort of), but not yet really serviced; it also clears the IRQ_WAITING and IRQ_REPLAY flags (but we don’t have to care about them now).
+
+Now _ _do_IRQ() checks whether it must really handle the interrupt. There are three cases in which nothing has to be done. These are discussed in the following list.
+
+IRQ_DISABLED is set
+
+A CPU might execute the _ _do_IRQ() function even if the corresponding IRQ
+line is disabled; you’ll find an explanation for this nonintuitive case in the later
+section “Reviving a lost interrupt.” Moreover, buggy motherboards may generate
+spurious interrupts even when the IRQ line is disabled in the PIC.
+
+IRQ_INPROGRESS is set
+
+In a multiprocessor system, another CPU might be handling a previous occurrence
+of the same interrupt. Why not defer the handling of this occurrence to
+that CPU? This is exactly what is done by Linux. This leads to a simpler kernel
+architecture because device drivers’ interrupt service routines need not to be
+reentrant (their execution is serialized). Moreover, the freed CPU can quickly
+return to what it was doing, without dirtying its hardware cache; this is beneficial
+to system performance. The IRQ_INPROGRESS flag is set whenever a CPU is
+committed to execute the interrupt service routines of the interrupt; therefore,
+the _ _do_IRQ() function checks it before starting the real work.
+
+irq_desc[irq].action is NULL
+
+This case occurs when there is no interrupt service routine associated with the
+interrupt. Normally, this happens only when the kernel is probing a hardware
+device.
+
+Let’s suppose that none of the three cases holds, so the interrupt has to be serviced. The
+__do_IRQ() function sets the IRQ_INPROGRESS flag and starts a loop. In each iteration,
+the function clears the IRQ_PENDING flag, releases the interrupt spin lock, and executes
+the interrupt service routines by invoking handle_IRQ_event() (described later in the
+chapter). When the latter function terminates, _ _do_IRQ() acquires the spin lock again
+and checks the value of the IRQ_PENDING flag. If it is clear, no further occurrence of the
+interrupt has been delivered to another CPU, so the loop ends. Conversely, if IRQ_
+PENDING is set, another CPU has executed the do_IRQ() function for this type of interrupt
+while this CPU was executing handle_IRQ_event(). Therefore, do_IRQ() performs
+another iteration of the loop, servicing the new occurrence of the interrupt.*
+
+Our _ _do_IRQ() function is now going to terminate, either because it has already
+executed the interrupt service routines or because it had nothing to do. The function
+invokes the end method of the main IRQ descriptor. When using the old 8259A PIC,
+the corresponding end_8259A_irq() function reenables the IRQ line (unless the interrupt
+occurrence was spurious). When using the I/O APIC, the end method acknowledges
+the interrupt (if not already done by the ack method).
+
+Finally, _ _do_IRQ() releases the spin lock: the hard work is finished!
+
 
 <h4 id="4.6.1.8">4.6.1.8 Reviving a lost interrupt</h4>
 
-The _ _do_IRQ() function is small and simple, yet it works properly in most cases.
+The __do_IRQ() function is small and simple, yet it works properly in most cases.
 Indeed, the IRQ_PENDING, IRQ_INPROGRESS, and IRQ_DISABLED flags ensure that interrupts
 are correctly handled even when the hardware is misbehaving. However, things
 may not work so smoothly in a multiprocessor system.
@@ -792,7 +845,7 @@ line is disabled and the flag is set, then an interrupt occurrence has been ackn
 but not yet serviced. In this case the hw_resend_irq() function raises a new interrupt.
 This is obtained by forcing the local APIC to generate a self-interrupt (see the later section
 “Interprocessor Interrupt Handling”). The role of the IRQ_REPLAY flag is to ensure
-that exactly one self-interrupt is generated. Remember that the _ _do_IRQ() function
+that exactly one self-interrupt is generated. Remember that the __do_IRQ() function
 clears that flag when it starts handling the interrupt.
 
 <h4 id="4.6.1.7">4.6.1.7 中断服务程序</h4>
@@ -864,6 +917,12 @@ irqaction descriptors associated with IRQ0.
 
 
 <h2 id="4.7">4.7 软中断和Tasklet</h2>
+
+We mentioned earlier in the section “Interrupt Handling” that several tasks among those executed by the kernel are not critical: they can be deferred for a long period of time, if necessary. Remember that the interrupt service routines of an interrupt handler are serialized, and often there should be no occurrence of an interrupt until the corresponding interrupt handler has terminated. Conversely, the deferrable tasks can execute with all interrupts enabled. Taking them out of the interrupt handler helps keep kernel response time small. This is a very important property for many time-critical applications that expect their interrupt requests to be serviced in a few milliseconds.
+
+Linux 2.6 answers such a challenge by using two kinds of non-urgent interruptible kernel functions: the so-called deferrable functions* (softirqs and tasklets), and those executed by means of some work queues (we will describe them in the section “Work Queues” later in this chapter).
+
+Softirqs and tasklets are strictly correlated, because tasklets are implemented on top of softirqs. As a matter of fact, the term “softirq,” which appears in the kernel source code, often denotes both kinds of deferrable functions. Another widely used term is
 
 <h2 id="4.8">4.8 工作队列</h2>
 
