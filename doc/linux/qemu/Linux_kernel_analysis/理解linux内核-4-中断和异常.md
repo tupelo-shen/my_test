@@ -23,10 +23,12 @@
             * [4.6.1.4 内核态堆栈](#4.6.1.4)
             * [4.6.1.5 为调用中断服务程序准备环境](#4.6.1.5)
             * [4.6.1.6 do_IRQ()函数](#4.6.1.6)
-            * [4.6.1.7 中断服务程序](#4.6.1.7)
-            * [4.6.1.8 动态分配IRQ](#4.6.1.8)
-            * [4.6.1.9 动态分配IRQ](#4.6.1.9)
-    - [4.7 软件中断和Tasklet](#4.7)
+            * [4.6.1.7 __do_IRQ()](#4.6.1.7)
+            * [4.6.1.8 恢复中断](#4.6.1.8)
+            * [4.6.1.9 中断服务程序](#4.6.1.9)
+            * [4.6.1.10 动态分配IRQ](#4.6.1.10)
+        + [4.6.2 CPU间中断处理](#4.6.2)
+    - [4.7 软中断和Tasklet](#4.7)
     - [4.8 工作队列](#4.8)
     - [4.9 中断和异常的返回](#4.9)
 
@@ -739,11 +741,7 @@ I/O中断处理的基本步骤是：
 
 <h4 id="4.6.1.7">4.6.1.7 __do_IRQ()函数</h4>
 
-The _ _do_IRQ() function receives as its parameters an IRQ number (through the eax
-register) and a pointer to the pt_regs structure where the User Mode register values
-have been saved (through the edx register).
-
-The function is equivalent to the following code fragment:
+`__do_IRQ()`函数接收IRQ号和指向`pt_regs`的指针作为参数，分别是通过eax和edx寄存器传递。然后，对中断作出应有的响应，代码片段如下所示：
 
     spin_lock(&(irq_desc[irq].lock));
     irq_desc[irq].handler->ack(irq);
@@ -763,81 +761,185 @@ The function is equivalent to the following code fragment:
     irq_desc[irq].handler->end(irq);
     spin_unlock(&(irq_desc[irq].lock));
 
-Before accessing the main IRQ descriptor, the kernel acquires the corresponding spin lock. We’ll see in Chapter 5 that the spin lock protects against concurrent accesses by different CPUs. This spin lock is necessary in a multiprocessor system, because other interrupts of the same kind may be raised, and other CPUs might take care of the new interrupt occurrences. Without the spin lock, the main IRQ descriptor would be accessed concurrently by several CPUs. As we’ll see, this situation must be absolutely avoided.
+上面的代码主要执行内容如下所示：
 
-After acquiring the spin lock, the function invokes the ack method of the main IRQ descriptor. When using the old 8259A PIC, the corresponding mask_and_ack_8259A() function acknowledges the interrupt on the PIC and also disables the IRQ line. Masking the IRQ line ensures that the CPU does not accept further occurrences of this type of interrupt until the handler terminates. Remember that the _ _do_IRQ() function runs with local interrupts disabled; in fact, the CPU control unit automatically clears the IF flag of the eflags register because the interrupt handler is invoked through an IDT’s interrupt gate. However, we’ll see shortly that the kernel might re-enable local interrupts before executing the interrupt service routines of this interrupt.
+1. 加锁，保护IRQ描述符数据结构
 
-When using the I/O APIC, however, things are much more complicated. Depending on the type of interrupt, acknowledging the interrupt could either be done by the ack method or delayed until the interrupt handler terminates (that is, acknowledgement could be done by the end method). In either case, we can take for granted that the local APIC doesn’t accept further interrupts of this type until the handler terminates, although further occurrences of this type of interrupt may be accepted by other CPUs.
+    通过上面的代码，我们可以看出，在访问相应的IRQ描述符时，内核会请求自旋锁。这是防止不同CPU之间可能造成的并发访问。因为，在多核系统中，可能会发生同类型的其它CPU关心的中断，它们使用同一个IRQ描述符，所以造成访问冲突。
 
-The _ _do_IRQ() function then initializes a few flags of the main IRQ descriptor. It sets the IRQ_PENDING flag because the interrupt has been acknowledged (well, sort of), but not yet really serviced; it also clears the IRQ_WAITING and IRQ_REPLAY flags (but we don’t have to care about them now).
+2. 响应PIC中断控制器
 
-Now _ _do_IRQ() checks whether it must really handle the interrupt. There are three cases in which nothing has to be done. These are discussed in the following list.
+    加锁之后，函数调用IRQ描述符的`ack`方法，给中断控制器应答。如果使用的是旧的8259A中断控制器，使用mask_and_ack_8259A()响应PIC同时禁止IRQ线；屏蔽掉该IRQ线，保证CPU不再接收到这个类型的中断，直到中断处理程序完成处理。如果使用的是`I/O-APIC`，情况更为复杂。依赖于中断的类型，既可以使用`ack`方法响应PIC控制器也可以延时到中断处理程序结束再完成。
 
-IRQ_DISABLED is set
+3. 设置IRQ描述符的标志
 
-A CPU might execute the _ _do_IRQ() function even if the corresponding IRQ
-line is disabled; you’ll find an explanation for this nonintuitive case in the later
-section “Reviving a lost interrupt.” Moreover, buggy motherboards may generate
-spurious interrupts even when the IRQ line is disabled in the PIC.
-
-IRQ_INPROGRESS is set
-
-In a multiprocessor system, another CPU might be handling a previous occurrence
-of the same interrupt. Why not defer the handling of this occurrence to
-that CPU? This is exactly what is done by Linux. This leads to a simpler kernel
-architecture because device drivers’ interrupt service routines need not to be
-reentrant (their execution is serialized). Moreover, the freed CPU can quickly
-return to what it was doing, without dirtying its hardware cache; this is beneficial
-to system performance. The IRQ_INPROGRESS flag is set whenever a CPU is
-committed to execute the interrupt service routines of the interrupt; therefore,
-the _ _do_IRQ() function checks it before starting the real work.
-
-irq_desc[irq].action is NULL
-
-This case occurs when there is no interrupt service routine associated with the
-interrupt. Normally, this happens only when the kernel is probing a hardware
-device.
-
-Let’s suppose that none of the three cases holds, so the interrupt has to be serviced. The
-__do_IRQ() function sets the IRQ_INPROGRESS flag and starts a loop. In each iteration,
-the function clears the IRQ_PENDING flag, releases the interrupt spin lock, and executes
-the interrupt service routines by invoking handle_IRQ_event() (described later in the
-chapter). When the latter function terminates, _ _do_IRQ() acquires the spin lock again
-and checks the value of the IRQ_PENDING flag. If it is clear, no further occurrence of the
-interrupt has been delivered to another CPU, so the loop ends. Conversely, if IRQ_
-PENDING is set, another CPU has executed the do_IRQ() function for this type of interrupt
-while this CPU was executing handle_IRQ_event(). Therefore, do_IRQ() performs
-another iteration of the loop, servicing the new occurrence of the interrupt.*
-
-Our _ _do_IRQ() function is now going to terminate, either because it has already
-executed the interrupt service routines or because it had nothing to do. The function
-invokes the end method of the main IRQ descriptor. When using the old 8259A PIC,
-the corresponding end_8259A_irq() function reenables the IRQ line (unless the interrupt
-occurrence was spurious). When using the I/O APIC, the end method acknowledges
-the interrupt (if not already done by the ack method).
-
-Finally, _ _do_IRQ() releases the spin lock: the hard work is finished!
+    设置`IRQ_PENDING`标志，因为此时已经应答过PIC中断控制器，但是还没有对其进行服务。也会清除`IRQ_WAITING`和`IRQ_REPLAY`标志。
 
 
-<h4 id="4.6.1.8">4.6.1.8 Reviving a lost interrupt</h4>
+4. 真正执行中断处理。
 
-The __do_IRQ() function is small and simple, yet it works properly in most cases.
-Indeed, the IRQ_PENDING, IRQ_INPROGRESS, and IRQ_DISABLED flags ensure that interrupts
-are correctly handled even when the hardware is misbehaving. However, things
-may not work so smoothly in a multiprocessor system.
+    此时，可能有三种意外情况需要处理：
 
-Suppose that a CPU has an IRQ line enabled. A hardware device raises the IRQ line,
-and the multi-APIC system selects our CPU for handling the interrupt. Before the
-CPU acknowledges the interrupt, the IRQ line is masked out by another CPU; as a
-consequence, the IRQ_DISABLED flag is set. Right afterwards, our CPU starts handling
-the pending interrupt; therefore, the do_IRQ() function acknowledges the interrupt
-and then returns without executing the interrupt service routines because it finds the
-IRQ_DISABLED flag set. Therefore, even though the interrupt occurred before the IRQ
-line was disabled, it gets lost.
+    1. 设置了`IRQ_DISABLED`
 
-To cope with this scenario, the enable_irq() function, which is used by the kernel to
-enable an IRQ line, checks first whether an interrupt has been lost. If so, the function
-forces the hardware to generate a new occurrence of the lost interrupt:
+        即使IRQ线被禁止，CPU还是有可能执行`__do_IRQ()`函数，所以需要特殊处理。
+
+    2. 设置了`IRQ_INPROGRESS`
+
+        多核系统中，此时可能另外一个CPU可能正在处理先前发生的相同中断。Linux对此的处理方式就是延后处理。这样的处理方式使内核架构更为简单，因为设备驱动程序的中断服务程序是不需要可重入的（它们的执行一般都是序列化的）。
+
+    3. `irq_desc[irq].action`为空
+
+        当没有与中断相关联的中断服务例程时，就会发生这种情况。通常，只有在内核探测硬件设备时才会发生这种情况。
+
+    假设没有上面的三种情况，中断被正式处理。设置`IRQ_INPROGRESS`标志，并启动循环处理。每次迭代过程，清除`IRQ_PENDING`标志，释放中断自旋锁，然后执行调用`handle_IRQ_event()`执行中断服务程序。
+
+5. 中断服务程序完成。
+
+    释放自旋锁。
+
+<h4 id="4.6.1.7.1">4.6.1.7.1 总结</h4>
+
+其实内核经过这么多年的发展，在实现方式上已经发生了很大变化。但是其基本思想没变。比如我们以Linux4.4.203内核对于中断的处理为例，与上面的处理过程进行比较，理解其主要变化。
+
+1. 调用do_IRQ函数。其入口位于entry_32.S文件中，是C语言实现的。
+
+        common_interrupt:
+            ASM_CLAC
+            addl $-0x80, (%esp)  /* Adjust vector into the [-256, -1] range */
+            SAVE_ALL
+            TRACE_IRQS_OFF
+            movl %esp, %eax
+            call do_IRQ
+            jmp ret_from_intr
+            ENDPROC(common_interrupt)
+
+2. do_IRQ函数原型为：
+
+        /*
+         + do_IRQ处理所有常规设备的IRQ。
+         + 特殊的SMP系统中，CPU间的中断有自己特定的处理程序。
+         */
+        __visible unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
+        {
+            struct pt_regs *old_regs = set_irq_regs(regs);
+            struct irq_desc * desc;
+            /* high bit used in ret_from_ code  */
+            unsigned vector = ~regs->orig_ax;
+
+            entering_irq();     /* 进入中断，并对中断进行嵌套计数 */
+
+            /* entering_irq() tells RCU that we're not quiescent.  Check it. */
+            RCU_LOCKDEP_WARN(!rcu_is_watching(), "IRQ failed to wake up RCU");
+
+            desc = __this_cpu_read(vector_irq[vector]);   /* 取中段描述符 */
+
+            if (!handle_irq(desc, regs)) {  /* handle_irq处理具体的中断服务程序 */
+                ack_APIC_irq();
+
+                if (desc != VECTOR_RETRIGGERED) {
+                    pr_emerg_ratelimited("%s: %d.%d No irq handler for vector\n",
+                                 __func__, smp_processor_id(),
+                                 vector);
+                } else {
+                    __this_cpu_write(vector_irq[vector], VECTOR_UNUSED);
+                }
+            }
+
+            exiting_irq(); /* 退出中断，并对中断进行嵌套计数递减 */
+
+            set_irq_regs(old_regs);
+            return 1;
+        }
+
+3. `handle_irq`函数最终调用的是下面的函数：
+
+        static inline void generic_handle_irq_desc(struct irq_desc *desc)
+        {
+            desc->handle_irq(desc);
+        }
+
+4. 而我们之间已经说过`desc->handle_irq`的初始化在系统初始化时完成：
+
+        //linux-2.6.32/arch/x86/kernel/irqinit.c
+        void __init init_IRQ(void)
+        {
+            x86_init.irqs.intr_init();
+        }
+        //linux-2.6.32/arch/x86/kernel/x86_init.c
+        struct x86_init_ops x86_init __initdata = {
+        ......
+            .irqs = {
+                .pre_vector_init    = init_ISA_irqs, //被.intr_init调用
+                .intr_init      = native_init_IRQ,
+                .trap_init      = x86_init_noop,
+            },
+        ......
+        }
+        //linux-2.6.32/arch/x86/kernel/irqinit.c
+        void __init native_init_IRQ(void)
+        {
+        ......
+            /* Execute any quirks before the call gates are initialised: */
+            x86_init.irqs.pre_vector_init(); //init_ISA_irqs
+        ......
+        }
+
+        void __init init_ISA_irqs(void)
+        {
+            ......
+            for (i = 0; i < NR_IRQS_LEGACY; i++) {
+                ......
+                set_irq_chip_and_handler_name(i, &i8259A_chip,
+                                  handle_level_irq, "XT");
+            }
+        }
+
+        void set_irq_chip_and_handler_name(unsigned int irq, struct irq_chip *chip,
+                            irq_flow_handler_t handle, const char *name)
+        {
+            set_irq_chip(irq, chip);
+            __set_irq_handler(irq, handle, 0, name);
+        }
+
+        void __set_irq_handler(unsigned int irq, irq_flow_handler_t handle,
+                int is_chained,const char *name)
+        {
+            ....
+            desc->handle_irq = handle;//handle 即为handle_level_irq
+            ....
+        }
+
+5. 可见`desc->handle_irq(irq, desc);`执行的是`handle_level_irq(irq, desc)`。 我们进`入handle_level_irq(irq, desc)`看看都做了哪些操作：
+
+        void handle_level_irq(unsigned int irq, struct irq_desc *desc)
+        {
+            mask_ack_irq(desc, irq); //屏蔽中断
+            ......
+            action = desc->action;
+            action_ret = handle_IRQ_event(irq, action);
+            ......
+                desc->chip->unmask(irq); //打开中断
+        }
+        irqreturn_t handle_IRQ_event(unsigned int irq, struct irqaction *action)
+        {
+            ......
+            do {
+                ret = action->handler(irq, action->dev_id);//指向我们注册的中断处理函数
+                ......
+            } while (action);
+            .....
+        }
+
+通过上面5步分析，我们知道，内核代码以及硬件设备在发生变化，但是中断处理的核心思想没有变。
+
+<h4 id="4.6.1.8">4.6.1.8 恢复中断</h4>
+
+The __do_IRQ() function is small and simple, yet it works properly in most cases. Indeed, the IRQ_PENDING, IRQ_INPROGRESS, and IRQ_DISABLED flags ensure that interrupts are correctly handled even when the hardware is misbehaving. However, things may not work so smoothly in a multiprocessor system.
+
+Suppose that a CPU has an IRQ line enabled. A hardware device raises the IRQ line, and the multi-APIC system selects our CPU for handling the interrupt. Before the CPU acknowledges the interrupt, the IRQ line is masked out by another CPU; as a consequence, the IRQ_DISABLED flag is set. Right afterwards, our CPU starts handling the pending interrupt; therefore, the do_IRQ() function acknowledges the interrupt and then returns without executing the interrupt service routines because it finds the IRQ_DISABLED flag set. Therefore, even though the interrupt occurred before the IRQ line was disabled, it gets lost.
+
+To cope with this scenario, the enable_irq() function, which is used by the kernel to enable an IRQ line, checks first whether an interrupt has been lost. If so, the function forces the hardware to generate a new occurrence of the lost interrupt:
 
     spin_lock_irqsave(&(irq_desc[irq].lock), flags);
     if (--irq_desc[irq].depth == 0) {
@@ -851,82 +953,40 @@ forces the hardware to generate a new occurrence of the lost interrupt:
     }
     spin_lock_irqrestore(&(irq_desc[irq].lock), flags);
 
-The function detects that an interrupt was lost by checking the value of the IRQ_PENDING
-flag. The flag is always cleared when leaving the interrupt handler; therefore, if the IRQ
-line is disabled and the flag is set, then an interrupt occurrence has been acknowledged
-but not yet serviced. In this case the hw_resend_irq() function raises a new interrupt.
-This is obtained by forcing the local APIC to generate a self-interrupt (see the later section
-“Interprocessor Interrupt Handling”). The role of the IRQ_REPLAY flag is to ensure
-that exactly one self-interrupt is generated. Remember that the __do_IRQ() function
-clears that flag when it starts handling the interrupt.
+The function detects that an interrupt was lost by checking the value of the IRQ_PENDING flag. The flag is always cleared when leaving the interrupt handler; therefore, if the IRQ line is disabled and the flag is set, then an interrupt occurrence has been acknowledged but not yet serviced. In this case the hw_resend_irq() function raises a new interrupt. This is obtained by forcing the local APIC to generate a self-interrupt (see the later section “Interprocessor Interrupt Handling”). The role of the IRQ_REPLAY flag is to ensure that exactly one self-interrupt is generated. Remember that the __do_IRQ() function clears that flag when it starts handling the interrupt.
 
-<h4 id="4.6.1.7">4.6.1.7 中断服务程序</h4>
+<h4 id="4.6.1.9">4.6.1.9 中断服务程序</h4>
 
-<h4 id="4.6.1.8">4.6.1.8 动态分配IRQ线</h4>
+<h4 id="4.6.1.10">4.6.1.10 动态分配IRQ线</h4>
 
-As noted in section “Interrupt vectors,” a few vectors are reserved for specific
-devices, while the remaining ones are dynamically handled. There is, therefore, a way
-in which the same IRQ line can be used by several hardware devices even if they do
-not allow IRQ sharing. The trick is to serialize the activation of the hardware devices
-so that just one owns the IRQ line at a time.
+As noted in section “Interrupt vectors,” a few vectors are reserved for specific devices, while the remaining ones are dynamically handled. There is, therefore, a way in which the same IRQ line can be used by several hardware devices even if they do not allow IRQ sharing. The trick is to serialize the activation of the hardware devices so that just one owns the IRQ line at a time.
 
-Before activating a device that is going to use an IRQ line, the corresponding driver
-invokes request_irq(). This function creates a new irqaction descriptor and initializes
-it with the parameter values; it then invokes the setup_irq() function to insert
-the descriptor in the proper IRQ list. The device driver aborts the operation if setup_
-irq() returns an error code, which usually means that the IRQ line is already in use
-by another device that does not allow interrupt sharing. When the device operation
-is concluded, the driver invokes the free_irq() function to remove the descriptor
-from the IRQ list and release the memory area.
+Before activating a device that is going to use an IRQ line, the corresponding driver invokes request_irq(). This function creates a new irqaction descriptor and initializes it with the parameter values; it then invokes the setup_irq() function to insert the descriptor in the proper IRQ list. The device driver aborts the operation if setup_irq() returns an error code, which usually means that the IRQ line is already in use by another device that does not allow interrupt sharing. When the device operation is concluded, the driver invokes the free_irq() function to remove the descriptor from the IRQ list and release the memory area.
 
-Let’s see how this scheme works on a simple example. Assume a program wants to
-address the /dev/fd0 device file, which corresponds to the first floppy disk on the system.*
-The program can do this either by directly accessing /dev/fd0 or by mounting a
-filesystem on it. Floppy disk controllers are usually assigned IRQ6; given this, a
-floppy driver may issue the following request:
+Let’s see how this scheme works on a simple example. Assume a program wants to address the /dev/fd0 device file, which corresponds to the first floppy disk on the system.* The program can do this either by directly accessing /dev/fd0 or by mounting a filesystem on it. Floppy disk controllers are usually assigned IRQ6; given this, a floppy driver may issue the following request:
 
     request_irq(6, floppy_interrupt,
             SA_INTERRUPT|SA_SAMPLE_RANDOM, "floppy", NULL);
 
-As can be observed, the floppy_interrupt() interrupt service routine must execute
-with the interrupts disabled (SA_INTERRUPT flag set) and no sharing of the IRQ (SA_
-SHIRQ flag missing). The SA_SAMPLE_RANDOM flag set means that accesses to the floppy
-disk are a good source of random events to be used for the kernel random number
-generator. When the operation on the floppy disk is concluded (either the I/O operation
-on /dev/fd0 terminates or the filesystem is unmounted), the driver releases IRQ6:
+As can be observed, the floppy_interrupt() interrupt service routine must execute with the interrupts disabled (SA_INTERRUPT flag set) and no sharing of the IRQ (SA_SHIRQ flag missing). The SA_SAMPLE_RANDOM flag set means that accesses to the floppy disk are a good source of random events to be used for the kernel random number generator. When the operation on the floppy disk is concluded (either the I/O operation on /dev/fd0 terminates or the filesystem is unmounted), the driver releases IRQ6:
 
     free_irq(6, NULL);
 
-To insert an irqaction descriptor in the proper list, the kernel invokes the setup_irq(
-) function, passing to it the parameters irq_nr, the IRQ number, and new (the
-address of a previously allocated irqaction descriptor). This function:
+To insert an irqaction descriptor in the proper list, the kernel invokes the setup_irq() function, passing to it the parameters irq_nr, the IRQ number, and new (the address of a previously allocated irqaction descriptor). This function:
 
-1. Checks whether another device is already using the irq_nr IRQ and, if so,
-whether the SA_SHIRQ flags in the irqaction descriptors of both devices specify
-that the IRQ line can be shared. Returns an error code if the IRQ line cannot be
-used.
-2. Adds *new (the new irqaction descriptor pointed to by new) at the end of the list
-to which irq_desc[irq_nr]->action points.
-3. If no other device is sharing the same IRQ, the function clears the IRQ_DISABLED,
-IRQ_AUTODETECT, IRQ_WAITING, and IRQ_INPROGRESS flags in the flags field of *new
-and invokes the startup method of the irq_desc[irq_nr]->handler PIC object to
-make sure that IRQ signals are enabled.
+1. Checks whether another device is already using the irq_nr IRQ and, if so, whether the SA_SHIRQ flags in the irqaction descriptors of both devices specify that the IRQ line can be shared. Returns an error code if the IRQ line cannot be used.
+2. Adds *new (the new irqaction descriptor pointed to by new) at the end of the list to which irq_desc[irq_nr]->action points.
+3. If no other device is sharing the same IRQ, the function clears the IRQ_DISABLED, IRQ_AUTODETECT, IRQ_WAITING, and IRQ_INPROGRESS flags in the flags field of *new and invokes the startup method of the irq_desc[irq_nr]->handler PIC object to make sure that IRQ signals are enabled.
 
-Here is an example of how setup_irq() is used, drawn from system initialization.
-The kernel initializes the irq0 descriptor of the interval timer device by executing the
-following instructions in the time_init() function (see Chapter 6):
+Here is an example of how setup_irq() is used, drawn from system initialization. The kernel initializes the irq0 descriptor of the interval timer device by executing the following instructions in the time_init() function (see Chapter 6):
 
     struct irqaction irq0 =
         {timer_interrupt, SA_INTERRUPT, 0, "timer", NULL, NULL};
     setup_irq(0, &irq0);
 
-First, the irq0 variable of type irqaction is initialized: the handler field is set to the
-address of the timer_interrupt() function, the flags field is set to SA_INTERRUPT, the
-name field is set to "timer", and the fifth field is set to NULL to show that no dev_id
-value is used. Next, the kernel invokes setup_irq() to insert irq0 in the list of
-irqaction descriptors associated with IRQ0.
+First, the irq0 variable of type irqaction is initialized: the handler field is set to the address of the timer_interrupt() function, the flags field is set to SA_INTERRUPT, the name field is set to "timer", and the fifth field is set to NULL to show that no dev_id value is used. Next, the kernel invokes setup_irq() to insert irq0 in the list of irqaction descriptors associated with IRQ0.
 
-
+<h3 id="4.6.2">4.6.2 CPU间中断处理</h3>
 
 <h2 id="4.7">4.7 软中断和Tasklet</h2>
 
@@ -934,7 +994,156 @@ We mentioned earlier in the section “Interrupt Handling” that several tasks 
 
 Linux 2.6 answers such a challenge by using two kinds of non-urgent interruptible kernel functions: the so-called deferrable functions* (softirqs and tasklets), and those executed by means of some work queues (we will describe them in the section “Work Queues” later in this chapter).
 
-Softirqs and tasklets are strictly correlated, because tasklets are implemented on top of softirqs. As a matter of fact, the term “softirq,” which appears in the kernel source code, often denotes both kinds of deferrable functions. Another widely used term is
+Softirqs and tasklets are strictly correlated, because tasklets are implemented on top of softirqs. As a matter of fact, the term “softirq,” which appears in the kernel source code, often denotes both kinds of deferrable functions. Another widely used term is interrupt context: it specifies that the kernel is currently executing either an interrupt handler or a deferrable function.
+
+Softirqs are statically allocated (i.e., defined at compile time), while tasklets can also be allocated and initialized at runtime (for instance, when loading a kernel module). Softirqs can run concurrently on several CPUs, even if they are of the same type. Thus, softirqs are reentrant functions and must explicitly protect their data structures with spin locks. Tasklets do not have to worry about this, because their execution is controlled more strictly by the kernel. Tasklets of the same type are always serialized: in other words, the same type of tasklet cannot be executed by two CPUs at the same time. However, tasklets of different types can be executed concurrently on several CPUs. Serializing the tasklet simplifies the life of device driver developers, because the tasklet function needs not be reentrant.
+
+Generally speaking, four kinds of operations can be performed on deferrable functions:
+
+1. Initialization
+
+    Defines a new deferrable function; this operation is usually done when the kernel initializes itself or a module is loaded.
+
+2. Activation
+
+    Marks a deferrable function as “pending”—to be run the next time the kernel schedules a round of executions of deferrable functions. Activation can be done at any time (even while handling interrupts).
+
+3. Masking
+
+    Selectively disables a deferrable function so that it will not be executed by the kernel even if activated. We’ll see in the section “Disabling and Enabling Deferrable Functions” in Chapter 5 that disabling deferrable functions is sometimes essential.
+
+4. Execution
+
+    Executes a pending deferrable function together with all other pending deferrable functions of the same type; execution is performed at well-specified times, explained later in the section “Softirqs.”
+
+Activation and execution are bound together: a deferrable function that has been activated by a given CPU must be executed on the same CPU. There is no self-evident reason suggesting that this rule is beneficial for system performance. Binding the deferrable function to the activating CPU could in theory make better use of the CPU hardware cache. After all, it is conceivable that the activating kernel thread accesses some data structures that will also be used by the deferrable function. However, the relevant lines could easily be no longer in the cache when the deferrable function is run because its execution can be delayed a long time. Moreover, binding a function to a CPU is always a potentially “dangerous” operation, because one CPU might end up very busy while the others are mostly idle.
+
+<h3 id="4.7.1">4.7.1 软中断</h3>
+
+Linux 2.6 uses a limited number of softirqs. For most purposes, tasklets are good enough and are much easier to write because they do not need to be reentrant.
+
+As a matter of fact, only the six kinds of softirqs listed in Table 4-9 are currently defined.
+
+Table 4-9. Softirqs used in Linux 2.6
+
+| 软中断 | 优先级 | 描述 |
+| ------ | ------ | ----- |
+| HI_SOFTIRQ    | 0 | 处理高优先级的tasklet |
+| TIMER_SOFTIRQ | 1 | 定时器中断 |
+| NET_TX_SOFTIRQ| 2 | 给网卡发送数据 |
+| NET_RX_SOFTIRQ| 3 | 从网卡接收数据 |
+| SCSI_SOFTIRQ  | 4 | SCSI命令的后中断处理 |
+| TASKLET_SOFTIRQ| 5 | 处理常规tasklet |
+
+The index of a sofirq determines its priority: a lower index means higher priority because softirq functions will be executed starting from index 0.
+
+<h4 id="4.7.1.1">4.7.1.1 软中断使用的数据结构</h4>
+
+The main data structure used to represent softirqs is the softirq_vec array, which includes 32 elements of type softirq_action. The priority of a softirq is the index of the corresponding softirq_action element inside the array. As shown in Table 4-9, only the first six entries of the array are effectively used. The softirq_action data structure consists of two fields: an action pointer to the softirq function and a data pointer to a generic data structure that may be needed by the softirq function.
+
+Another critical field used to keep track both of kernel preemption and of nesting of
+kernel control paths is the 32-bit preempt_count field stored in the thread_info field
+of each process descriptor (see the section “Identifying a Process” in Chapter 3). This
+field encodes three distinct counters plus a flag, as shown in Table 4-10.
+
+Table 4-10. Subfields of the preempt_count field (continues)
+
+The first counter keeps track of how many times kernel preemption has been explicitly
+disabled on the local CPU; the value zero means that kernel preemption has not been explicitly disabled at all. The second counter specifies how many levels deep the disabling of deferrable functions is (level 0 means that deferrable functions are enabled). The third counter specifies the number of nested interrupt handlers on the
+local CPU (the value is increased by irq_enter() and decreased by irq_exit(); see
+the section “I/O Interrupt Handling” earlier in this chapter).
+
+There is a good reason for the name of the preempt_count field: kernel preemptability
+has to be disabled either when it has been explicitly disabled by the kernel code (preemption
+counter not zero) or when the kernel is running in interrupt context. Thus,
+to determine whether the current process can be preempted, the kernel quickly
+checks for a zero value in the preempt_count field. Kernel preemption will be discussed
+in depth in the section “Kernel Preemption” in Chapter 5.
+
+The in_interrupt() macro checks the hardirq and softirq counters in the current_
+thread_info()->preempt_count field. If either one of these two counters is positive,
+the macro yields a nonzero value, otherwise it yields the value zero. If the kernel does
+not make use of multiple Kernel Mode stacks, the macro always looks at the
+preempt_count field of the thread_info descriptor of the current process. If, however,
+the kernel makes use of multiple Kernel Mode stacks, the macro might look at the
+preempt_count field in the thread_info descriptor contained in a irq_ctx union associated
+with the local CPU. In this case, the macro returns a nonzero value because
+the field is always set to a positive value.
+
+The last crucial data structure for implementing the softirqs is a per-CPU 32-bit
+mask describing the pending softirqs; it is stored in the _ _softirq_pending field of
+the irq_cpustat_t data structure (recall that there is one such structure per each CPU
+in the system; see Table 4-8). To get and set the value of the bit mask, the kernel
+makes use of the local_softirq_pending() macro that selects the softirq bit mask of
+the local CPU.
+
+
+<h4 id="4.7.1.2">4.7.1.2 处理软中断</h4>
+
+The open_softirq() function takes care of softirq initialization. It uses three parameters: the softirq index, a pointer to the softirq function to be executed, and a second pointer to a data structure that may be required by the softirq function. open_softirq() limits itself to initializing the proper entry of the softirq_vec array. Softirqs are activated by means of the raise_softirq() function. This function, which receives as its parameter the softirq index nr, performs the following actions:
+
+1. Executes the local_irq_save macro to save the state of the IF flag of the eflags register and to disable interrupts on the local CPU.
+
+2. Marks the softirq as pending by setting the bit corresponding to the index nr in the softirq bit mask of the local CPU.
+
+3. If in_interrupt() yields the value 1, it jumps to step 5. This situation indicates either that raise_softirq() has been invoked in interrupt context, or that the softirqs are currently disabled.
+
+4. Otherwise, invokes wakeup_softirqd() to wake up, if necessary, the ksoftirqd kernel thread of the local CPU (see later).
+
+5. Executes the local_irq_restore macro to restore the state of the IF flag saved in step 1.
+
+Checks for active (pending) softirqs should be perfomed periodically, but without inducing too much overhead. They are performed in a few points of the kernel code.  Here is a list of the most significant points (be warned that number and position of the softirq checkpoints change both with the kernel version and with the supported hardware architecture):
+
+* When the kernel invokes the local_bh_enable() function* to enable softirqs on the local CPU
+
+* When the do_IRQ() function finishes handling an I/O interrupt and invokes the irq_exit() macro
+
+* If the system uses an I/O APIC, when the smp_apic_timer_interrupt() function finishes handling a local timer interrupt (see the section “Timekeeping Architecture in Multiprocessor Systems” in Chapter 6)
+
+* In multiprocessor systems, when a CPU finishes handling a function triggered by a CALL_FUNCTION_VECTOR interprocessor interrupt
+
+* When one of the special ksoftirqd/n kernel threads is awakened (see later)
+
+<h4 id="4.7.1.3">4.7.1.3 do_softirq函数</h4>
+
+If pending softirqs are detected at one such checkpoint (local_softirq_pending() is not zero), the kernel invokes do_softirq() to take care of them. This function performs the following actions:
+
+1. If in_interrupt() yields the value one, this function returns. This situation indicates either that do_softirq() has been invoked in interrupt context or that the softirqs are currently disabled.
+
+2. Executes local_irq_save to save the state of the IF flag and to disable the interrupts on the local CPU.
+
+3. If the size of the thread_union structure is 4 KB, it switches to the soft IRQ stack, if necessary. This step is very similar to step 2 of do_IRQ() in the earlier section “I/O Interrupt Handling;” of course, the softirq_ctx array is used instead of hardirq_ctx.
+
+4. Invokes the _ _do_softirq() function (see the following section).
+
+5. If the soft IRQ stack has been effectively switched in step 3 above, it restores the original stack pointer into the esp register, thus switching back to the exception stack that was in use before.
+
+6. Executes local_irq_restore to restore the state of the IF flag (local interrupts enabled or disabled) saved in step 2 and returns.
+
+
+<h4 id="4.7.1.4">4.7.1.4 __do_softirq()函数</h4>
+
+The _ _do_softirq() function reads the softirq bit mask of the local CPU and executes the deferrable functions corresponding to every set bit. While executing a softirq function, new pending softirqs might pop up; in order to ensure a low latency time for the deferrable funtions, _ _do_softirq() keeps running until all pending softirqs have been executed. This mechanism, however, could force _ _do_softirq() to run for long periods of time, thus considerably delaying User Mode processes. For that reason, _ _do_softirq() performs a fixed number of iterations and then returns. The remaining pending softirqs, if any, will be handled in due time by the ksoftirqd kernel thread described in the next section. Here is a short description of the actions performed by the function:
+
+1. Initializes the iteration counter to 10.
+
+2. Copies the softirq bit mask of the local CPU (selected by local_softirq_pending()) in the pending local variable.
+
+3. Invokes local_bh_disable() to increase the softirq counter. It is somewhat counterintuitive that deferrable functions should be disabled before starting to execute them, but it really makes a lot of sense. Because the deferrable functions mostly run with interrupts enabled, an interrupt can be raised in the middle of the _ _do_softirq() function. When do_IRQ() executes the irq_exit() macro, another instance of the _ _do_softirq() function could be started. This has to be avoided, because deferrable functions must execute serially on the CPU. Thus, the first instance of _ _do_softirq() disables deferrable functions, so that every new instance of the function will exit at step 1 of do_softirq().
+
+4. Clears the softirq bitmap of the local CPU, so that new softirqs can be activated (the value of the bit mask has already been saved in the pending local variable in step 2).
+
+5. Executes local_irq_enable() to enable local interrupts.
+
+6. For each bit set in the pending local variable, it executes the corresponding softirq function; recall that the function address for the softirq with index n is stored in softirq_vec[n]->action.
+
+7. Executes local_irq_disable() to disable local interrupts.
+
+8. Copies the softirq bit mask of the local CPU into the pending local variable and decreases the iteration counter one more time.
+
+<h4 id="4.7.1.5">4.7.1.5 ksoftirqd内核线程</h4>
+
+<h3 id="4.7.2">4.7.2 Tasklet</h3>
 
 <h2 id="4.8">4.8 工作队列</h2>
 
