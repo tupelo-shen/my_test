@@ -29,6 +29,13 @@
             * [4.6.1.10 动态分配IRQ](#4.6.1.10)
         + [4.6.2 CPU间中断处理](#4.6.2)
     - [4.7 软中断和Tasklet](#4.7)
+        + [4.7.1 软中断](#4.7.1)
+            * [4.7.1.1 软中断使用的数据结构](#4.7.1.1)
+            * [4.7.1.2 处理软中断](#4.7.1.2)
+            * [4.7.1.3 do_softirq函数](#4.7.1.3)
+            * [4.7.1.4 __do_softirq()函数](#4.7.1.4)
+            * [4.7.1.5 ksoftirqd内核线程](#4.7.1.5)
+        + [4.7.2 Tasklet](#4.7.2)
     - [4.8 工作队列](#4.8)
     - [4.9 中断和异常的返回](#4.9)
 
@@ -483,7 +490,7 @@ IDT结构被存储在idt_table表中，包含256项。idt_descr变量存储IDT�
 
 * IRQ动态分配
 
-    直到最后时刻，IRQ中断请求线才会与设备驱动程序关联起来。比如，只有当用户访问软盘涉笔的时候才会给软盘设备分配中断请求线IRQ。使用这种方法，即使不共享IRQ中断请求线，几个硬件设备也能使用相同的中断号。
+    直到最后时刻，IRQ中断请求线才会与设备驱动程序关联起来。比如，只有当用户访问软盘设备的时候才会给软盘设备分配中断请求线IRQ。使用这种方法，即使不共享IRQ中断请求线，几个硬件设备也能使用相同的中断号。
 
 众所周知，中断有轻重缓急之分，而且中断处理程序的执行时间不能过长。因为中断处理程序运行时，IRQ中断请求线的信号会被暂时忽略，所以，长时间执行且非重要的操作应该被延后执行。更为重要的是，代表中断处理程序执行的进程必须总是处于TASK_RUNING状态，或`系统冻结`中，因此，中断处理程序不能执行阻塞程序，比如I/O硬盘操作。
 
@@ -544,19 +551,19 @@ I/O中断处理的基本步骤是：
 
 | IRQ | INT | Hardware device |
 | --- | --- | --------------- |
-| 0 | 32 | Timer |
-| 1 | 33 | Keyboard |
-| 2 | 34 | PIC cascading |
-| 3 | 35 | Second serial port |
-| 4 | 36 | First serial port |
-| 6 | 38 | Floppy disk |
-| 8 | 40 | System clock |
-| 10| 42 | Network interface |
-| 11| 43 | USB port, sound card |
-| 12| 44 | PS/2 mouse |
-| 13| 45 | Mathematical coprocessor |
-| 14| 46 | EIDE disk controller’s first chain |
-| 15| 47 | EIDE disk controller’s second chain |
+| 0 | 32 | 定时器 |
+| 1 | 33 | 键盘 |
+| 2 | 34 | PIC级联 |
+| 3 | 35 | 第二个串行端口 |
+| 4 | 36 | 第一个串行端口 |
+| 6 | 38 | 软盘 |
+| 8 | 40 | 系统时钟 |
+| 10| 42 | 网口 |
+| 11| 43 | USB端口，声卡 |
+| 12| 44 | PS/2鼠标 |
+| 13| 45 | 协处理器 |
+| 14| 46 | EIDE硬盘控制器的第一个链 |
+| 15| 47 | EIDE硬盘控制器的第二个链 |
 
 也就是说，内核必须在使能中断之前，知道哪个I/O设备对应哪个IRQ号。然后在设备驱动初始化的时候才能对应上正确的中断处理程序。
 
@@ -990,41 +997,39 @@ First, the irq0 variable of type irqaction is initialized: the handler field is 
 
 <h2 id="4.7">4.7 软中断和Tasklet</h2>
 
-We mentioned earlier in the section “Interrupt Handling” that several tasks among those executed by the kernel are not critical: they can be deferred for a long period of time, if necessary. Remember that the interrupt service routines of an interrupt handler are serialized, and often there should be no occurrence of an interrupt until the corresponding interrupt handler has terminated. Conversely, the deferrable tasks can execute with all interrupts enabled. Taking them out of the interrupt handler helps keep kernel response time small. This is a very important property for many time-critical applications that expect their interrupt requests to be serviced in a few milliseconds.
+在之前的文章中，讲解中断处理相关的概念的时候，提到过有些任务不是紧急的，可以延后一段时间执行。因为中断服务例程都是顺序执行的，在响应一个中断的时候不应该被打断。相反，这些可延时任务执行时，可以使能中断。那么，将这些任务从中断处理程序中剥离出来，可以有效地保证内核对于中断响应时间尽可能短。这对于时间苛刻的应用来说，这是一个很重要的属性，尤其是那些要求中断请求必须在毫秒级别响应的应用。
 
-Linux 2.6 answers such a challenge by using two kinds of non-urgent interruptible kernel functions: the so-called deferrable functions* (softirqs and tasklets), and those executed by means of some work queues (we will describe them in the section “Work Queues” later in this chapter).
+Linux2.6内核使用两种手段满足这项挑战：软中断和tasklet，还有工作队列。其中，工作队列我们单独在一篇文章中讲解。
 
-Softirqs and tasklets are strictly correlated, because tasklets are implemented on top of softirqs. As a matter of fact, the term “softirq,” which appears in the kernel source code, often denotes both kinds of deferrable functions. Another widely used term is interrupt context: it specifies that the kernel is currently executing either an interrupt handler or a deferrable function.
+软中断和tasklet这两个术语是息息相关的，因为tasklet是基于软中断实现的。事实上，出现在内核源代码中的`软中断`概念有时候指的就是这两个术语的统称。另一个广泛使用的术语是`中断上下文`：可以是内核正在执行的中断处理程序，也可以是一个可延时处理的函数。
 
-Softirqs are statically allocated (i.e., defined at compile time), while tasklets can also be allocated and initialized at runtime (for instance, when loading a kernel module). Softirqs can run concurrently on several CPUs, even if they are of the same type. Thus, softirqs are reentrant functions and must explicitly protect their data structures with spin locks. Tasklets do not have to worry about this, because their execution is controlled more strictly by the kernel. Tasklets of the same type are always serialized: in other words, the same type of tasklet cannot be executed by two CPUs at the same time. However, tasklets of different types can be executed concurrently on several CPUs. Serializing the tasklet simplifies the life of device driver developers, because the tasklet function needs not be reentrant.
+软中断是静态分配好的（编译时），而tasklet是在运行时分配并初始化的（比如，加载内核模块的时候）。因为软中断的实现是可重入的，使用自旋锁保护它们的数据结构。所以软中断可以在多个CPU上并发运行。tasklet不需要考虑这些，因为它的处理完全由内核控制，也就是说，相同类型的tasklet总是顺序执行的。换句话说，不可能同时有2个以上的CPU执行相同类型的tasklet。当然了，不同类型的tasklet完全可以在多个CPU上同时执行。完全顺序执行的tasklet简化了驱动开发者的工作，因为tasklet不需要考虑可重入设计。
 
-Generally speaking, four kinds of operations can be performed on deferrable functions:
+既然已经理解了软中断和tasklet的机制，那么实现这样的可延时函数需要哪些步骤呢？如下所示：
 
-1. Initialization
+1. 初始化
 
-    Defines a new deferrable function; this operation is usually done when the kernel initializes itself or a module is loaded.
+    定义一个可延时函数。这一步，一般在内核初始化自身或者加载内核模块时完成。
 
-2. Activation
+2. 激活
 
-    Marks a deferrable function as “pending”—to be run the next time the kernel schedules a round of executions of deferrable functions. Activation can be done at any time (even while handling interrupts).
+    将上面定义的函数挂起。也就是等待内核下一次的调度执行。激活可以发生在任何时候。
 
-3. Masking
+3. 禁止
 
-    Selectively disables a deferrable function so that it will not be executed by the kernel even if activated. We’ll see in the section “Disabling and Enabling Deferrable Functions” in Chapter 5 that disabling deferrable functions is sometimes essential.
+    对于定义的函数，可以选择性的禁止执行。
 
-4. Execution
+4. 执行
 
-    Executes a pending deferrable function together with all other pending deferrable functions of the same type; execution is performed at well-specified times, explained later in the section “Softirqs.”
+    执行定义的延时函数。对于执行的时机，通过软中断控制。
 
-Activation and execution are bound together: a deferrable function that has been activated by a given CPU must be executed on the same CPU. There is no self-evident reason suggesting that this rule is beneficial for system performance. Binding the deferrable function to the activating CPU could in theory make better use of the CPU hardware cache. After all, it is conceivable that the activating kernel thread accesses some data structures that will also be used by the deferrable function. However, the relevant lines could easily be no longer in the cache when the deferrable function is run because its execution can be delayed a long time. Moreover, binding a function to a CPU is always a potentially “dangerous” operation, because one CPU might end up very busy while the others are mostly idle.
+激活和执行是绑定在一起的，也就是说，那个CPU激活延时函数就在那个CPU上执行。但这并不是总能提高系统性能。虽然从理论上说，绑定可延时函数到激活它的CPU上更有利于利用CPU硬件Cache。毕竟，可以想象的是，正在执行的内核线程要访问的数据结构也可能是可延时函数使用的数据。但是，因为等到延时函数执行的时候，已经过了一段时间，Cache中的相关行可能已经不存在了。更重要的是，总是把一个函数绑定到某个CPU上执行是有风险的，这个CPU可能负荷很重而其它的CPU可能比较空闲。
 
 <h3 id="4.7.1">4.7.1 软中断</h3>
 
-Linux 2.6 uses a limited number of softirqs. For most purposes, tasklets are good enough and are much easier to write because they do not need to be reentrant.
+Linux2.6内核中，软中断的数量比较少。对于多数目的，这些tasklet足够了。因为不需要考虑重入，所以简单易用。事实上，只使用了6类软中断，如下表所示：
 
-As a matter of fact, only the six kinds of softirqs listed in Table 4-9 are currently defined.
-
-Table 4-9. Softirqs used in Linux 2.6
+表4-9 Linux2.6中使用的软中断
 
 | 软中断 | 优先级 | 描述 |
 | ------ | ------ | ----- |
@@ -1035,47 +1040,28 @@ Table 4-9. Softirqs used in Linux 2.6
 | SCSI_SOFTIRQ  | 4 | SCSI命令的后中断处理 |
 | TASKLET_SOFTIRQ| 5 | 处理常规tasklet |
 
-The index of a sofirq determines its priority: a lower index means higher priority because softirq functions will be executed starting from index 0.
+这里的优先级就是软中断的索引，数值越小，代表优先级越高。Linux软中断处理程序总是从索引0开始执行。
 
 <h4 id="4.7.1.1">4.7.1.1 软中断使用的数据结构</h4>
 
-The main data structure used to represent softirqs is the softirq_vec array, which includes 32 elements of type softirq_action. The priority of a softirq is the index of the corresponding softirq_action element inside the array. As shown in Table 4-9, only the first six entries of the array are effectively used. The softirq_action data structure consists of two fields: an action pointer to the softirq function and a data pointer to a generic data structure that may be needed by the softirq function.
+软中断的主要数据结构是`softirq_vec`数组，包含类型为`softirq_action`的32个元素。软中断的优先级表示`softirq_action`类型元素在数组中的索引。也就是说，目前只使用了数组中的前6项。`softirq_action`包含2个指针：分别指向软中断函数和函数使用的数据。
 
-Another critical field used to keep track both of kernel preemption and of nesting of
-kernel control paths is the 32-bit preempt_count field stored in the thread_info field
-of each process descriptor (see the section “Identifying a Process” in Chapter 3). This
-field encodes three distinct counters plus a flag, as shown in Table 4-10.
+Another critical field used to keep track both of kernel preemption and of nesting of kernel control paths is the 32-bit preempt_count field stored in the thread_info field of each process descriptor (see the section “Identifying a Process” in Chapter 3). This field encodes three distinct counters plus a flag, as shown in Table 4-10.
+另一个重要的数据是`preempt_count`，存储在进程描述符中的`thread_info`成员中，用来追踪记录内核抢占和内核控制路径嵌套层数。
 
 Table 4-10. Subfields of the preempt_count field (continues)
 
-The first counter keeps track of how many times kernel preemption has been explicitly
-disabled on the local CPU; the value zero means that kernel preemption has not been explicitly disabled at all. The second counter specifies how many levels deep the disabling of deferrable functions is (level 0 means that deferrable functions are enabled). The third counter specifies the number of nested interrupt handlers on the
-local CPU (the value is increased by irq_enter() and decreased by irq_exit(); see
-the section “I/O Interrupt Handling” earlier in this chapter).
+| 位 | 描述 |
+| -- | ---- |
+| 0-7 | 内核抢占计数 |
 
-There is a good reason for the name of the preempt_count field: kernel preemptability
-has to be disabled either when it has been explicitly disabled by the kernel code (preemption
-counter not zero) or when the kernel is running in interrupt context. Thus,
-to determine whether the current process can be preempted, the kernel quickly
-checks for a zero value in the preempt_count field. Kernel preemption will be discussed
-in depth in the section “Kernel Preemption” in Chapter 5.
+The first counter keeps track of how many times kernel preemption has been explicitly disabled on the local CPU; the value zero means that kernel preemption has not been explicitly disabled at all. The second counter specifies how many levels deep the disabling of deferrable functions is (level 0 means that deferrable functions are enabled). The third counter specifies the number of nested interrupt handlers on the local CPU (the value is increased by irq_enter() and decreased by irq_exit(); see the section “I/O Interrupt Handling” earlier in this chapter).
 
-The in_interrupt() macro checks the hardirq and softirq counters in the current_
-thread_info()->preempt_count field. If either one of these two counters is positive,
-the macro yields a nonzero value, otherwise it yields the value zero. If the kernel does
-not make use of multiple Kernel Mode stacks, the macro always looks at the
-preempt_count field of the thread_info descriptor of the current process. If, however,
-the kernel makes use of multiple Kernel Mode stacks, the macro might look at the
-preempt_count field in the thread_info descriptor contained in a irq_ctx union associated
-with the local CPU. In this case, the macro returns a nonzero value because
-the field is always set to a positive value.
+There is a good reason for the name of the preempt_count field: kernel preemptability has to be disabled either when it has been explicitly disabled by the kernel code (preemption counter not zero) or when the kernel is running in interrupt context. Thus, to determine whether the current process can be preempted, the kernel quickly checks for a zero value in the preempt_count field. Kernel preemption will be discussed in depth in the section “Kernel Preemption” in Chapter 5.
 
-The last crucial data structure for implementing the softirqs is a per-CPU 32-bit
-mask describing the pending softirqs; it is stored in the _ _softirq_pending field of
-the irq_cpustat_t data structure (recall that there is one such structure per each CPU
-in the system; see Table 4-8). To get and set the value of the bit mask, the kernel
-makes use of the local_softirq_pending() macro that selects the softirq bit mask of
-the local CPU.
+The in_interrupt() macro checks the hardirq and softirq counters in the current_thread_info()->preempt_count field. If either one of these two counters is positive, the macro yields a nonzero value, otherwise it yields the value zero. If the kernel does not make use of multiple Kernel Mode stacks, the macro always looks at the preempt_count field of the thread_info descriptor of the current process. If, however, the kernel makes use of multiple Kernel Mode stacks, the macro might look at the preempt_count field in the thread_info descriptor contained in a irq_ctx union associated with the local CPU. In this case, the macro returns a nonzero value because the field is always set to a positive value.
+
+The last crucial data structure for implementing the softirqs is a per-CPU 32-bit mask describing the pending softirqs; it is stored in the __softirq_pending field of the irq_cpustat_t data structure (recall that there is one such structure per each CPU in the system; see Table 4-8). To get and set the value of the bit mask, the kernel makes use of the local_softirq_pending() macro that selects the softirq bit mask of the local CPU.
 
 
 <h4 id="4.7.1.2">4.7.1.2 处理软中断</h4>
@@ -1114,7 +1100,7 @@ If pending softirqs are detected at one such checkpoint (local_softirq_pending()
 
 3. If the size of the thread_union structure is 4 KB, it switches to the soft IRQ stack, if necessary. This step is very similar to step 2 of do_IRQ() in the earlier section “I/O Interrupt Handling;” of course, the softirq_ctx array is used instead of hardirq_ctx.
 
-4. Invokes the _ _do_softirq() function (see the following section).
+4. Invokes the __do_softirq() function (see the following section).
 
 5. If the soft IRQ stack has been effectively switched in step 3 above, it restores the original stack pointer into the esp register, thus switching back to the exception stack that was in use before.
 
@@ -1123,13 +1109,13 @@ If pending softirqs are detected at one such checkpoint (local_softirq_pending()
 
 <h4 id="4.7.1.4">4.7.1.4 __do_softirq()函数</h4>
 
-The _ _do_softirq() function reads the softirq bit mask of the local CPU and executes the deferrable functions corresponding to every set bit. While executing a softirq function, new pending softirqs might pop up; in order to ensure a low latency time for the deferrable funtions, _ _do_softirq() keeps running until all pending softirqs have been executed. This mechanism, however, could force _ _do_softirq() to run for long periods of time, thus considerably delaying User Mode processes. For that reason, _ _do_softirq() performs a fixed number of iterations and then returns. The remaining pending softirqs, if any, will be handled in due time by the ksoftirqd kernel thread described in the next section. Here is a short description of the actions performed by the function:
+The __do_softirq() function reads the softirq bit mask of the local CPU and executes the deferrable functions corresponding to every set bit. While executing a softirq function, new pending softirqs might pop up; in order to ensure a low latency time for the deferrable funtions, __do_softirq() keeps running until all pending softirqs have been executed. This mechanism, however, could force __do_softirq() to run for long periods of time, thus considerably delaying User Mode processes. For that reason, __do_softirq() performs a fixed number of iterations and then returns. The remaining pending softirqs, if any, will be handled in due time by the ksoftirqd kernel thread described in the next section. Here is a short description of the actions performed by the function:
 
 1. Initializes the iteration counter to 10.
 
 2. Copies the softirq bit mask of the local CPU (selected by local_softirq_pending()) in the pending local variable.
 
-3. Invokes local_bh_disable() to increase the softirq counter. It is somewhat counterintuitive that deferrable functions should be disabled before starting to execute them, but it really makes a lot of sense. Because the deferrable functions mostly run with interrupts enabled, an interrupt can be raised in the middle of the _ _do_softirq() function. When do_IRQ() executes the irq_exit() macro, another instance of the _ _do_softirq() function could be started. This has to be avoided, because deferrable functions must execute serially on the CPU. Thus, the first instance of _ _do_softirq() disables deferrable functions, so that every new instance of the function will exit at step 1 of do_softirq().
+3. Invokes local_bh_disable() to increase the softirq counter. It is somewhat counterintuitive that deferrable functions should be disabled before starting to execute them, but it really makes a lot of sense. Because the deferrable functions mostly run with interrupts enabled, an interrupt can be raised in the middle of the __do_softirq() function. When do_IRQ() executes the irq_exit() macro, another instance of the __do_softirq() function could be started. This has to be avoided, because deferrable functions must execute serially on the CPU. Thus, the first instance of __do_softirq() disables deferrable functions, so that every new instance of the function will exit at step 1 of do_softirq().
 
 4. Clears the softirq bitmap of the local CPU, so that new softirqs can be activated (the value of the bit mask has already been saved in the pending local variable in step 2).
 
