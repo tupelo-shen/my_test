@@ -1046,63 +1046,71 @@ Linux2.6内核中，软中断的数量比较少。对于多数目的，这些tas
 
 软中断的主要数据结构是`softirq_vec`数组，包含类型为`softirq_action`的32个元素。软中断的优先级表示`softirq_action`类型元素在数组中的索引。也就是说，目前只使用了数组中的前6项。`softirq_action`包含2个指针：分别指向软中断函数和函数使用的数据。
 
-Another critical field used to keep track both of kernel preemption and of nesting of kernel control paths is the 32-bit preempt_count field stored in the thread_info field of each process descriptor (see the section “Identifying a Process” in Chapter 3). This field encodes three distinct counters plus a flag, as shown in Table 4-10.
-另一个重要的数据是`preempt_count`，存储在进程描述符中的`thread_info`成员中，用来追踪记录内核抢占和内核控制路径嵌套层数。
+另一个重要的数据是`preempt_count`，存储在进程描述符中的`thread_info`成员中，用来追踪记录内核抢占和内核控制路径嵌套层数。它又被划分为4部分，如下表所示：
 
-Table 4-10. Subfields of the preempt_count field (continues)
+表4-10 `preempt_count`各个位域
 
 | 位 | 描述 |
 | -- | ---- |
-| 0-7 | 内核抢占计数 |
+| 0-7  | 内核抢占禁止计数（最大值255） |
+| 8-15 | 软中断禁用深度计数（最大值255） |
+| 16-27| 硬中断计数（最大值4096）|
+| 28   | PREEMPT_ACTIVE标志     |
 
-The first counter keeps track of how many times kernel preemption has been explicitly disabled on the local CPU; the value zero means that kernel preemption has not been explicitly disabled at all. The second counter specifies how many levels deep the disabling of deferrable functions is (level 0 means that deferrable functions are enabled). The third counter specifies the number of nested interrupt handlers on the local CPU (the value is increased by irq_enter() and decreased by irq_exit(); see the section “I/O Interrupt Handling” earlier in this chapter).
+关于内核抢占的话题我们还会再写一篇专门的文章进行阐述，故在此不再详述。
 
-There is a good reason for the name of the preempt_count field: kernel preemptability has to be disabled either when it has been explicitly disabled by the kernel code (preemption counter not zero) or when the kernel is running in interrupt context. Thus, to determine whether the current process can be preempted, the kernel quickly checks for a zero value in the preempt_count field. Kernel preemption will be discussed in depth in the section “Kernel Preemption” in Chapter 5.
+可以使用宏`in_interrupt()`访问硬中断和软中断计数器。如果这两个计数器都是0，则返回值为0；否则返回非0值。如果内核没有使用多个内核态堆栈，该宏查找的是当前进程的`thread_info`描述符。但是，如果使用了多个内核态堆栈，则查找`irq_ctx`联合体中的`thread_info`描述符。在此情况下，内核抢占肯定是禁止的，所以该宏返回的是非0值。
 
-The in_interrupt() macro checks the hardirq and softirq counters in the current_thread_info()->preempt_count field. If either one of these two counters is positive, the macro yields a nonzero value, otherwise it yields the value zero. If the kernel does not make use of multiple Kernel Mode stacks, the macro always looks at the preempt_count field of the thread_info descriptor of the current process. If, however, the kernel makes use of multiple Kernel Mode stacks, the macro might look at the preempt_count field in the thread_info descriptor contained in a irq_ctx union associated with the local CPU. In this case, the macro returns a nonzero value because the field is always set to a positive value.
-
-The last crucial data structure for implementing the softirqs is a per-CPU 32-bit mask describing the pending softirqs; it is stored in the __softirq_pending field of the irq_cpustat_t data structure (recall that there is one such structure per each CPU in the system; see Table 4-8). To get and set the value of the bit mask, the kernel makes use of the local_softirq_pending() macro that selects the softirq bit mask of the local CPU.
+最后一个跟软中断实现相关的每个CPU的32位掩码，用来描述挂起的软中断。存储在`irq_cpustat_t`数据结构的`__softirq_pending`成员中。对其具体的操作函数是`local_softirq_pending()`宏，用来是否禁止某个中断。
 
 
 <h4 id="4.7.1.2">4.7.1.2 处理软中断</h4>
 
-The open_softirq() function takes care of softirq initialization. It uses three parameters: the softirq index, a pointer to the softirq function to be executed, and a second pointer to a data structure that may be required by the softirq function. open_softirq() limits itself to initializing the proper entry of the softirq_vec array. Softirqs are activated by means of the raise_softirq() function. This function, which receives as its parameter the softirq index nr, performs the following actions:
+软中断的初始化使用`open_softirq()`函数完成，函数原型如下所示：
 
-1. Executes the local_irq_save macro to save the state of the IF flag of the eflags register and to disable interrupts on the local CPU.
+    void open_softirq(int nr, void (*action)(struct softirq_action *))
+    {
+        softirq_vec[nr].action = action;
+    }
 
-2. Marks the softirq as pending by setting the bit corresponding to the index nr in the softirq bit mask of the local CPU.
+软中断的激活使用方法`raise_softirq()`，其参数是软中断索引`nr`，主要执行下面的动作：
 
-3. If in_interrupt() yields the value 1, it jumps to step 5. This situation indicates either that raise_softirq() has been invoked in interrupt context, or that the softirqs are currently disabled.
+1. 执行`local_irq_save`宏保存`eflags`寄存器中的IF标志并且禁止中断。
 
-4. Otherwise, invokes wakeup_softirqd() to wake up, if necessary, the ksoftirqd kernel thread of the local CPU (see later).
+2. 通过设备CPU软中断位掩码的相应位将软中断标记为挂起状态。
 
-5. Executes the local_irq_restore macro to restore the state of the IF flag saved in step 1.
+3. 如果`in_interrupt()`返回1，直接跳转到第5步。如果处于这种情况, 要么是当前中断上下文中正在调用`raise_softirq()`、或者软中断被禁止。
 
-Checks for active (pending) softirqs should be perfomed periodically, but without inducing too much overhead. They are performed in a few points of the kernel code.  Here is a list of the most significant points (be warned that number and position of the softirq checkpoints change both with the kernel version and with the supported hardware architecture):
+4. 否则，调用`wakeup_softirqd()`唤醒`ksoftirqd`内核线程。
 
-* When the kernel invokes the local_bh_enable() function* to enable softirqs on the local CPU
+5. 执行`local_irq_restore`宏恢复IF标志。
 
-* When the do_IRQ() function finishes handling an I/O interrupt and invokes the irq_exit() macro
+应该周期性地检查挂起状态的软中断，但是不能因此增加太重的负荷。所以，软中断的执行时间点非常重要。下面是几个重要的时间点：
 
-* If the system uses an I/O APIC, when the smp_apic_timer_interrupt() function finishes handling a local timer interrupt (see the section “Timekeeping Architecture in Multiprocessor Systems” in Chapter 6)
+* 调用`local_bh_enable()`函数使能软中断的时候。
 
-* In multiprocessor systems, when a CPU finishes handling a function triggered by a CALL_FUNCTION_VECTOR interprocessor interrupt
+* 当`do_IRQ()`函数完成I/O中断处理，调用`irq_exit()`宏时。
 
-* When one of the special ksoftirqd/n kernel threads is awakened (see later)
+* 如果系统中使用的是`I/O-APIC`控制器，当`smp_apic_timer_interrupt()`函数处理完一个定时器中断的时候。
+
+* 在多核系统中，当CPU处理完一个由`CALL_FUNCTION_VECTOR`CPU间的中断引发的函数时。
+
+* 当一个特殊的ksoftirqd/n内核线程被唤醒时
 
 <h4 id="4.7.1.3">4.7.1.3 do_softirq函数</h4>
 
-If pending softirqs are detected at one such checkpoint (local_softirq_pending() is not zero), the kernel invokes do_softirq() to take care of them. This function performs the following actions:
+如果某个时间点，检测到挂起的软中断（`local_softirq_pending()`非零），内核调用`do_softirq()`处理它们。这个函数执行的主要内容如下：
 
-1. If in_interrupt() yields the value one, this function returns. This situation indicates either that do_softirq() has been invoked in interrupt context or that the softirqs are currently disabled.
+1. 如果`in_interrupt()`等于1，则函数返回。这表明中断上下文中正在调用do_softirq()函数，或者软中断被禁止。
 
-2. Executes local_irq_save to save the state of the IF flag and to disable the interrupts on the local CPU.
+2. 执行`local_irq_save`来保存IF标志的状态，并在本地CPU上禁用中断。
 
-3. If the size of the thread_union structure is 4 KB, it switches to the soft IRQ stack, if necessary. This step is very similar to step 2 of do_IRQ() in the earlier section “I/O Interrupt Handling;” of course, the softirq_ctx array is used instead of hardirq_ctx.
+3. 如果`thread_union`等于4KB，如果有必要，切换到软IRQ堆栈中。
 
-4. Invokes the __do_softirq() function (see the following section).
+4. 调用`__do_softirq()`函数。
 
 5. If the soft IRQ stack has been effectively switched in step 3 above, it restores the original stack pointer into the esp register, thus switching back to the exception stack that was in use before.
+6. 如果软IRQ堆栈
 
 6. Executes local_irq_restore to restore the state of the IF flag (local interrupts enabled or disabled) saved in step 2 and returns.
 
