@@ -1061,7 +1061,7 @@ Linux2.6内核中，软中断的数量比较少。对于多数目的，这些tas
 
 可以使用宏`in_interrupt()`访问硬中断和软中断计数器。如果这两个计数器都是0，则返回值为0；否则返回非0值。如果内核没有使用多个内核态堆栈，该宏查找的是当前进程的`thread_info`描述符。但是，如果使用了多个内核态堆栈，则查找`irq_ctx`联合体中的`thread_info`描述符。在此情况下，内核抢占肯定是禁止的，所以该宏返回的是非0值。
 
-最后一个跟软中断实现相关的每个CPU的32位掩码，用来描述挂起的软中断。存储在`irq_cpustat_t`数据结构的`__softirq_pending`成员中。对其具体的操作函数是`local_softirq_pending()`宏，用来是否禁止某个中断。
+最后一个跟软中断实现相关的数据是每个CPU都有一个32位掩码，用来描述挂起的软中断。存储在`irq_cpustat_t`数据结构的`__softirq_pending`成员中。对其具体的操作函数是`local_softirq_pending()`宏，用来是否禁止某个中断。
 
 
 <h4 id="4.7.1.2">4.7.1.2 处理软中断</h4>
@@ -1095,7 +1095,7 @@ Linux2.6内核中，软中断的数量比较少。对于多数目的，这些tas
 
 * 在多核系统中，当CPU处理完一个由`CALL_FUNCTION_VECTOR`CPU间的中断引发的函数时。
 
-* 当一个特殊的ksoftirqd/n内核线程被唤醒时
+* 当一个特殊的`ksoftirqd/n`内核线程被唤醒时。
 
 <h4 id="4.7.1.3">4.7.1.3 do_softirq函数</h4>
 
@@ -1109,35 +1109,126 @@ Linux2.6内核中，软中断的数量比较少。对于多数目的，这些tas
 
 4. 调用`__do_softirq()`函数。
 
-5. If the soft IRQ stack has been effectively switched in step 3 above, it restores the original stack pointer into the esp register, thus switching back to the exception stack that was in use before.
-6. 如果软IRQ堆栈
+5. 如果在第3步切换到软IRQ堆栈，则恢复原来的堆栈指针到esp寄存器中，然后切换到之前使用的异常堆栈中。
 
-6. Executes local_irq_restore to restore the state of the IF flag (local interrupts enabled or disabled) saved in step 2 and returns.
-
+6. 执行`local_irq_restore`恢复中断标志。
 
 <h4 id="4.7.1.4">4.7.1.4 __do_softirq()函数</h4>
 
-The __do_softirq() function reads the softirq bit mask of the local CPU and executes the deferrable functions corresponding to every set bit. While executing a softirq function, new pending softirqs might pop up; in order to ensure a low latency time for the deferrable funtions, __do_softirq() keeps running until all pending softirqs have been executed. This mechanism, however, could force __do_softirq() to run for long periods of time, thus considerably delaying User Mode processes. For that reason, __do_softirq() performs a fixed number of iterations and then returns. The remaining pending softirqs, if any, will be handled in due time by the ksoftirqd kernel thread described in the next section. Here is a short description of the actions performed by the function:
+`__do_softirq()`函数读取位掩码，如果某位被置1，则执行其对应的处理函数。但是，在执行的过程中，可能会有新的软中断发生，这样后面的软中断处理就会延时。为了保证位掩码所有的软中断处理及时，`__do_softirq()`函数一次处理完所有的软中断。但是，这种机制又引发了新的问题，`__do_softirq()`函数一次运行时间过长。基于这个原因，`__do_softirq()`函数每次运行固定数量的循环次数，如果还有没执行的软中断，交给内核线程`ksoftirqd`进行处理。下面是`__do_softirq()`这个函数所做的工作：
 
-1. Initializes the iteration counter to 10.
+1. 设置每次循环次数为10。
 
-2. Copies the softirq bit mask of the local CPU (selected by local_softirq_pending()) in the pending local variable.
+2. 拷贝软中断的位掩码到局部变量中。
 
-3. Invokes local_bh_disable() to increase the softirq counter. It is somewhat counterintuitive that deferrable functions should be disabled before starting to execute them, but it really makes a lot of sense. Because the deferrable functions mostly run with interrupts enabled, an interrupt can be raised in the middle of the __do_softirq() function. When do_IRQ() executes the irq_exit() macro, another instance of the __do_softirq() function could be started. This has to be avoided, because deferrable functions must execute serially on the CPU. Thus, the first instance of __do_softirq() disables deferrable functions, so that every new instance of the function will exit at step 1 of do_softirq().
+3. 调用`local_bh_disable()`函数禁止软中断。
 
-4. Clears the softirq bitmap of the local CPU, so that new softirqs can be activated (the value of the bit mask has already been saved in the pending local variable in step 2).
+    为什么此时禁止软中断呢？因为执行那些可延时函数时，中断是处于使能状态的，意味着执行`__do_softirq()`函数的过程中，随时都会发生中断，那么立即响应中断，执行`do_IRQ()`函数。而`do_IRQ()`函数中，在最后会调用`irq_exit()`宏，这个宏会引发另一个调用` __do_softirq()`的程序执行。这在Linux内核中是禁止的，因为其可延时函数的执行都是串行的。所以，在此需要禁止软中断。
 
-5. Executes local_irq_enable() to enable local interrupts.
+4. 清除正在执行的软中断对应掩码位。
 
-6. For each bit set in the pending local variable, it executes the corresponding softirq function; recall that the function address for the softirq with index n is stored in softirq_vec[n]->action.
+5. 执行`local_irq_enable()`使能中断。
 
-7. Executes local_irq_disable() to disable local interrupts.
+6. 执行软中断对应的函数。
 
-8. Copies the softirq bit mask of the local CPU into the pending local variable and decreases the iteration counter one more time.
+7. 执行`local_irq_disable()`禁止中断。
+
+8. 迭代次数减1，继续执行。
 
 <h4 id="4.7.1.5">4.7.1.5 ksoftirqd内核线程</h4>
 
+在较新的内核版本中，每个CPU都有自己的`ksoftirqd`内核线程。每个`ksoftirqd`内核线程调用`ksoftirqd()`函数，主要的执行内容如下所示：
+
+    for(;;) {
+        set_current_state(TASK_INTERRUPTIBLE);
+        schedule();
+        /* 处于TASK_RUNNING状态中 */
+        while (local_softirq_pending()) {
+            preempt_disable();
+            do_softirq();
+            preempt_enable();
+            cond_resched();
+        }
+    }
+
+该内核线程被唤醒后，会调用`local_softirq_pending()`检查软中断位掩码，如果必要检查`do_softirq()`函数。
+
+也就是说，`ksoftirqd`内核线程是时间维度上的一种平衡策略。
+
+软中断函数也可以重新激活自身。实际上，网络软中断和tasklet软中断就是这样做的。更重要的是，外部事件，比如网卡上的`数据包泛滥`也可以频繁地激活软中断。
+
+连续大量的软中断会造成潜在的问题，引入内核线程也是为了解决这个问题。如果没有这个内核线程，开发者只能使用两种替代策略。
+
+第一种策略就是正在执行软中断的时候忽略新的软中断。换言之，在执行`do_softirq()`函数的过程中，除了执行已经记录的挂起中的软中断之外，不会再检查是否还会发生软中断。这个方案有瑕疵，假设软中断函数在执行`do_softirq()`函数的过程中被重新被激活。最坏的情况就是，直到下一次定时器中断发生时，软中断不会被执行，即使当前处理器处于空闲状态。对于这种软中断延迟，网络开发者不可接受。
+
+第二种策略就是`do_softirq()`函数持续地检查是否有挂起的软中断。只有当所有的软中断被处理完该函数才退出。这肯定满足了网络开发者的需求，但是对系统的普通用户却造成了很大的干扰：如果网卡的数据包流非常频繁，或者软中断函数保持自激活，`do_softirq()`函数就永远不会返回，用户态的程序实际上无法正常工作。
+
+综上所述，`ksoftirqd`内核线程就是尝试解决这种很难抉择的问题。`do_softirq()`函数判断是否有软中断挂起。迭代一些次数后，如果还有软中断挂起，函数就会唤醒内核线程，自身终止，交给内核线程去处理后续的软中断。内核线程的优先级比较低，用户程序的执行不会受到影响。如果处理器处于空闲状态，挂起的软中断也会很快被执行。
+
 <h3 id="4.7.2">4.7.2 Tasklet</h3>
+
+Tasklet是I/O驱动中实现可延时处理函数的一种优选方法。Tasklet的实现基于两种软中断，分别为`HI_SOFTIRQ`和`TASKLET_SOFTIRQ`。多个tasklet可能对应相同的软中断，每个tasklet都有自己的处理函数。除了`do_softirq()`执行`HI_SOFTIRQ`的tasklet优先于` TASKLET_SOFTIRQ`之外，这两种软中断没有实质上的差异。
+
+Tasklet和高优先级的tasklet分别存储在` tasklet_vec`和`tasklet_hi_vec`数组中。它们都包含与CPU（`NR_CPUS`）相同个数的元素，这些元素的类型是`tasklet_head`，也就是说tasklet描述符的管理还是通过链表的结构进行管理（由此可以看出，链表在Linux内核数据管理中的作用了）。tasklet描述符的数据结构是`tasklet_struct`，它的成员如下表所示：
+
+表4-11 tasklet描述符的数据成员
+
+| 名称 | 描述 |
+| ---- | ---- |
+| next | 指向下一个描述符 |
+| state | tasklet的状态 |
+| count | 锁计数 |
+| func | 指向tasklet处理函数 |
+| data | 一个tasklet函数可能使用的无符号长整形数 |
+
+`state`包含两个标志：
+
+* TASKLET_STATE_SCHED
+
+    置1，表明tasklet正在挂起（也就是准备执行）。这意味tasklet描述符已经被插入到`tasklet_vec`和`tasklet_hi_vec`数组中了。
+
+* TASKLET_STATE_RUN
+
+    表明正在执行。对于单处理器系统，该标志没有使用。
+
+假设你正在写一个设备驱动且想使用`tasklet`，需要做什么呢？
+
+首先，你应该申请一个新的`tasklet_struct`数据结构并通过`tasklet_init()`完成初始化。`tasklet_init()`的参数为tasklet描述符地址，你的tasklet处理函数地址，还有可选的整数参数。
+
+Tasklet可以通过`tasklet_disable_nosync()`或`tasklet_disable()`禁止。这两个函数都是增加tasklet描述符的count值。但是，后者必须等到正在运行的tasklet函数终止后才会返回。重新使能tasklet，使用`tasklet_enable()`函数。
+
+为了激活tasklet，可以根据优先级分别调用`tasklet_schedule()`函数或者`tasklet_hi_schedule()`函数。它们的工作内容类似，如下所示：
+
+1. 检查`TASKLET_STATE_SCHED`，如果设置，则返回（说明已经被调度过了）。
+
+2. 调用`local_irq_save`保存中断标志IF并禁止中断。
+
+3. 将tasklet描述符添加到`tasklet_vec[n]`或`tasklet_hi_vec[n]`数组中对应的列表的开始处，在此，n表示CPU的逻辑编号。
+
+4. 调用`raise_softirq_irqoff()`激活`TASKLET_SOFTIRQ`或`HI_SOFTIRQ`软中断。
+
+5. 调用`local_irq_restore`恢复中断标志IF。
+
+接下来，我们看看tasklet是如何执行的。其实，跟其它软中断的执行过程类似。软中断被激活，`do_softirq()`就会执行对应的软中断函数。`HI_SOFTIRQ`软中断对应的函数为`tasklet_hi_action()`，而`TASKLET_SOFTIRQ`对应的函数为`tasklet_action()`。它们的执行过程也是类似的，如下所示：
+
+1. 禁止中断。
+
+2. 获取CPU的逻辑编号n。
+
+3. 将tasklet描述符链表中的地址存储到局部变量链表中。
+
+4. 清除`tasklet_vec[n]`或`tasklet_hi_vec[n]`数组中已经调度过的tasklet描述符列表。（赋值NULL即可）
+
+5. 使能中断。
+
+6. 遍历链表中的tasklet描述符：
+
+    * 在多核处理器系统中，需要检查`TASKLET_STATE_RUN`标志。
+    * 通过检查tasklet描述符中的count成员，判断是否被禁止。如果tasklet被禁止，清除`TASKLET_STATE_RUN`标志，重新将tasklet描述符插回到tasklet描述符链表中，然后再一次激活`TASKLET_SOFTIRQ`或`HI_SOFTIRQ`软中断。
+
+    * 如果tasklet被使能，清除`TASKLET_STATE_SCHED`标志，然后执行tasklet对应的处理函数。
+
+需要注意的是，除非tasklet函数激活自身。否则，一次激活只能触发一次tasklet函数的执行。
 
 <h2 id="4.8">4.8 工作队列</h2>
 
