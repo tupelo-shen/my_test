@@ -1232,6 +1232,80 @@ Tasklet可以通过`tasklet_disable_nosync()`或`tasklet_disable()`禁止。这�
 
 <h2 id="4.8">4.8 工作队列</h2>
 
+Linux2.6版本中引入了`工作队列`概念，代替Linux2.4版本中的`任务队列`。用以实现注册激活某些函数，留待稍后由工作线程执行（与tasklet的处理类似）。
+
+虽然，tasklet之类的可延时函数和工作队列处理流程类似，但是却大有不同。主要的差别是可延时函数运行在中断上下文中，而工作队列中的函数运行在进程上下文中。在进程上下文运行是执行阻塞函数的唯一方式，因为中断上下文中不能发生进程切换。不论是可延时函数还是工作队列中的函数都不能访问进程的用户态地址空间，它们都运行在内核态。事实上，可延时函数并不知道当前正在运行的进程。另一方面，工作队列中函数由内核线程执行，所以也就没有用户态地址可以访问。
+
+也就是说，工作队列的出现就是解决tasklet不能处理可阻塞函数的弊端。并且它们都是运行在内核态的程序，不能访问用户态地址空间。
+
+<h3 id="4.8.1">4.8.1 工作队列数据结构</h3>
+
+工作队列的主要数据结构是`workqueue_struct`，其中，包含一个具有`NR_CPUS`个元素的数组。每个元素都是一个类型为`cpu_workqueue_struct`的描述符，其成员如下表所示：
+
+表4-12 `cpu_workqueue_struct`结构成员
+
+| 名称 | 描述 |
+| ---- | ---- |
+| lock | 保护数据结构的自旋锁 |
+| remove_sequence | flush_workqueue()使用的序列号 |
+| insert_sequence | flush_workqueue()使用的序列号 |
+| worklist | 挂起函数列表的head |
+| more_work | 休眠中的工作线程等待队列 |
+| work_done | 等待从工作队列中刷新的进程队列 |
+| wq | 指向包含描述符的`workqueue_struct`结构 |
+| thread | 该数据结构的工作线程的进程描述符 |
+| run_depth | run_workqueue()执行深度 |
+
+`worklist`是一个双向链表，用来保存工作队列的待处理任务。每个待处理任务使用`work_struct`数据结构表示，成员如下表所示：
+
+表4-13 `work_struct`成员
+
+| 名称 | 描述 |
+| ---- | ---- |
+| pending | 1，表示处理函数已经在工作队列列表中 |
+| entry | 指向函数列表中下一项或前一项 |
+| func | 函数的地址 |
+| data | 传给函数的数据 |
+| wq_data | 指向父cpu_workqueue_struct描述符 |
+| timer | 软件定时器，用于函数的延时执行 |
+
+<h3 id="4.8.2">4.8.2 工作队列函数</h3>
+
+我们已经了解了工作队列的原理，以及其数据结构。那么，当我们想要使用工作队列的时候，如何创建呢？
+
+使用`create_workqueue("foo")`创建一个工作队列。`foo`是工作队列的名称，函数返回新创建的`workqueue_struct`的地址。该函数还会创建n个工作线程，n是CPU的数量，这些线程命令方式就是在传递的字符串`foo`后面加数字n表示：比如`foo/0`、`foo/1`等等。`create_singlethread_workqueue()`只创建一个工作线程，其余一样。销毁工作队列使用`destroy_workqueue()`函数，参数是一个指向`workqueue_struct`结构的指针。
+
+`queue_work()`函数插入一个函数到工作队列中（该函数已经被包含在`work_struct`描述符中了）。它的参数是指向`workqueue_struct`类型描述符的指针`wq`和指向`work_struct`描述符的指针`work`。它所执行的主要工作是：
+
+1. 插件待插入的函数是否已经在工作队列中。
+
+2. 添加`work_struct`描述符到工作队列列表中，设置`work->pending`为1。
+
+3. 唤醒`more_work`等待队列中休眠的工作线程。
+
+`queue_delayed_work()`函数与`queue_work()`类似，除了接收第3个参数-延时时间（单位是系统嘀嗒）之外。这个时间用来保证挂起函数执行之前最小延时时间。`queue_delayed_work()`依赖于`work_struct`描述符中的`timer`软件定时器，推迟将`work_struct`描述符插入到工作队列列表的时间。`cancel_delayed_work()`取消之前插入到工作队列中的函数，前提是`work_struct`描述符还没有被插入到工作队列中。
+
+每个工作线程执行`worker_thread`函数，循环处理挂起的函数。但是，大部分时候，线程正在休眠并且需要处理的工作。一旦被唤醒，工作线程调用`run_workqueue()`函数，其实就是把`work_struct`描述符从该线程的工作队列列表中删除，并执行相应的函数。因为工作队列函数可以阻塞，所以工作线程可以休眠且当其被恢复执行时，可以切换到其它CPU上运行。
+
+有时候，可能需要执行完所有的工作队列函数。可以调用`flush_workqueue()`函数，直到所有的函数执行完。但是，这个函数不会理会在它之后被加入工作队列的函数；对于新旧添加的函数可以通过`cpu_workqueue_struct`描述符中的`remove_sequence`和`insert_sequence`成员标识。
+
+<h3 id="4.8.3">4.8.3 预定义工作队列</h3>
+
+大部分情况下，为了运行某个函数而创建一组工作线程是多余的。因此，内核提供了一个称为`events`的预定义工作队列，内核开发者可以自由使用。预定义工作队列不过就是一个标准工作队列，包含不同内核和驱动层的函数。它的`workqueue_struct`描述符存储在`keventd_wq`数组中。为了使用预定义工作队列，内核提供了一些辅助函数：
+
+表4-14 预定义工作队列辅助函数
+
+| 预定义工作队列函数 | 等价的标准工作队列函数 |
+| ----------------- | --------------------- |
+| schedule_work(w) | queue_work(keventd_wq,w) |
+| schedule_delayed_work(w,d) | queue_delayed_work(keventd_wq,w,d)（任何CPU） |
+| schedule_delayed_work_on(cpu,w,d) | queue_delayed_work(keventd_wq,w,d)（给定CPU） |
+| flush_scheduled_work() | flush_workqueue(keventd_wq) |
+
+预定义工作队列节省了系统资源。但是另一方面，在预定义工作队列中的函数不应该阻塞较长时间：因为每个CPU中的工作队列的函数执行都是串行化的，所以，长时间的阻塞耽误其它用户的使用。
+
+除了通用的`events`队列，在Linux2.6内核中还可以发现一些特定的工作队列。最重要的是`kblockd`工作队列，由阻塞设备层使用。
+
 <h2 id="4.9">4.9 中断和异常的返回</h2>
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
