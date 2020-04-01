@@ -1,8 +1,19 @@
 <h1 id="0">0 目录</h1>
 
 * [5 内核同步](#5)
-    - [5.1 内核服务如何请求](#5.1)
+    - [5.1 如何请求内核服务](#5.1)
+        + [5.1.1 内核抢占](#5.1.1)
+        + [5.1.2 什么时候需要同步？](#5.1.2)
     - [5.2 同步原语](#5.2)
+        + [5.2.1 Per-CPU变量](#5.2.1)
+        + [5.2.2 原子操作](#5.2.2)
+        + [5.2.3 优化和内存屏障](#5.2.3)
+        + [5.2.4 自旋锁](#5.2.4)
+        + [5.2.5 信号量](#5.2.5)
+        + [5.2.6 Seqlock](#5.2.6)
+        + [5.2.7 中断禁止](#5.2.7)
+        + [5.2.8 软中断禁止](#5.2.8)
+        + [5.2.9 读-拷贝-更新（RCU）](#5.2.9)
     - [5.3 内核数据结构的同步访问](#5.3)
     - [5.4 防止竞态条件的示例](#5.4)
 
@@ -13,7 +24,7 @@
 
 We start this chapter by reviewing when, and to what extent, kernel requests are executed in an interleaved fashion. We then introduce the basic synchronization primitives implemented by the kernel and describe how they are applied in the most common cases. Finally, we illustrate a few practical examples.
 
-<h2 id="5.1">5.1 内核服务如何请求</h2>
+<h2 id="5.1">5.1 如何请求内核服务</h2>
 
 为了更好地理解内核是如何工作的，我们把内核比喻成一个酒吧服务员，他响应两种请求服务：一种是来自顾客，另外一种来自多个老板。这个服务员采用的策略是：
 
@@ -55,21 +66,19 @@ Linux内核是从2.6版本开始的，相比那些旧版本的非抢占性内核
 
 通过上面的规则可以看出，内核只有在执行异常处理程序（尤其是系统调用）的时候才能够被抢占，而且内核抢占也没有被禁止。所以，CPU必须使能中断，内核抢占才能被执行。
 
-A few simple macros listed in Table 5-1 deal with the preemption counter in the　prempt_count field.
+下表是操作`prempt_count`数据成员的一些宏：
 
-Table 5-1. Macros dealing with the preemption counter subfield
-
-| Macro | Description |
+| Macro | 描述 |
 | ----- | ----------- |
-| preempt_count() | Selects the preempt_count field in the thread_info descriptor |
-| preempt_disable() | Increases by one the value of the preemption counter |
-| preempt_enable_no_resched() | Decreases by one the value of the preemption counter |
-| preempt_enable() | Decreases by one the value of the preemption counter, and invokes preempt_schedule() if the TIF_NEED_RESCHED flag in the thread_info descriptor is set |
-| get_cpu() | Similar to preempt_disable(), but also returns the number of the local CPU |
-| put_cpu() | Same as preempt_enable() |
-| put_cpu_no_resched() | Same as preempt_enable_no_resched() |
+| preempt_count() | 选择`preempt_count` |
+| preempt_disable() | 抢占计数加1 |
+| preempt_enable_no_resched() | 抢占计数减1 |
+| preempt_enable() | 抢占计数减1，如果需要调度，调用`preempt_schedule()` |
+| get_cpu() | 与`preempt_disable()`相似，但是返回CPU的数量 |
+| put_cpu() | 与`preempt_enable()`相似 |
+| put_cpu_no_resched() | 与`preempt_enable_no_resched()`相似 |
 
-The preempt_enable() macro decreases the preemption counter, then checks whether the TIF_NEED_RESCHED flag is set (see Table 4-15 in Chapter 4). In this case, a process switch request is pending, so the macro invokes the preempt_schedule() function, which essentially executes the following code:
+`preempt_enable()`使能抢占，还会检查`TIF_NEED_RESCHED`标志是否设置。如果设置，说明需要进行进程切换，就会调用函数`preempt_schedule()`，其代码片段如下所示：
 
     if (!current_thread_info->preempt_count && !irqs_disabled()) {
         current_thread_info->preempt_count = PREEMPT_ACTIVE;
@@ -77,80 +86,27 @@ The preempt_enable() macro decreases the preemption counter, then checks whether
         current_thread_info->preempt_count = 0;
     }
 
-The function checks whether local interrupts are enabled and the preempt_count field of current is zero; if both conditions are true, it invokes schedule() to select another process to run. Therefore, kernel preemption may happen either when a kernel control path (usually, an interrupt handler) is terminated, or when an exception handler reenables kernel preemption by means of preempt_enable(). As we’ll see in the section “Disabling and Enabling Deferrable Functions” later in this chapter, kernel preemption may also happen when deferrable functions are enabled.
+可以看出，这个函数首先检查中断是否使能，以及抢占计数是否为0。如果条件为真，调用`schedule()`切换到其它进程运行。因此，内核抢占既可以发生在中断处理程序结束时，也可以发生在异常处理程序重新使能内核抢占时（调用`preempt_enable()`。<font color="red">也就是说，对于抢占式内核来说，进程切换发生的时机有，中断、系统调用、异常处理，还有一种特殊情况就是内核线程，它们直接调用schedule()进行主动进程切换。</font>
 
-We’ll conclude this section by noticing that kernel preemption introduces a nonnegligible overhead. For that reason, Linux 2.6 features a kernel configuration option that allows users to enable or disable kernel preemption when compiling the kernel.
+内核抢占不可避免地引入了更多的开销。基于这个原因，Linux2.6内核允许用户在编译内核代码的时候，通过配置，可以使能和禁止内核抢占。
 
 <h3 id="5.1.2">5.1.2 什么时候需要同步？</h3>
 
-Chapter 1 introduced the concepts of race condition and critical region for processes.
-The same definitions apply to kernel control paths. In this chapter, a race
-condition can occur when the outcome of a computation depends on how two or
-more interleaved kernel control paths are nested. A critical region is a section of code
-that must be completely executed by the kernel control path that enters it before
-another kernel control path can enter it.
+我们先了解一下内核进程的竞态条件和临界区的概念。当计算结果依赖于两个嵌套的内核控制路径时就会发生竞态条件。而临界区就是每次只能一个内核控制路径可以进入的代码段。
 
-Interleaving kernel control paths complicates the life of kernel developers: they must
-apply special care in order to identify the critical regions in exception handlers, interrupt
-handlers, deferrable functions, and kernel threads. Once a critical region has
-been identified, it must be suitably protected to ensure that any time at most one kernel
-control path is inside that region.
+内核控制路径的交错执行给内核开发者带来很大的麻烦：必须小心地在异常处理程序、中断处理程序、可延时处理函数和内核线程中确定临界区。一旦确定了哪些代码是临界区，就需要为这个临界区代码提供合适的保护，确保至多有一个内核控制路径可以访问它。
 
-Suppose, for instance, that two different interrupt handlers need to access the same
-data structure that contains several related member variables—for instance, a buffer
-and an integer indicating its length. All statements affecting the data structure must be
-put into a single critical region. If the system includes a single CPU, the critical region
-can be implemented by disabling interrupts while accessing the shared data structure,
-because nesting of kernel control paths can only occur when interrupts are enabled.
+假设两个不同的中断处理程序需要访问相同的数据结构。所有影响数据结构的语句都必须放到一个临界区中。如果是单核处理系统，临界区的保护只需要关闭中断即可，因为内核控制路径的嵌套只有在中断使能的情况下会发生。
 
-On the other hand, if the same data structure is accessed only by the service routines
-of system calls, and if the system includes a single CPU, the critical region can be
-implemented quite simply by disabling kernel preemption while accessing the shared
-data structure.
+另一方面，如果不同的系统调用服务程序访问相同的数据，系统也是单核处理系统，临界区的保护只需要禁止内核抢占即可。
 
-As you would expect, things are more complicated in multiprocessor systems. Many
-CPUs may execute kernel code at the same time, so kernel developers cannot assume
-that a data structure can be safely accessed just because kernel preemption is disabled
-and the data structure is never addressed by an interrupt, exception, or softirq handler.
+但是，在多核系统中事情就比较复杂了。因为除了内核抢占，中断、异常或软中断之外，多个CPU也可能会同时访问某个相同的数据。
 
-We’ll see in the following sections that the kernel offers a wide range of different synchronization
-techniques. It is up to kernel designers to solve each synchronization
-problem by selecting the most efficient technique.
-
-<h3 id="5.1.3">5.1.3 什么时候不需要同步？</h3>
-
-Some design choices already discussed in the previous chapter simplify somewhat
-the synchronization of kernel control paths. Let us recall them briefly:
-
-* All interrupt handlers acknowledge the interrupt on the PIC and also disable the
-IRQ line. Further occurrences of the same interrupt cannot occur until the handler
-terminates.
-
-* Interrupt handlers, softirqs, and tasklets are both nonpreemptable and nonblocking,
-so they cannot be suspended for a long time interval. In the worst case,
-their execution will be slightly delayed, because other interrupts occur during
-their execution (nested execution of kernel control paths).
-
-* A kernel control path performing interrupt handling cannot be interrupted by a
-kernel control path executing a deferrable function or a system call service routine.
-
-* Softirqs and tasklets cannot be interleaved on a given CPU.
-
-* The same tasklet cannot be executed simultaneously on several CPUs.
-
-Each of the above design choices can be viewed as a constraint that can be
-exploited to code some kernel functions more easily. Here are a few examples of
-possible simplifications:
-
-* Interrupt handlers and tasklets need not to be coded as reentrant functions.
-* Per-CPU variables accessed by softirqs and tasklets only do not require synchronization.
-* A data structure accessed by only one kind of tasklet does not require synchronization.
-
-The rest of this chapter describes what to do when synchronization is necessary—i.e., how to prevent data corruption due to unsafe accesses to shared data structures.
+后面我们会看一下内核提供了哪些内核同步手段？每种同步手段最合适的使用场景是什么？通过这些问题，我们掌握内核同步技术，为自己的内核程序设计最好的同步方法。
 
 <h2 id="5.2">5.2 同步原语</h2>
 
-We now examine how kernel control paths can be interleaved while avoiding race conditions among shared data. Table 5-2 lists the synchronization techniques used by the Linux kernel. The “Scope” column indicates whether the synchronization technique applies to all CPUs in the system or to a single CPU. For instance, local interrupt disabling applies to just one CPU (other CPUs in the system are not affected); conversely, an atomic operation affects all CPUs in the system (atomic operations on several CPUs cannot interleave while accessing the same data structure).
+表5-2，列举了Linux内核使用的一些同步技术。范围一栏表明同步技术应用到所有的CPU还是单个CPU。比如局部中断禁止就是针对一个CPU（系统中的其它CPU不受影响）；相反，原子操作影响所有的CPU。
 
 表5-2 Linux内核使用的一些同步技术
 
@@ -166,120 +122,253 @@ We now examine how kernel control paths can be interleaved while avoiding race c
 | 软中断禁止 | 禁止处理可延时函数 | 本地CPU |
 | 读-拷贝-更新（RCU） | 通过指针实现无锁访问共享资源 | 所有CPU |
 
-Let’s now briefly discuss each synchronization technique. In the later section “Synchronizing Accesses to Kernel Data Structures,” we show how these synchronization techniques can be combined to effectively protect kernel data structures.
+接下来，我们介绍各个同步技术。
 
 <h3 id="5.2.1">5.2.1 Per-CPU变量</h3>
 
-The best synchronization technique consists in designing the kernel so as to avoid
-the need for synchronization in the first place. As we’ll see, in fact, every explicit synchronization
-primitive has a significant performance cost.
+其实，最好的同步手段在于设计阶段就要尽量避免同步的需求。因为，毕竟同步的实现都是需要牺牲系统性能的。
 
-The simplest and most efficient synchronization technique consists of declaring kernel
-variables as per-CPU variables. Basically, a per-CPU variable is an array of data
-structures, one element per each CPU in the system.
+既然多核系统中，CPU之间访问共享数据需要同步，那么最简单和有效的同步技术就是为每个CPU声明自己的变量，这样就减少了它们的耦合性，降低了同步的可能性。
 
-A CPU should not access the elements of the array corresponding to the other CPUs;
-on the other hand, it can freely read and modify its own element without fear of race
-conditions, because it is the only CPU entitled to do so. This also means, however,
-that the per-CPU variables can be used only in particular cases—basically, when it
-makes sense to logically split the data across the CPUs of the system.
+**使用场景：**
 
-The elements of the per-CPU array are aligned in main memory so that each data
-structure falls on a different line of the hardware cache (see the section “Hardware
-Cache” in Chapter 2). Therefore, concurrent accesses to the per-CPU array do not
-result in cache line snooping and invalidation, which are costly operations in terms
-of system performance.
+一个CPU访问自己专属的变量，而无需担心其它CPU访问而导致的竞态条件。这意味着，`per-CPU`变量只能在特定情况下使用，比如把数据进行逻辑划分，然后分派给各个CPU的时候。
 
-While per-CPU variables provide protection against concurrent accesses from several
-CPUs, they do not provide protection against accesses from asynchronous functions
-(interrupt handlers and deferrable functions). In these cases, additional
-synchronization primitives are required.
+因为这些`per-CPU`变量全部元素都存储在内存上，所有的数据结构都会落在Cache的不同行上。所以，访问这些`per-CPU`变量不会导致对Cache行进行窥视（snoop）和失效（invalidate）操作，它们都对系统性能有很大的牺牲。
 
-Furthermore, per-CPU variables are prone to race conditions caused by kernel preemption,
-both in uniprocessor and multiprocessor systems. As a general rule, a kernel
-control path should access a per-CPU variable with kernel preemption disabled.
-Just consider, for instance, what would happen if a kernel control path gets the
-address of its local copy of a per-CPU variable, and then it is preempted and moved
-to another CPU: the address still refers to the element of the previous CPU.
+**缺点：**
 
-Table 5-3 lists the main functions and macros offered by the kernel to use per-CPU variables.
+1. 尽管，`per-CPU`变量保护了来自多个CPU的并发访问，但是无法阻止异步访问（比如，中断处理程序和可延时函数）。这时候，就需要其它同步技术了。
 
-Table 5-3. Functions and macros for the per-CPU variables
+2. 此外，不管是单核系统还是多核系统，`per-CPU`变量都易于受到内核抢占所导致的竞态条件的影响。一般来说，内核控制路径访问每个CPU变量的时候，应该禁用内核抢占。假设，内核控制路径获得一个`per-CPU`变量的拷贝的地址，然后被转移到其它CPU上运行，这个值就可能会被其它CPU修改。
 
+表5-3 列出了操作`per-CPU`变量的函数和宏
+
+| 函数 | 描述 |
+| ---- | ---- |
+| DEFINE_PER_CPU(type, name)| 静态分配一个`per-CPU`数组 |
+| per_cpu(name, cpu)        | 选择元素 |
+| __get_cpu_var(name)       | 选择元素 |
+| get_cpu_var(name)         | 禁止内核抢占，选择元素 |
+| put_cpu_var(name)         | 使能内核抢占 |
+| alloc_percpu(type)        | 动态分配一个`per-CPU`数组 |
+| free_percpu(pointer)      | 释放动态分配的数组 |
+| per_cpu_ptr(pointer, cpu) | 返回某个元素的地址 |
 
 <h3 id="5.2.2">5.2.2 原子操作</h3>
 
-Several assembly language instructions are of type “read-modify-write”—that is,
-they access a memory location twice, the first time to read the old value and the second
-time to write a new value.
+汇编指令读写内存变量的过程我们称为`read-modify-write`，简称为RMW操作。也就是说，它们读写一个内存区域两次，第一次读取旧值，第二次写入新值。
 
-Suppose that two kernel control paths running on two CPUs try to “read-modifywrite”
-the same memory location at the same time by executing nonatomic operations.
-At first, both CPUs try to read the same location, but the memory arbiter (a
-hardware circuit that serializes accesses to the RAM chips) steps in to grant access to
-one of them and delay the other. However, when the first read operation has completed,
-the delayed CPU reads exactly the same (old) value from the memory location.
-Both CPUs then try to write the same (new) value to the memory location;
-again, the bus memory access is serialized by the memory arbiter, and eventually
-both write operations succeed. However, the global result is incorrect because both
-CPUs write the same (new) value. Thus, the two interleaving “read-modify-write”
-operations act as a single one.
+假设有两个不同的内核控制路径运行在两个CPU上，同时尝试RMW操作相同的内存区域且执行的是非原子操作。起初，两个CPU尝试读取相同位置，但是内存仲裁器（促使串行访问RAM的电路）确定一个可以访问，让另一个等待。但是，当第一个读操作完成，延时的CPU也会读取相同的旧值。但是等到两个CPU都往这个内存区域写入新值的时候，还是由内存仲裁器决定谁先访问，然后写操作都会成功。但是，最终的结果却是最后写入的值，先写入的值会被覆盖掉。
 
-The easiest way to prevent race conditions due to “read-modify-write” instructions is
-by ensuring that such operations are atomic at the chip level. Every such operation
-must be executed in a single instruction without being interrupted in the middle and
-avoiding accesses to the same memory location by other CPUs. These very small
-atomic operations can be found at the base of other, more flexible mechanisms to create
-critical regions.
+防止RMW操作造成的竞态条件最简单的方式就是保证这样的指令操作是原子的，也就是这个指令的执行过程不能被打断。这就是原子操作的由来。
 
-Let’s review 80 × 86 instructions according to that classification:
+让我们看一下X86的汇编指令有哪些是原子的：
 
-* Assembly language instructions that make zero or one aligned memory access are atomic.
+* 进行零或一对齐内存访问的汇编指令是原子的。
 
-* Read-modify-write assembly language instructions (such as inc or dec) that read data from memory, update it, and write the updated value back to memory are atomic if no other processor has taken the memory bus after the read and before the write. Memory bus stealing never happens in a uniprocessor system.
+* RMW操作汇编指令（比如`inc`或`dec`），如果在read之后，write之前内存总线没有被其它CPU抢占，那么这些指令就是原子的。
 
-* Read-modify-write assembly language instructions whose opcode is prefixed by the lock byte (0xf0) are atomic even on a multiprocessor system. When the control unit detects the prefix, it “locks” the memory bus until the instruction is finished. Therefore, other processors cannot access the memory location while the locked instruction is being executed.
+* 所以，基于上一点，RMW操作汇编指令前缀`lock（0xf0）`就称为原子操作指令。当控制单元检测到这个前缀，它会锁住内存总线，直到指令完成。
 
-* Assembly language instructions whose opcode is prefixed by a rep byte (0xf2, 0xf3, which forces the control unit to repeat the same instruction several times) are not atomic. The control unit checks for pending interrupts before executing a new iteration.
+* 带有前缀`rep`（0xf2、0xf3，强迫控制单元重复指令多次）的汇编指令就不是原子的。
 
-When you write C code, you cannot guarantee that the compiler will use an atomic instruction for an operation like a=a+1 or even for a++. Thus, the Linux kernel provides a special atomic_t type (an atomically accessible counter) and some special functions and macros (see Table 5-4) that act on atomic_t variables and are implemented as single, atomic assembly language instructions. On multiprocessor systems, each such instruction is prefixed by a lock byte.
+但是，我们在编写完C代码后，编译器不能保证给你使用原子指令进行替代。因此，Linux内核提供了`atomic_t`类型变量并提供了相关的操作函数和宏（如表5-4所示）。多核系统中，会在每个指令的前面前缀`lock`。
 
-Table 5-4. Atomic operations in Linux
+表5-4 Linux中的原子操作
+
+| 函数 | 描述 |
+| ---- | ---- |
+| atomic_read(v)            | 返回`*v` |
+| atomic_set(v,i)           | *v=i |
+| atomic_add(i,v)           | *v+i |
+| atomic_sub(i,v)           | *v-i |
+| atomic_sub_and_test(i, v) | 如果`*v-i = 0`，返回1；否则0 |
+| atomic_inc(v)             | *v+1 |
+| atomic_dec(v)             | *v-1 |
+| atomic_dec_and_test(v)    | 如果`*v-1 = 0`，返回1；否则0 |
+| atomic_inc_and_test(v)    | 如果`*v+1 = 0`，返回1；否则0 |
+| atomic_add_negative(i, v) | 如果`*v+i < 0`，返回1；否则0  |
+| atomic_inc_return(v)      | 返回`*v-1` |
+| atomic_dec_return(v)      | 返回`*v+i` |
+| atomic_add_return(i, v)   | 返回`*v-i` |
 
 
 <h3 id="5.2.3">5.2.3 优化和内存屏障</h3>
 
-When using optimizing compilers, you should never take for granted that instructions
-will be performed in the exact order in which they appear in the source code.
-For example, a compiler might reorder the assembly language instructions in such a
-way to optimize how registers are used. Moreover, modern CPUs usually execute
-several instructions in parallel and might reorder memory accesses. These kinds of
-reordering can greatly speed up the program.
+带有优化的编译器，会尝试重新排序汇编指令，以提高程序的执行速度。但是，当在处理同步问题的时候，重新排序的指令应该被避免。因为重新排序可能会打乱我们之前想要的同步效果。因此，所有的同步原语都充当优化和内存屏障。
 
-When dealing with synchronization, however, reordering instructions must be
-avoided. Things would quickly become hairy if an instruction placed after a synchronization
-primitive is executed before the synchronization primitive itself. Therefore,
-all synchronization primitives act as optimization and memory barriers.
+优化屏障保证屏障原语前后的C语言转换成汇编语言之后，指令序列不会发生变化。比如说，对于Linux内核的`barrier()`宏，展开后就是`asm volatile("":::"memory")`，就是一个优化内存屏障。`asm`告知编译器插入一条汇编指令，`volatile`关键字禁止编译器用程序的其它指令重新洗牌`asm`指令。`memory`关键字强迫编译器假设RAM中所有的位置都被汇编指令更改了；因此，编译器不会使用CPU寄存器中的值优化`asm`指令之前的代码。我们需要注意的是优化屏障不能保证汇编指令的执行不会乱序，这是由内存屏障保障的。
 
-An optimization barrier primitive ensures that the assembly language instructions corresponding to C statements placed before the primitive are not mixed by the compiler with assembly language instructions corresponding to C statements placed after the primitive. In Linux the barrier() macro, which expands into asm volatile("":::"memory"), acts as an optimization barrier. The asm instruction tells the compiler to insert an assembly language fragment (empty, in this case). The volatile keyword forbids the compiler to reshuffle the asm instruction with the other instructions of the program. The memory keyword forces the compiler to assume that all memory locations in RAM have been changed by the assembly language instruction; therefore, the compiler cannot optimize the code by using the values of memory locations stored in CPU registers before the asm instruction. Notice that the optimization barrier does not ensure that the executions of the assembly language instructions are not mixed by the CPU—this is a job for a memory barrier.
+内存屏障确保屏障原语前的指令完成后，才会启动原语之后的指令操作。
 
-A memory barrier primitive ensures that the operations placed before the primitive
-are finished before starting the operations placed after the primitive. Thus, a memory
-barrier is like a firewall that cannot be passed by an assembly language instruction.
+X86系统中，下面这些汇编指令都是串行的，可以充当内存屏障：
 
-In the 80×86 processors, the following kinds of assembly language instructions are
-said to be “serializing” because they act as memory barriers:
+* 所有操作I/O端口的指令；
+* 前缀`lock`的指令；
+* 所有写控制寄存器，系统寄存器或debug寄存器的指令（比如，`cli`和`sti`指令，可以改变`eflags`寄存器的IF标志）；
+* `lfence`、`sfence`和`mfence`汇编指令，分别用来实现读内存屏障、写内存屏障和读/写内存屏障；
+* 特殊的汇编指令，比如`iret`指令，可以终止中断或异常处理程序。
 
-* All instructions that operate on I/O ports
-* All instructions prefixed by the lock byte (see the section “Atomic Operations”)
-* All instructions that write into control registers, system registers, or debug registers (for instance, cli and sti, which change the status of the IF flag in the eflags register)
+Linux uses a few memory barrier primitives, which are shown in Table 5-6. These primitives act also as optimization barriers, because we must make sure the compiler does not move the assembly language instructions around the barrier. “Read memory barriers” act only on instructions that read from memory, while “write memory barriers” act only on instructions that write to memory. Memory barriers can be useful in both multiprocessor and uniprocessor systems. The smp_xxx() primitives are used whenever the memory barrier should prevent race conditions that might occur only in multiprocessor systems; in uniprocessor systems, they do nothing. The other memory barriers are used to prevent race conditions occurring both in uniprocessor and multiprocessor systems.
+
+表5-6 Linux内存屏障
+
+| macro | 描述 |
+| ----- | ---- |
+| mb()      | MP和UP的内存屏障 |
+| rmb()     | MP和UP的读内存屏障 |
+| wmb()     | MP和UP的写内存屏障 |
+| smp_mb()  | MP内存屏障 |
+| smp_rmb() | MP读内存屏障 |
+| smp_wmb() | MP写内存屏障 |
+
+The implementations of the memory barrier primitives depend on the architecture of the system. On an 80 × 86 microprocessor, the rmb() macro usually expands into asm volatile("lfence") if the CPU supports the lfence assembly language instruction, or into asm volatile("lock;addl $0,0(%%esp)":::"memory") otherwise. The asm statement inserts an assembly language fragment in the code generated by the compiler and acts as an optimization barrier. The lock; addl $0,0(%%esp) assembly language instruction adds zero to the memory location on top of the stack; the instruction is useless by itself, but the lock prefix makes the instruction a memory barrier for the CPU.
+
+The wmb() macro is actually simpler because it expands into barrier(). This is because existing Intel microprocessors never reorder write memory accesses, so there is no need to insert a serializing assembly language instruction in the code. The macro, however, forbids the compiler from shuffling the instructions.
+
+Notice that in multiprocessor systems, all atomic operations described in the earlier section “Atomic Operations” act as memory barriers because they use the lock byte.
 
 <h3 id="5.2.4">5.2.4 自旋锁</h3>
-<h3 id="5.2.5">5.2.5 信号量</h3>
+
+A widely used synchronization technique is locking. When a kernel control path
+must access a shared data structure or enter a critical region, it needs to acquire a
+“lock” for it. A resource protected by a locking mechanism is quite similar to a
+resource confined in a room whose door is locked when someone is inside. If a kernel
+control path wishes to access the resource, it tries to “open the door” by acquiring
+the lock. It succeeds only if the resource is free. Then, as long as it wants to use
+the resource, the door remains locked. When the kernel control path releases the
+lock, the door is unlocked and another kernel control path may enter the room.
+
+Figure 5-1 illustrates the use of locks. Five kernel control paths (P0, P1, P2, P3, and
+P4) are trying to access two critical regions (C1 and C2). Kernel control path P0 is
+inside C1, while P2 and P4 are waiting to enter it. At the same time, P1 is inside C2,
+while P3 is waiting to enter it. Notice that P0 and P1 could run concurrently. The
+lock for critical region C3 is open because no kernel control path needs to enter it.
+
+Spin locks are a special kind of lock designed to work in a multiprocessor environment.
+If the kernel control path finds the spin lock “open,” it acquires the lock and
+continues its execution. Conversely, if the kernel control path finds the lock “closed”
+by a kernel control path running on another CPU, it “spins” around, repeatedly executing
+a tight instruction loop, until the lock is released.
+
+The instruction loop of spin locks represents a “busy wait.” The waiting kernel control
+path keeps running on the CPU, even if it has nothing to do besides waste time.
+Nevertheless, spin locks are usually convenient, because many kernel resources are
+locked for a fraction of a millisecond only; therefore, it would be far more time-consuming
+to release the CPU and reacquire it later.
+
+As a general rule, kernel preemption is disabled in every critical region protected by
+spin locks. In the case of a uniprocessor system, the locks themselves are useless, and
+the spin lock primitives just disable or enable the kernel preemption. Please notice
+that kernel preemption is still enabled during the busy wait phase, thus a process
+waiting for a spin lock to be released could be replaced by a higher priority process.
+
+In Linux, each spin lock is represented by a spinlock_t structure consisting of two
+fields:
+
+* slock
+
+    Encodes the spin lock state: the value 1 corresponds to the unlocked state, while every negative value and 0 denote the locked state
+
+* break_lock
+
+    Flag signaling that a process is busy waiting for the lock (present only if the kernel supports both SMP and kernel preemption)
+
+Six macros shown in Table 5-7 are used to initialize, test, and set spin locks. All these macros are based on atomic operations; this ensures that the spin lock will be updated properly even when multiple processes running on different CPUs try to modify the lock at the same time.*
+
+Table 5-7. Spin lock macros
+
+<h4 id="5.2.4.1">5.2.4.1 带有内核抢占的自旋锁宏</h4>
+
+Let’s discuss in detail the spin_lock macro, which is used to acquire a spin lock. The
+following description refers to a preemptive kernel for an SMPsystem. The macro
+takes the address slp of the spin lock as its parameter and executes the following
+actions:
+
+1. Invokes preempt_disable() to disable kernel preemption.
+
+2. Invokes the _raw_spin_trylock() function, which does an atomic test-and-set operation on the spin lock’s slock field; this function executes first some instructions equivalent to the following assembly language fragment:
+
+        movb $0, %al
+        xchgb %al, slp->slock
+
+    The xchg assembly language instruction exchanges atomically the content of the 8-bit %al register (storing zero) with the content of the memory location pointed to by slp->slock. The function then returns the value 1 if the old value stored in the spin lock (in %al after the xchg instruction) was positive, the value 0 otherwise.
+
+3. If the old value of the spin lock was positive, the macro terminates: the kernel control path has acquired the spin lock.
+
+4. Otherwise, the kernel control path failed in acquiring the spin lock, thus the macro must cycle until the spin lock is released by a kernel control path running on some other CPU. Invokes preempt_enable() to undo the increase of the preemption counter done in step 1. If kernel preemption was enabled before executing the spin_lock macro, another process can now replace this process while it waits for the spin lock.
+
+5. If the break_lock field is equal to zero, sets it to one. By checking this field, the process owning the lock and running on another CPU can learn whether there are other processes waiting for the lock. If a process holds a spin lock for a long time, it may decide to release it prematurely to allow another process waiting for the same spin lock to progress.
+
+6. Executes the wait cycle:
+
+        while (spin_is_locked(slp) && slp->break_lock)
+        cpu_relax();
+
+The cpu_relax() macro reduces to a pause assembly language instruction. This instruction has been introduced in the Pentium 4 model to optimize the execution of spin lock loops. By introducing a short delay, it speeds up the execution of code following the lock and reduces power consumption. The pause instruction is backward compatible with earlier models of 80 × 86 microprocessors because it corresponds to the instruction rep;nop, that is, to a no-operation.
+
+7. Jumps back to step 1 to try once more to get the spin lock.
+
+<h4 id="5.2.4.2">5.2.4.2 不带内核抢占的自旋锁宏</h4>
+
+If the kernel preemption option has not been selected when the kernel was compiled, the spin_lock macro is quite different from the one described above. In this case, the macro yields a assembly language fragment that is essentially equivalent to the following tight busy wait:*
+
+    1: lock; decb slp->slock
+        jns 3f
+    2: pause
+        cmpb $0,slp->slock
+        jle 2b
+        jmp 1b
+    3:
+
+The decb assembly language instruction decreases the spin lock value; the instruction is atomic because it is prefixed by the lock byte. A test is then performed on the sign flag. If it is clear, it means that the spin lock was set to 1 (unlocked), so normal execution continues at label 3 (the f suffix denotes the fact that the label is a “forward” one; it appears in a later line of the program). Otherwise, the tight loop at label 2 (the b suffix denotes a “backward” label) is executed until the spin lock assumes a positive value. Then execution restarts from label 1, since it is unsafe to proceed without checking whether another processor has grabbed the lock.
+
+<h4 id="5.2.4.3">5.2.4.3 spin_unlock宏</h4>
+
+The spin_unlock macro releases a previously acquired spin lock; it essentially executes the assembly language instruction:
+
+    movb $1, slp->slock
+
+and then invokes preempt_enable() (if kernel preemption is not supported, preempt_enable() does nothing). Notice that the lock byte is not used because write-only accesses in memory are always atomically executed by the current 80×86 microprocessors.
+
+<h3 id="5.2.5">5.2.5 读写自旋锁</h3>
+
+Read/write spin locks have been introduced to increase the amount of concurrency inside the kernel. They allow several kernel control paths to simultaneously read the same data structure, as long as no kernel control path modifies it. If a kernel control path wishes to write to the structure, it must acquire the write version of the read/write lock, which grants exclusive access to the resource. Of course, allowing concurrent reads on data structures improves system performance.
+
+Figure 5-2 illustrates two critical regions (C1 and C2) protected by read/write locks. Kernel control paths R0 and R1 are reading the data structures in C1 at the same time, while W0 is waiting to acquire the lock for writing. Kernel control path W1 is writing the data structures in C2, while both R2 and W2 are waiting to acquire the lock for reading and writing, respectively.
+
+Each read/write spin lock is a rwlock_t structure; its lock field is a 32-bit field that encodes two distinct pieces of information:
+
+* A 24-bit counter denoting the number of kernel control paths currently reading the protected data structure. The two’s complement value of this counter is stored in bits 0–23 of the field.
+
+* An unlock flag that is set when no kernel control path is reading or writing, and clear otherwise. This unlock flag is stored in bit 24 of the field.
+
+Notice that the lock field stores the number 0x01000000 if the spin lock is idle (unlock
+flag set and no readers), the number 0x00000000 if it has been acquired for writing
+(unlock flag clear and no readers), and any number in the sequence 0x00ffffff,
+0x00fffffe, and so on, if it has been acquired for reading by one, two, or more processes
+(unlock flag clear and the two’s complement on 24 bits of the number of
+readers). As the spinlock_t structure, the rwlock_t structure also includes a break_
+lock field.
+
+The rwlock_init macro initializes the lock field of a read/write spin lock to
+0x01000000 (unlocked) and the break_lock field to zero.
+
+
 <h3 id="5.2.6">5.2.6 Seqlock</h3>
-<h3 id="5.2.7">5.2.7 中断禁止</h3>
-<h3 id="5.2.8">5.2.8 软中断禁止</h3>
-<h3 id="5.2.9">5.2.9 读-拷贝-更新（RCU）</h3>
+
+<h3 id="5.2.7">5.2.7 读-拷贝-更新（RCU）</h3>
+
+<h3 id="5.2.8">5.2.8 信号量</h3>
+
+<h3 id="5.2.9">5.2.9 读写信号量</h3>
+
+<h3 id="5.2.10">5.2.10 Completion机制</h3>
+
+<h3 id="5.2.11">5.2.11 中断禁止</h3>
+
+<h3 id="5.2.12">5.2.12 软中断禁止</h3>
 
 <h2 id="5.3">5.3 内核数据结构的同步访问</h2>
 
