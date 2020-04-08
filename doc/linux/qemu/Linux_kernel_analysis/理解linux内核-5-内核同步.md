@@ -9,11 +9,12 @@
         + [5.2.2 原子操作](#5.2.2)
         + [5.2.3 优化和内存屏障](#5.2.3)
         + [5.2.4 自旋锁](#5.2.4)
-        + [5.2.5 信号量](#5.2.5)
-        + [5.2.6 Seqlock](#5.2.6)
-        + [5.2.7 中断禁止](#5.2.7)
-        + [5.2.8 软中断禁止](#5.2.8)
-        + [5.2.9 读-拷贝-更新（RCU）](#5.2.9)
+        + [5.2.5 读写自旋锁](#5.2.5)
+        + [5.2.6 信号量](#5.2.6)
+        + [5.2.7 Seqlock](#5.2.7)
+        + [5.2.8 中断禁止](#5.2.8)
+        + [5.2.9 软中断禁止](#5.2.9)
+        + [5.2.10 读-拷贝-更新（RCU）](#5.2.10)
     - [5.3 内核数据结构的同步访问](#5.3)
     - [5.4 防止竞态条件的示例](#5.4)
 
@@ -462,93 +463,453 @@ Linux内核系统中，自旋锁`spinlock_t`的实现主要使用了`raw_spinloc
 
 所以，解锁的过程就是将head和tail不相等，且重新使能内核抢占的过程。
 
-<h3 id="5.2.5">5.2.5 读写自旋锁</h3>
+<h3 id="5.2.5">5.2.5 `读/写自旋锁`</h3>
 
-Read/write spin locks have been introduced to increase the amount of concurrency inside the kernel. They allow several kernel control paths to simultaneously read the same data structure, as long as no kernel control path modifies it. If a kernel control path wishes to write to the structure, it must acquire the write version of the read/write lock, which grants exclusive access to the resource. Of course, allowing concurrent reads on data structures improves system performance.
+自旋锁解决了多核系统在内核抢占模式下的数据共享问题。但是，这样的自旋锁一次只能一个内核控制路径使用，这严重影响了系统的并发性能。根据我们以往的开发经验，大部分的程序都是读取共享的数据，并不更改；只有少数时候会修改数据。为此，Linux内核提出了`读/写自旋锁`的概念。也就是说，没有内核控制路径修改共享数据的时候，多个内核控制路径可以同时读取它。如果有内核控制路径想要修改这个数据结构，它就申请`读/写自旋锁`的写自旋锁，独占访问这个资源。这大大提高了系统的并发性能。
 
-Figure 5-2 illustrates two critical regions (C1 and C2) protected by read/write locks. Kernel control paths R0 and R1 are reading the data structures in C1 at the same time, while W0 is waiting to acquire the lock for writing. Kernel control path W1 is writing the data structures in C2, while both R2 and W2 are waiting to acquire the lock for reading and writing, respectively.
+`读/写自旋锁`的数据结构是`rwlock_t`，其定义如下：
 
-Each read/write spin lock is a rwlock_t structure; its lock field is a 32-bit field that encodes two distinct pieces of information:
+    typedef struct {
+        arch_rwlock_t raw_lock;
+    #ifdef CONFIG_GENERIC_LOCKBREAK
+        unsigned int break_lock;
+    #endif
+        ......
+    } rwlock_t;
 
-* A 24-bit counter denoting the number of kernel control paths currently reading the protected data structure. The two’s complement value of this counter is stored in bits 0–23 of the field.
+从上面的代码可以看出，`读/写自旋锁`的实现还是依赖于具体的架构体系。下面我们先以ARM体系解析一遍：
 
-* An unlock flag that is set when no kernel control path is reading or writing, and clear otherwise. This unlock flag is stored in bit 24 of the field.
+1. `arch_rwlock_t`的定义：
 
-Notice that the lock field stores the number 0x01000000 if the spin lock is idle (unlock flag set and no readers), the number 0x00000000 if it has been acquired for writing (unlock flag clear and no readers), and any number in the sequence 0x00ffffff, 0x00fffffe, and so on, if it has been acquired for reading by one, two, or more processes (unlock flag clear and the two’s complement on 24 bits of the number of readers). As the spinlock_t structure, the rwlock_t structure also includes a break_lock field.
+        typedef struct { 
+            u32 lock; 
+        } arch_rwlock_t;
 
-The rwlock_init macro initializes the lock field of a read/write spin lock to 0x01000000 (unlocked) and the break_lock field to zero.
+2. 申请写自旋锁`arch_write_lock`的实现：
 
-<h3 id="5.2.5.1">5.2.5.1 读自旋锁的获取和释放</h3>
+        static inline void arch_write_lock(arch_rwlock_t *rw)
+        {
+            unsigned long tmp;
 
-The read_lock macro, applied to the address rwlp of a read/write spin lock, is similar to the spin_lock macro described in the previous section. If the kernel preemption option has been selected when the kernel was compiled, the macro performs the very same actions as those of spin_lock(), with just one exception: to effectively acquire the read/write spin lock in step 2, the macro executes the _raw_read_trylock() function:
+            prefetchw(&rw->lock);   // ----------（0）
+            __asm__ __volatile__(
+        "1: ldrex   %0, [%1]\n"     // ----------（1）
+        "   teq %0, #0\n"           // ----------（2）
+            WFE("ne")               // ----------（3）
+        "   strexeq %0, %2, [%1]\n" // ----------（4）
+        "   teq %0, #0\n"           // ----------（5）
+        "   bne 1b"                 // ----------（6）
+            : "=&r" (tmp)
+            : "r" (&rw->lock), "r" (0x80000000)
+            : "cc");
 
-    int _raw_read_trylock(rwlock_t *lock)
-    {
-        atomic_t *count = (atomic_t *)lock->lock;
-        atomic_dec(count);
-        if (atomic_read(count) >= 0)
-            return 1;
-        atomic_inc(count);
-        return 0;
-    }
+            smp_mb();               // ----------（7）
+        }
 
-The lock field—the read/write lock counter—is accessed by means of atomic operations. Notice, however, that the whole function does not act atomically on the counter: for instance, the counter might change after having tested its value with the if statement and before returning 1. Nevertheless, the function works properly: in fact, the function returns 1 only if the counter was not zero or negative before the decrement, because the counter is equal to 0x01000000 for no owner, 0x00ffffff for one reader, and 0x00000000 for one writer.
+    * （0）通知硬件提前将`rw->lock`的值加载到cache中，缩短等待预取指令的时延。
+    * （1）使用独占指令`ldrex`标记相应的内存位置已经被独占，并将其值存储到tmp变量中。
+    * （2）判断tmp是否等于0。
+    * （3）如果tmp不等于0，则说明rw->lock正在被占用，所以进入低功耗待机模式。
+    * （4）如果tmp等于0，则向rw->lock的内存地址处写入`0x80000000`，然后清除独占标记。
+    * （5）测试tmp是否等于0，相当于验证第4步是否成功。
+    * （6）如果加锁失败，则重新（0）->（5）的过程。
+    * （7）现在只是把指令写入到数据总线上，还没有完全成功。所以`smp_mb()`内存屏障保证加锁成功。
 
-If the kernel preemption option has not been selected when the kernel was compiled, the read_lock macro yields the following assembly language code:
+3. 写自旋锁的是否过程，`arch_write_unlock`函数实现，代码如下：
 
-        movl $rwlp->lock,%eax
-        lock; subl $1,(%eax)
-        jns 1f
-        call __read_lock_failed
-    1:
+        static inline void arch_write_unlock(arch_rwlock_t *rw)
+        {
+            smp_mb();           // ----------（0）
 
-where __read_lock_failed() is the following assembly language function:
+            __asm__ __volatile__(
+            "str    %1, [%0]\n" // ----------（1）
+            :
+            : "r" (&rw->lock), "r" (0)
+            : "cc");
 
-    __read_lock_failed:
-        lock; incl (%eax)
-    1: pause
-        cmpl $1,(%eax)
-        js 1b
-        lock; decl (%eax)
-        js __read_lock_failed
-        ret
+            dsb_sev();          // ----------（2）
+        }
 
-The read_lock macro atomically decreases the spin lock value by 1, thus increasing the number of readers. The spin lock is acquired if the decrement operation yields a nonnegative value; otherwise, the __read_lock_failed() function is invoked. The function atomically increases the lock field to undo the decrement operation performed by the read_lock macro, and then loops until the field becomes positive (greater than or equal to 1). Next, __read_lock_failed() tries to get the spin lock again (another kernel control path could acquire the spin lock for writing right after the cmpl instruction).
+    * （0）保证释放锁之前的操作都完成。
+    * （1）将`rw->lock`的值赋值为0。
+    * （2）调用sev指令，唤醒正在执行WFE指令的内核控制路径。
 
-Releasing the read lock is quite simple, because the read_unlock macro must simply increase the counter in the lock field with the assembly language instruction:
+4. 读自旋锁的申请过程（低功耗版）由`arch_read_lock`函数实现，代码如下：
 
-    lock; incl rwlp->lock
+        static inline void arch_read_lock(arch_rwlock_t *rw)
+        {
+            unsigned long tmp, tmp2;
 
-to decrease the number of readers, and then invoke preempt_enable() to reenable kernel preemption.
+            prefetchw(&rw->lock);
+            __asm__ __volatile__(
+        "1: ldrex   %0, [%2]\n"     // ----------（0）
+        "   adds    %0, %0, #1\n"   // ----------（1）
+        "   strexpl %1, %0, [%2]\n" // ----------（2）
+            WFE("mi")               // ----------（3）
+        "   rsbpls  %0, %1, #0\n"   // ----------（4）
+        "   bmi 1b"                 // ----------（5）
+            : "=&r" (tmp), "=&r" (tmp2)
+            : "r" (&rw->lock)
+            : "cc");
 
-<h3 id="5.2.5.2">5.2.5.2 写自旋锁的获取和释放</h3>
+            smp_mb();
+        }
 
-The write_lock macro is implemented in the same way as spin_lock() and read_lock(). For instance, if kernel preemption is supported, the function disables kernel preemption and tries to grab the lock right away by invoking `_raw_write_trylock()`. If this function returns 0, the lock was already taken, thus the macro reenables kernel preemption and starts a busy wait loop, as explained in the description of spin_lock() in the previous section.
+    * （0）读取`rw->lock`地址处的内容，然后标记为独占。
+    * （1）tmp=tmp+1。
+    * （2）将这条指令的执行结果写入到tmp2变量中，将tmp的值写入到`rw->lock`地址处。
+    * （3）如果tmp是负值，说明锁已经被占有，则执行wfe指令，进入低功耗待机模式。
+    * （4）执行0减去tmp2，将结果写入tmp。因为tmp2的值有2个：0-更新成功；1-更新失败。所以正常情况，此时tmp的结果应该为0，也就是申请加锁成功。
+    * （5）如果加锁失败，则重新进行（0）->（4）的操作。失败的可能就是，独占标记被其它加锁操作破会。
 
-The `_raw_write_trylock()` function is shown below:
+5. 读自旋锁的申请过程（不断尝试版）由`arch_read_trylock`函数实现，代码如下：
 
-    int _raw_write_trylock(rwlock_t *lock)
-    {
-        atomic_t *count = (atomic_t *)lock->lock;
-        if (atomic_sub_and_test(0x01000000, count))
-            return 1;
-        atomic_add(0x01000000, count);
-        return 0;
-    }
+        static inline int arch_read_trylock(arch_rwlock_t *rw)
+        {
+            unsigned long contended, res;
 
-The _raw_write_trylock() function subtracts 0x01000000 from the read/write spin lock value, thus clearing the unlock flag (bit 24). If the subtraction operation yields zero (no readers), the lock is acquired and the function returns 1; otherwise, the function atomically adds 0x01000000 to the spin lock value to undo the subtraction operation.
+            prefetchw(&rw->lock);
+            do {
+                __asm__ __volatile__(
+                "   ldrex   %0, [%2]\n"     // ----------（0）
+                "   mov %1, #0\n"           // ----------（1）
+                "   adds    %0, %0, #1\n"   // ----------（2）
+                "   strexpl %1, %0, [%2]"   // ----------（3）
+                : "=&r" (contended), "=&r" (res)
+                : "r" (&rw->lock)
+                : "cc");
+            } while (res);                  // ----------（4）
 
-Once again, releasing the write lock is much simpler because the write_unlock macro must simply set the unlock flag in the lock field with the assembly language instruction:
+            /* 如果lock为负，则已经处于write状态 */
+            if (contended < 0x80000000) {   // ----------（5）
+                smp_mb();
+                return 1;
+            } else {
+                return 0;
+            }
+        }
 
-    lock; addl $0x01000000,rwlp
+    * （0）读取`rw->lock`地址处的内容，然后标记为独占。
+    * （1）res = 0。
+    * （2）contended = contended + 1。
+    * （3）将contended的值写入`rw->lock`地址处，操作结果写入res。
+    * （4）如果res等于0，操作成功；否则重新前面的操作。
+    * （5）如果此时处于write状态，则申请锁失败，返回1；否则，成功返回0。
 
-and then invoke preempt_enable().
+    根据4和5两个申请锁的过程分析，可以看出除了是否根据需要进入低功耗状态之外，其它没有区别。
+
+6. 读自旋锁的释放过程由`arch_read_unlock`函数实现，代码如下：
+
+        static inline void arch_read_unlock(arch_rwlock_t *rw)
+        {
+            unsigned long tmp, tmp2;
+
+            smp_mb();
+
+            prefetchw(&rw->lock);
+            __asm__ __volatile__(
+        "1: ldrex   %0, [%2]\n"     // ----------（0）
+        "   sub %0, %0, #1\n"       // ----------（1）
+        "   strex   %1, %0, [%2]\n" // ----------（2）
+        "   teq %1, #0\n"           // ----------（3）
+        "   bne 1b"                 // ----------（4）
+            : "=&r" (tmp), "=&r" (tmp2)
+            : "r" (&rw->lock)
+            : "cc");
+
+            if (tmp == 0)
+                dsb_sev();
+        }
+
+    * （0）读取`rw->lock`地址处的内容，然后标记为独占。
+    * （1）要退出临界区，所以，tmp = tmp - 1。
+    * （2）tmp写入到`rw->lock`地址处，操作结果写入tmp2。
+    * （3）判断tmp2是否等于0。
+    * （4）等于0成功，不等于0，则跳转到标签1处继续执行。
+
+通过上面的分析可以看出，读写自旋锁使用bit31表示写自旋锁，bit30-0表示读自旋锁，对于读自旋锁而言，绰绰有余了。
+
+对于另一个成员`break_lock`来说，同自旋锁数据结构中的成员一样，标志锁的状态。
+
+`rwlock_init`宏初始化读写锁的lock成员。
+
+对于X86系统来说，处理的流程差不多。但是，因为与ARM架构体系不同，所以具体的加锁和释放锁的实现是不一样的。在此，就不一一细分析了。
 
 <h3 id="5.2.6">5.2.6 Seqlock</h3>
 
+1. 什么是seqlock锁？
+
+上一篇文章中，我们已经学习了读/写自旋锁的工作原理和实现方式（基于ARM架构体系）。但是，有一个问题我们不得不考虑，那就是read锁和write锁的优先级问题：它们具有相同的优先级，所以，读操作必须等到写操作完成后才能执行，同样，写操作必须等到读操作完成后才能执行。
+
+Linux2.6内核版本引入了`Seqlock`锁，与读写自旋锁基本一样，只是对于写操作来说，具有更高的优先级；也就是说，即使现在读操作正在执行，写操作也会被立即执行。这个策略的优点就是，写操作绝不会等待（除非是有其它写操作在占用锁）；缺点就是，读操作可能需要读取多次，才能获取正确的备份。
+
+2. seqlock锁实现
+
+`seqlock`锁的数据结构如下所示，包含两个数据成员`lock`和`seqcount`。查看代码可知，`seqlock`锁就是一个自旋锁加上一个序列计数器。
+
+        typedef struct {
+            struct seqcount seqcount;       // 序列计数器
+            spinlock_t lock;
+        } seqlock_t;
+
+`seqlock`锁的工作原理是，对于读操作而言，每次读取数据前后，都要读取序列计数器2次，检查这前后两次的值是否一致，一致则认为可以使用锁。相反，如果一个新的写操作开始工作，增加序列计数器的值，隐含地告知读操作刚刚读到的数据不合法，需要重新读取数据。
+
+`seqlock_t`类型变量初始化的方法有两种：一种是直接赋值`SEQLOCK_UNLOCKED`，另外一种是调用`seqlock_init`宏。写操作分别申请锁和释放锁，分别调用`write_seqlock()`和`write_sequnlock()`。申请锁的过程是，申请`seqlock_t`数据结构中的自旋锁，并对序列计数器进行加一操作。释放锁的过程是，再一次对序列计数器进行加一操作，并释放掉自旋锁。这样操作的结果就是，写操作过程中，计数器的计数是奇数；没有写操作的时候，计数器是偶数。
+
+3. seqlock锁使用范例
+
+对于读操作来说，大概的代码实现如下所示：
+
+        unsigned int seq;
+        do {
+            seq = read_seqbegin(&seqlock);
+            /* ... 临界代码段 ... */
+        } while (read_seqretry(&seqlock, seq));
+
+`read_seqbegin()`获取锁的当前序列号。`read_seqretry()`判断序列号是否一致，如果seq的值是奇数，则会返回1，也就是条件为真（也就是说，`read_seqbegin()`函数被调用之后，有写操作更新了数据）。因此，需要重新读取数据。如果seq的值是偶数，则读取数据成功。
+
+值得注意的是，当读操作进入临界代码段时，无需禁止内核抢占。因为，我们允许写操作打断读操作的执行，这也是Seqlock锁写操作优先级高的设计初衷。但是，写操作进入临界代码段时，会自动禁止内核抢占。
+
+4. seqlock锁使用场合
+
+并不是所有的数据结构都能使用seqlock锁保护。因为seqlock锁有自身的缺点：因为写操作的优先级高于读操作，所以，对于写操作负荷比较的重的场合来说就不合适。如果写操作过于频繁，那么对读操作来说极为不公平，可能需要多次读取数据才能成功。所以，使用seqlock锁的场合应该满足下面的条件：
+
+* 要保护的数据结构不能包含指针，而且这些指针写操作修改，读操作进行引用。因为可能写操作修改了指针，而读操作还会引用之前的指针。
+
+* 要保护的数据结构必须是特别短小的代码，而且读操作比较频繁，写操作很少且非常快。（这也是读写自旋锁的使用原则）
+
+* 读操作的临界代码段中的代码不能有副作用（否则，多次读操作可能与单次读取有不同的效果）。
+
+典型应用可以参考linux内核关于系统时间处理的部分。
+
 <h3 id="5.2.7">5.2.7 读-拷贝-更新（RCU）</h3>
 
+每一种技术的出现必然是因为某种需求。正因为人的本性是贪婪的，所以科技的创新才能日新月异。
+
+1. 引言
+
+seqlock锁只能允许一个写操作，但是有些时候我们可能需要多个写操作可以并发执行。所以，Linux内核引入了读-拷贝-更新技术（英文是`Read-copy update`，简称RCU），它是另外一种同步技术，主要用来保护被多个CPU读取的数据结构。RCU允许多个读操作和多个写操作并发执行。更重要的是，RCU是一种免锁算法，也就是说，它没有使用共享的锁或计数器保护数据结构（但是，这儿还是主要指的读操作是无锁算法。而对于多个写操作来说，需要使用lock保护避免多个CPU的并发访问。所以，其使用场合也是比较严格的，多个写操作中的锁开销不能大于读操作采用无锁算法省下的开销）。这相对于读写自旋锁和seqlock来说，具有很大的优势，毕竟锁的申请和释放对Cache行的"窥视"和失效也是一个很大的负担。
+
+> 1. Cache行的"窥视"，指的是因为每个CPU具有局部Cache，所以硬件snoop单元必须时时刻刻在"窥视"所有的Cache行，并对其不合法的数据进行失效处理，重新从内存获取数据替换到相应的Cache行中。而在这里，如果使用了共享的lock或者计数器，那么每次对其进行写操作，必然导致相应Cache行的失效。然后重新把使用这个lock的CPU的局部Cache进行更新。
+
+2. RCU实现
+
+既然RCU没有使用共享数据结构，那么它是如何神奇地实现同步技术的呢？其核心思想就是限制RCU的使用范围：
+
+* 1. 只有动态分配的、通过指针进行访问的数据结构。
+* 2. 进入RCU保护的临界代码段的内核控制路径不能休眠。
+
+3. 基本操作
+
+* 对于reader，RCU的基本操作为：
+    
+    * （1）调用`rcu_read_lock()`，进入RCU保护的临界代码段。等价于调用`preempt_disable()`。
+    * （2）调用`rcu_dereference`，获取RCU保护的数据指针。然后通过该指针读取数据。当然了，在此期间读操作不能发生休眠。
+    * （3）调用`rcu_read_unlock()`，离开RCU保护的临界代码段。等价于调用` preempt_enable()`。 
+
+* 对于writer，RCU的基本操作为：
+
+    * （1）拷贝一份旧数据到新数据，修改新数据。
+
+    * （2）调用`rcu_assign_pointer()`，将RCU保护的指针修改为新数据的指针。
+    
+        因为指针的修改是一个原子操作，所以不会发生读写不一致的问题。但是，需要插入一个内存屏障保证只有在数据被修改完成后，其它CPU才能看见更新的指针。尤其是当使用了自旋锁保护RCU禁止多个写操作的并发访问的时候。
+
+    * （3）调用`synchronize_rcu`，等待所有的读操作都离开临界代码段，完成同步。
+
+        RCU技术的真正问题是当写操作更新了指针后，旧数据的存储空间不能立马释放。因为，这时候读操作可能还在读取旧数据，所以，必须等到所有的可能的读操作执行`rcu_read_unlock()`离开临界代码段后，旧数据的存储空间才能被释放。
+
+    * （4）调用`call_rcu()`，完成旧数据存储空间的回收工作。
+
+        该函数的参数是类型为`rcu_head`的描述符的地址。该描述符嵌入在要回收的数据结构的内部。该函数还有一个参数就是一个回调函数，当所有的CPU处于空闲状态的时候执行这个回调函数。这个函数通常是负责旧数据存储空间的释放工作。
+
+        有一个问题需要注意的是，这个回调函数的执行是在另一个内核线程中执行。`call_rcu()`函数吧回调函数的地址和其参数存储在`rcu_head`描述符中，然后将这个描述符插入到每个CPU的回调函数列表中（这儿又体现了`per-CPU变量`的重要性）。每个系统时间滴答，内核都会检查局部CPU是否处于空闲状态。当所有的CPU处于空闲状态的时候，一个特殊的tasklet就会执行所有的回调函数，这个tasklet描述符存储在每个CPU的rcu_tasklet变量中。
+
+4. 使用场合
+
+    RCU是从Linux2.6版本引入的，主要使用在网络层和虚拟文件系统层。
+
 <h3 id="5.2.8">5.2.8 信号量</h3>
+
+对于信号量我们并不陌生。本质上，就是提供了一个锁，允许锁的等待着进入休眠，直到想要的资源被释放。事实上，Linux提供了两类信号量：
+
+* 内核使用的信号量
+* 用户态使用的信号量（遵循System V IPC信号量要求）
+
+在本文中，我们集中研究内核信号量，至于进程间通信使用的信号量以后再分析。所以，后面再提及的信号量指的是内核信号量。
+
+信号量与自旋锁及其类型，不同之处是使用自旋锁的话，获取锁失败的时候，进入忙等待状态，也就是一直在自旋。而使用信号量的话，如果获取信号量失败，则相应的进程会被挂起，知道资源被释放，相应的进程就会继续运行。因此，信号量只能由那些允许休眠的程序可以使用，像中断处理程序和可延时函数等不能使用。
+
+A kernel semaphore is an object of type struct semaphore, containing the fields shown in the following list.
+信号量的结构体是`semaphore`，包含下面的成员：
+
+* count
+
+Stores an atomic_t value. If it is greater than 0, the resource is free—that is, it is currently available. If count is equal to 0, the semaphore is busy but no other process is waiting for the protected resource. Finally, if count is negative, the resource is unavailable and at least one process is waiting for it.
+
+* wait
+
+Stores the address of a wait queue list that includes all sleeping processes that are currently waiting for the resource. Of course, if count is greater than or equal to 0, the wait queue is empty.
+
+* sleepers
+
+Stores a flag that indicates whether some processes are sleeping on the semaphore. We’ll see this field in operation soon.
+
+The init_MUTEX() and init_MUTEX_LOCKED() functions may be used to initialize a semaphore for exclusive access: they set the count field to 1 (free resource with exclusive access) and 0 (busy resource with exclusive access currently granted to the process that initializes the semaphore), respectively. The DECLARE_MUTEX and DECLARE_MUTEX_LOCKED macros do the same, but they also statically allocate the struct semaphore variable. Note that a semaphore could also be initialized with an arbitrary positive value n for count. In this case, at most n processes are allowed to concurrently access the resource.
+
+<h4 id="5.2.8.1">5.2.8.1 获取和释放信号量</h4>
+
+Let’s start by discussing how to release a semaphore, which is much simpler than getting one. When a process wishes to release a kernel semaphore lock, it invokes the up() function. This function is essentially equivalent to the following assembly language fragment:
+
+        movl $sem->count,%ecx
+        lock; incl (%ecx)
+        jg 1f
+        lea %ecx,%eax
+        pushl %edx
+        pushl %ecx
+        call __up
+        popl %ecx
+        popl %edx
+    1:
+
+where __up() is the following C function:
+    
+    __attribute__((regparm(3))) void __up(struct semaphore *sem)
+    {
+        wake_up(&sem->wait);
+    }
+
+The up() function increases the count field of the *sem semaphore, and then it checks
+whether its value is greater than 0. The increment of count and the setting of the flag
+tested by the following jump instruction must be atomically executed, or else
+another kernel control path could concurrently access the field value, with disastrous
+results. If count is greater than 0, there was no process sleeping in the wait
+queue, so nothing has to be done. Otherwise, the _ _up() function is invoked so that
+one sleeping process is woken up. Notice that _ _up() receives its parameter from the
+eax register (see the description of the _ _switch_to() function in the section “Performing
+the Process Switch” in Chapter 3).
+
+Conversely, when a process wishes to acquire a kernel semaphore lock, it invokes the
+down( ) function. The implementation of down( ) is quite involved, but it is essentially
+equivalent to the following:
+
+        down:
+        movl $sem->count,%ecx
+        lock; decl (%ecx);
+        jns 1f
+        lea %ecx, %eax
+        pushl %edx
+        pushl %ecx
+        call __down
+        popl %ecx
+        popl %edx
+    1:
+
+where __down() is the following C function:
+
+    __attribute__((regparm(3))) void __down(struct semaphore * sem)
+    {
+        DECLARE_WAITQUEUE(wait, current);
+        unsigned long flags;
+        current->state = TASK_UNINTERRUPTIBLE;
+        spin_lock_irqsave(&sem->wait.lock, flags);
+        add_wait_queue_exclusive_locked(&sem->wait, &wait);
+        sem->sleepers++;
+        for (;;) {
+            if (!atomic_add_negative(sem->sleepers-1, &sem->count)) {
+                sem->sleepers = 0;
+                break;
+            }
+            sem->sleepers = 1;
+            spin_unlock_irqrestore(&sem->wait.lock, flags);
+            schedule();
+            spin_lock_irqsave(&sem->wait.lock, flags);
+            current->state = TASK_UNINTERRUPTIBLE;
+        }
+        remove_wait_queue_locked(&sem->wait, &wait);
+        wake_up_locked(&sem->wait);
+        spin_unlock_irqrestore(&sem->wait.lock, flags);
+        current->state = TASK_RUNNING;
+    }
+
+The down() function decreases the count field of the *sem semaphore, and then checks whether its value is negative. Again, the decrement and the test must be atomically executed. If count is greater than or equal to 0, the current process acquires the resource and the execution continues normally. Otherwise, count is negative, and the current process must be suspended. The contents of some registers are saved on the stack, and then _ _down() is invoked.
+
+Essentially, the _ _down() function changes the state of the current process from TASK_RUNNING to TASK_UNINTERRUPTIBLE, and it puts the process in the semaphore wait queue. Before accessing the fields of the semaphore structure, the function also gets the sem->wait.lock spin lock that protects the semaphore wait queue (see “How Processes Are Organized” in Chapter 3) and disables local interrupts. Usually, wait queue functions get and release the wait queue spin lock as necessary when inserting and deleting an element. The _ _down() function, however, uses the wait queue spin lock also to protect the other fields of the semaphore data structure, so that no process running on another CPU is able to read or modify them. To that end, _ _down() uses the “_locked” versions of the wait queue functions, which assume that the spin lock has been already acquired before their invocations.
+
+The main task of the _ _down() function is to suspend the current process until the
+semaphore is released. However, the way in which this is done is quite involved. To
+easily understand the code, keep in mind that the sleepers field of the semaphore is
+usually set to 0 if no process is sleeping in the wait queue of the semaphore, and it is
+set to 1 otherwise. Let’s try to explain the code by considering a few typical cases.
+
+MUTEX semaphore open (count equal to 1, sleepers equal to 0)
+The down macro just sets the count field to 0 and jumps to the next instruction of
+the main program; therefore, the _ _down() function is not executed at all.
+
+MUTEX semaphore closed, no sleeping processes (count equal to 0, sleepers equal to 0)
+The down macro decreases count and invokes the _ _down() function with the
+count field set to –1 and the sleepers field set to 0. In each iteration of the loop,
+the function checks whether the count field is negative. (Observe that the count
+field is not changed by atomic_add_negative() because sleepers is equal to 0
+when the function is invoked.)
+
+* If the count field is negative, the function invokes schedule() to suspend the
+current process. The count field is still set to –1, and the sleepers field to 1.
+The process picks up its run subsequently inside this loop and issues the test
+again.
+
+* If the count field is not negative, the function sets sleepers to 0 and exits from
+the loop. It tries to wake up another process in the semaphore wait queue
+(but in our scenario, the queue is now empty) and terminates holding the
+semaphore. On exit, both the count field and the sleepers field are set to 0, as
+required when the semaphore is closed but no process is waiting for it.
+
+MUTEX semaphore closed, other sleeping processes (count equal to –1, sleepers equal
+to 1)
+The down macro decreases count and invokes the _ _down() function with count
+set to –2 and sleepers set to 1. The function temporarily sets sleepers to 2, and
+then undoes the decrement performed by the down macro by adding the value
+sleepers–1 to count. At the same time, the function checks whether count is still
+negative (the semaphore could have been released by the holding process right
+before _ _down() entered the critical region).
+• If the count field is negative, the function resets sleepers to 1 and invokes
+schedule() to suspend the current process. The count field is still set to –1,
+and the sleepers field to 1.
+• If the count field is not negative, the function sets sleepers to 0, tries to
+wake up another process in the semaphore wait queue, and exits holding the
+semaphore. On exit, the count field is set to 0 and the sleepers field to 0.
+The values of both fields look wrong, because there are other sleeping processes.
+However, consider that another process in the wait queue has been
+woken up. This process does another iteration of the loop; the atomic_add_
+negative() function subtracts 1 from count, restoring it to –1; moreover,
+before returning to sleep, the woken-up process resets sleepers to 1.
+
+So, the code properly works in all cases. Consider that the wake_up() function in __
+down() wakes up at most one process, because the sleeping processes in the wait
+queue are exclusive (see the section “How Processes Are Organized” in Chapter 3).
+
+Only exception handlers, and particularly system call service routines, can use the
+down() function. Interrupt handlers or deferrable functions must not invoke down( ),
+because this function suspends the process when the semaphore is busy. For this reason,
+Linux provides the down_trylock( ) function, which may be safely used by one of the previously mentioned asynchronous functions. It is identical to down( ) except
+when the resource is busy. In this case, the function returns immediately instead of
+putting the process to sleep.
+
+A slightly different function called down_interruptible( ) is also defined. It is widely
+used by device drivers, because it allows processes that receive a signal while being
+blocked on a semaphore to give up the “down” operation. If the sleeping process is
+woken up by a signal before getting the needed resource, the function increases the
+count field of the semaphore and returns the value –EINTR. On the other hand, if down_
+interruptible( ) runs to normal completion and gets the resource, it returns 0. The
+device driver may thus abort the I/O operation when the return value is –EINTR.
+
+Finally, because processes usually find semaphores in an open state, the semaphore
+functions are optimized for this case. In particular, the up() function does not execute
+jump instructions if the semaphore wait queue is empty; similarly, the down()
+function does not execute jump instructions if the semaphore is open. Much of the
+complexity of the semaphore implementation is precisely due to the effort of avoiding
+costly instructions in the main branch of the execution flow.
+
 
 <h3 id="5.2.9">5.2.9 读写信号量</h3>
 
