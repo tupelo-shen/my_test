@@ -182,12 +182,12 @@ Linux内核是从2.6版本开始的，相比那些旧版本的非抢占性内核
 | atomic_set(v,i)           | *v=i |
 | atomic_add(i,v)           | *v+i |
 | atomic_sub(i,v)           | *v-i |
-| atomic_sub_and_test(i, v) | 如果`*v-i = 0`，返回1；否则0 |
+| atomic_sub_and_test(i, v) | 如果`*v-i = 0`，<br> 返回1；否则0 |
 | atomic_inc(v)             | *v+1 |
 | atomic_dec(v)             | *v-1 |
-| atomic_dec_and_test(v)    | 如果`*v-1 = 0`，返回1；否则0 |
-| atomic_inc_and_test(v)    | 如果`*v+1 = 0`，返回1；否则0 |
-| atomic_add_negative(i, v) | 如果`*v+i < 0`，返回1；否则0  |
+| atomic_dec_and_test(v)    | 如果`*v-1 = 0`，<br> 返回1；否则0 |
+| atomic_inc_and_test(v)    | 如果`*v+1 = 0`，<br> 返回1；否则0 |
+| atomic_add_negative(i, v) | 如果`*v+i < 0`，<br> 返回1；否则0  |
 | atomic_inc_return(v)      | 返回`*v-1` |
 | atomic_dec_return(v)      | 返回`*v+i` |
 | atomic_add_return(i, v)   | 返回`*v-i` |
@@ -515,7 +515,7 @@ Linux内核系统中，自旋锁`spinlock_t`的实现主要使用了`raw_spinloc
     * （6）如果加锁失败，则重新（0）->（5）的过程。
     * （7）现在只是把指令写入到数据总线上，还没有完全成功。所以`smp_mb()`内存屏障保证加锁成功。
 
-3. 写自旋锁的是否过程，`arch_write_unlock`函数实现，代码如下：
+3. 写自旋锁的释放过程，`arch_write_unlock`函数实现，代码如下：
 
         static inline void arch_write_unlock(arch_rwlock_t *rw)
         {
@@ -731,39 +731,68 @@ seqlock锁只能允许一个写操作，但是有些时候我们可能需要多�
 
 <h3 id="5.2.8">5.2.8 信号量</h3>
 
-对于信号量我们并不陌生。本质上，就是提供了一个锁，允许锁的等待着进入休眠，直到想要的资源被释放。事实上，Linux提供了两类信号量：
+对于信号量我们并不陌生。信号量在计算机科学中是一个很容易理解的概念。本质上，信号量就是一个简单的整数，对其进行的操作称为PV操作。进入某段临界代码段就会调用相关信号量的P操作；如果信号量的值大于0，该值会减1，进程继续执行。相反，如果信号量的值等于0，该进程就会等待，直到有其它程序释放该信号量。释放信号量的过程就称为V操作，通过增加信号量的值，唤醒正在等待的进程。
+
+> <font color="blue">注：</font>
+>
+> 信号量，这一同步机制为什么称为PV操作。原来，这些术语都是来源于狄克斯特拉使用荷兰文定义的。因为在荷兰文中，通过叫`passeren`，释放叫`vrijgeven`，PV操作因此得名。这是在计算机术语中不是用英语表达的极少数的例子之一。
+
+事实上，Linux提供了两类信号量：
 
 * 内核使用的信号量
-* 用户态使用的信号量（遵循System V IPC信号量要求）
+* 用户态使用的信号量（遵循`System V IPC`信号量要求）
 
 在本文中，我们集中研究内核信号量，至于进程间通信使用的信号量以后再分析。所以，后面再提及的信号量指的是内核信号量。
 
 信号量与自旋锁及其类型，不同之处是使用自旋锁的话，获取锁失败的时候，进入忙等待状态，也就是一直在自旋。而使用信号量的话，如果获取信号量失败，则相应的进程会被挂起，知道资源被释放，相应的进程就会继续运行。因此，信号量只能由那些允许休眠的程序可以使用，像中断处理程序和可延时函数等不能使用。
 
-A kernel semaphore is an object of type struct semaphore, containing the fields shown in the following list.
 信号量的结构体是`semaphore`，包含下面的成员：
 
 * count
 
-Stores an atomic_t value. If it is greater than 0, the resource is free—that is, it is currently available. If count is equal to 0, the semaphore is busy but no other process is waiting for the protected resource. Finally, if count is negative, the resource is unavailable and at least one process is waiting for it.
+    是一个`atomic_t`类型原子变量。该值如果大于0，则信号量处于释放状态，也就是可以被使用。如果等于0，说明信号量已经被占用，但是没有其它进程在等待信号量保护的资源。如果是负值，说明被保护的资源不可用且至少有一个进程在等待这个资源。
 
 * wait
 
-Stores the address of a wait queue list that includes all sleeping processes that are currently waiting for the resource. Of course, if count is greater than or equal to 0, the wait queue is empty.
+    休眠进程等待队列列表的地址，这些进程都是要访问该信号保护的资源。当然了，如果count大于0，这个等待队列是空的。
 
 * sleepers
 
-Stores a flag that indicates whether some processes are sleeping on the semaphore. We’ll see this field in operation soon.
+    标志是否有进程正在等待该信号。
 
-The init_MUTEX() and init_MUTEX_LOCKED() functions may be used to initialize a semaphore for exclusive access: they set the count field to 1 (free resource with exclusive access) and 0 (busy resource with exclusive access currently granted to the process that initializes the semaphore), respectively. The DECLARE_MUTEX and DECLARE_MUTEX_LOCKED macros do the same, but they also statically allocate the struct semaphore variable. Note that a semaphore could also be initialized with an arbitrary positive value n for count. In this case, at most n processes are allowed to concurrently access the resource.
+虽然信号量可以支持很大的count，但是在linux内核中，大部分情况下还是使用信号量的一种特殊形式，也就是`互斥信号量（MUTEX）`。所以，在早期的内核版本（`2.6.37`之前），专门提供了一组函数：
+
+    init_MUTEX()            // 将count设为1
+    init_MUTEX_LOCKED()     // 将count设为0
+
+用它们来初始化信号量，实现独占访问。init_MUTEX()函数将互斥信号设为1，允许进程使用这个互斥信号量加锁访问资源。init_MUTEX_LOCKED()函数将互斥信号量设为0，说明资源已经被锁住，进程想要访问资源需要先等待别的地方解锁，然后再请求锁独占访问该资源。这种初始化方式一般是在该资源需要其它地方准备好后才允许访问，所以初始状态先被锁住。等准备后，再释放锁允许等待进程访问资源。
+
+另外，还分别有两个静态初始化方法：
+
+    DECLARE_MUTEX
+    DECLARE_MUTEX_LOCKED
+
+这两个宏的作用和上面的初始化函数一致，但是静态分配信号量变量。当然了，count还可以被初始化为一个整数值n（n大于1），这样的话，可以允许多达n个进程并发访问资源。
+
+但是，从Linux内核2.6.37版本之后，上面的函数和宏已经不存在。这是为什么呢？因为大家发现在Linux内核的设计实现中通常使用互斥信号量，而不会使用信号量。那既然如此，为什么不直接使用自旋锁和一个int型整数设计信号量呢？这样的话，因为自旋锁本身就有互斥性，代码岂不更为简洁？于是，2.6.37版本内核开始，就使用自旋锁和count设计信号量了。代码如下：
+
+    struct semaphore {
+        raw_spinlock_t      lock;
+        unsigned int        count;
+        struct list_head    wait_list;
+    };
+
+这样的设计使用起来更为方便简单。
 
 <h4 id="5.2.8.1">5.2.8.1 获取和释放信号量</h4>
 
-Let’s start by discussing how to release a semaphore, which is much simpler than getting one. When a process wishes to release a kernel semaphore lock, it invokes the up() function. This function is essentially equivalent to the following assembly language fragment:
+前面我们已经知道，信号量实现在内核发展的过程中发生了更变。所以，其获取和释放信号量的过程必然也有了改变。为了更好的理解信号量，也为了尝试理解内核在设计上的一些思想和机制。我们还是先了解一下早期版本内核获取和释放信号量的过程。
+
+因为信号量的释放过程比获取更为简单，所以我们先以释放信号量的过程为例进行分析。如果一个进程想要释放内核信号量，会调用up()函数。这个函数，本质上等价于下面的代码：
 
         movl $sem->count,%ecx
         lock; incl (%ecx)
-        jg 1f
+        jg 1f               // 标号1后面的f字符表示向前跳转，如果是b表示向后跳转
         lea %ecx,%eax
         pushl %edx
         pushl %ecx
@@ -772,26 +801,16 @@ Let’s start by discussing how to release a semaphore, which is much simpler th
         popl %edx
     1:
 
-where __up() is the following C function:
+上面的代码实现的过程大概是，先把信号量的count拷贝到寄存器ecx中，然后使用lock指令原子地将ecx寄存器中的值加1。如果发生溢出，则跳转到标号1处开始执行。使用加载有效地址指令`lea`将寄存器ecx中的值的地址加载到eax寄存器中，也就是说把变量sem->count的地址（因为count是第一个成员，所以其地址就是sem变量的地址）加载到eax寄存器中。至于两个pushl指令把edx和ecx压栈，是为了保存当前值。因为后面调用`__up()`函数的时候约定使用3个寄存器（eax，edx和ecx）传递参数，虽然此处只有一个参数。为此调用C函数的内核栈准备好了，可以调用`__up()`函数了。该函数的代码如下：
     
     __attribute__((regparm(3))) void __up(struct semaphore *sem)
     {
         wake_up(&sem->wait);
     }
 
-The up() function increases the count field of the *sem semaphore, and then it checks
-whether its value is greater than 0. The increment of count and the setting of the flag
-tested by the following jump instruction must be atomically executed, or else
-another kernel control path could concurrently access the field value, with disastrous
-results. If count is greater than 0, there was no process sleeping in the wait
-queue, so nothing has to be done. Otherwise, the _ _up() function is invoked so that
-one sleeping process is woken up. Notice that _ _up() receives its parameter from the
-eax register (see the description of the _ _switch_to() function in the section “Performing
-the Process Switch” in Chapter 3).
+The up() function increases the count field of the *sem semaphore, and then it checks whether its value is greater than 0. The increment of count and the setting of the flag tested by the following jump instruction must be atomically executed, or else another kernel control path could concurrently access the field value, with disastrous results. If count is greater than 0, there was no process sleeping in the wait queue, so nothing has to be done. Otherwise, the __up() function is invoked so that one sleeping process is woken up. Notice that __up() receives its parameter from the eax register (see the description of the __switch_to() function in the section “Performing the Process Switch” in Chapter 3).
 
-Conversely, when a process wishes to acquire a kernel semaphore lock, it invokes the
-down( ) function. The implementation of down( ) is quite involved, but it is essentially
-equivalent to the following:
+Conversely, when a process wishes to acquire a kernel semaphore lock, it invokes the down( ) function. The implementation of down( ) is quite involved, but it is essentially equivalent to the following:
 
         down:
         movl $sem->count,%ecx
@@ -832,46 +851,27 @@ where __down() is the following C function:
         current->state = TASK_RUNNING;
     }
 
-The down() function decreases the count field of the *sem semaphore, and then checks whether its value is negative. Again, the decrement and the test must be atomically executed. If count is greater than or equal to 0, the current process acquires the resource and the execution continues normally. Otherwise, count is negative, and the current process must be suspended. The contents of some registers are saved on the stack, and then _ _down() is invoked.
+The down() function decreases the count field of the *sem semaphore, and then checks whether its value is negative. Again, the decrement and the test must be atomically executed. If count is greater than or equal to 0, the current process acquires the resource and the execution continues normally. Otherwise, count is negative, and the current process must be suspended. The contents of some registers are saved on the stack, and then __down() is invoked.
 
-Essentially, the _ _down() function changes the state of the current process from TASK_RUNNING to TASK_UNINTERRUPTIBLE, and it puts the process in the semaphore wait queue. Before accessing the fields of the semaphore structure, the function also gets the sem->wait.lock spin lock that protects the semaphore wait queue (see “How Processes Are Organized” in Chapter 3) and disables local interrupts. Usually, wait queue functions get and release the wait queue spin lock as necessary when inserting and deleting an element. The _ _down() function, however, uses the wait queue spin lock also to protect the other fields of the semaphore data structure, so that no process running on another CPU is able to read or modify them. To that end, _ _down() uses the “_locked” versions of the wait queue functions, which assume that the spin lock has been already acquired before their invocations.
+Essentially, the __down() function changes the state of the current process from TASK_RUNNING to TASK_UNINTERRUPTIBLE, and it puts the process in the semaphore wait queue. Before accessing the fields of the semaphore structure, the function also gets the sem->wait.lock spin lock that protects the semaphore wait queue (see “How Processes Are Organized” in Chapter 3) and disables local interrupts. Usually, wait queue functions get and release the wait queue spin lock as necessary when inserting and deleting an element. The __down() function, however, uses the wait queue spin lock also to protect the other fields of the semaphore data structure, so that no process running on another CPU is able to read or modify them. To that end, __down() uses the “_locked” versions of the wait queue functions, which assume that the spin lock has been already acquired before their invocations.
 
-The main task of the _ _down() function is to suspend the current process until the
-semaphore is released. However, the way in which this is done is quite involved. To
-easily understand the code, keep in mind that the sleepers field of the semaphore is
-usually set to 0 if no process is sleeping in the wait queue of the semaphore, and it is
-set to 1 otherwise. Let’s try to explain the code by considering a few typical cases.
+The main task of the __down() function is to suspend the current process until the semaphore is released. However, the way in which this is done is quite involved. To easily understand the code, keep in mind that the sleepers field of the semaphore is usually set to 0 if no process is sleeping in the wait queue of the semaphore, and it is set to 1 otherwise. Let’s try to explain the code by considering a few typical cases.
 
-MUTEX semaphore open (count equal to 1, sleepers equal to 0)
-The down macro just sets the count field to 0 and jumps to the next instruction of
-the main program; therefore, the _ _down() function is not executed at all.
+MUTEX semaphore open (count equal to 1, sleepers equal to 0) The down macro just sets the count field to 0 and jumps to the next instruction of the main program; therefore, the __down() function is not executed at all.
 
-MUTEX semaphore closed, no sleeping processes (count equal to 0, sleepers equal to 0)
-The down macro decreases count and invokes the _ _down() function with the
-count field set to –1 and the sleepers field set to 0. In each iteration of the loop,
-the function checks whether the count field is negative. (Observe that the count
-field is not changed by atomic_add_negative() because sleepers is equal to 0
-when the function is invoked.)
+MUTEX semaphore closed, no sleeping processes (count equal to 0, sleepers equal to 0) The down macro decreases count and invokes the __down() function with the count field set to –1 and the sleepers field set to 0. In each iteration of the loop, the function checks whether the count field is negative. (Observe that the count field is not changed by atomic_add_negative() because sleepers is equal to 0 when the function is invoked.)
 
-* If the count field is negative, the function invokes schedule() to suspend the
-current process. The count field is still set to –1, and the sleepers field to 1.
-The process picks up its run subsequently inside this loop and issues the test
-again.
+* If the count field is negative, the function invokes schedule() to suspend the current process. The count field is still set to –1, and the sleepers field to 1. The process picks up its run subsequently inside this loop and issues the test again.
 
-* If the count field is not negative, the function sets sleepers to 0 and exits from
-the loop. It tries to wake up another process in the semaphore wait queue
-(but in our scenario, the queue is now empty) and terminates holding the
-semaphore. On exit, both the count field and the sleepers field are set to 0, as
-required when the semaphore is closed but no process is waiting for it.
+* If the count field is not negative, the function sets sleepers to 0 and exits from the loop. It tries to wake up another process in the semaphore wait queue (but in our scenario, the queue is now empty) and terminates holding the semaphore. On exit, both the count field and the sleepers field are set to 0, as required when the semaphore is closed but no process is waiting for it.
 
-MUTEX semaphore closed, other sleeping processes (count equal to –1, sleepers equal
-to 1)
-The down macro decreases count and invokes the _ _down() function with count
+MUTEX semaphore closed, other sleeping processes (count equal to –1, sleepers equal to 1)
+The down macro decreases count and invokes the __down() function with count
 set to –2 and sleepers set to 1. The function temporarily sets sleepers to 2, and
 then undoes the decrement performed by the down macro by adding the value
 sleepers–1 to count. At the same time, the function checks whether count is still
 negative (the semaphore could have been released by the holding process right
-before _ _down() entered the critical region).
+before __down() entered the critical region).
 • If the count field is negative, the function resets sleepers to 1 and invokes
 schedule() to suspend the current process. The count field is still set to –1,
 and the sleepers field to 1.
