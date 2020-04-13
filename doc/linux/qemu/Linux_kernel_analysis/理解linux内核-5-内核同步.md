@@ -10,13 +10,21 @@
         + [5.2.3 优化和内存屏障](#5.2.3)
         + [5.2.4 自旋锁](#5.2.4)
         + [5.2.5 读写自旋锁](#5.2.5)
-        + [5.2.6 信号量](#5.2.6)
-        + [5.2.7 Seqlock](#5.2.7)
-        + [5.2.8 中断禁止](#5.2.8)
-        + [5.2.9 软中断禁止](#5.2.9)
-        + [5.2.10 读-拷贝-更新（RCU）](#5.2.10)
+        + [5.2.6 Seqlock](#5.2.6)
+        + [5.2.7 读-拷贝-更新（RCU）](#5.2.7)
+        + [5.2.8 信号量](#5.2.8)
+        + [5.2.9 读写信号量](#5.2.9)
+        + [5.2.10 Completion机制](#5.2.10)
+        + [5.2.11 中断禁止](#5.2.11)
+        + [5.2.12 软中断禁止](#5.2.12)
     - [5.3 内核数据结构的同步访问](#5.3)
+        + [5.3.1 如何选择自旋锁、信号量和关闭中断的使用时机](#5.3.1)
     - [5.4 防止竞态条件的示例](#5.4)
+        + [5.4.1 引用计数器](#5.4.1)
+        + [5.4.2 大内核锁](#5.4.2)
+        + [5.4.3 内存描述符读写信号量](#5.4.3)
+        + [5.4.4 Slab Cache列表信号量](#5.4.4)
+        + [5.4.5 INode节点信号量](#5.4.5)
 
 
 <h1 id="5">5 内核同步</h1>
@@ -774,7 +782,7 @@ seqlock锁只能允许一个写操作，但是有些时候我们可能需要多�
 
 这两个宏的作用和上面的初始化函数一致，但是静态分配信号量变量。当然了，count还可以被初始化为一个整数值n（n大于1），这样的话，可以允许多达n个进程并发访问资源。
 
-但是，从Linux内核2.6.37版本之后，上面的函数和宏已经不存在。这是为什么呢？因为大家发现在Linux内核的设计实现中通常使用互斥信号量，而不会使用信号量。那既然如此，为什么不直接使用自旋锁和一个int型整数设计信号量呢？这样的话，因为自旋锁本身就有互斥性，代码岂不更为简洁？于是，2.6.37版本内核开始，就使用自旋锁和count设计信号量了。代码如下：
+但是，从Linux内核2.6.37版本之后，上面的函数和宏已经不存在。这是为什么呢？因为大家发现在Linux内核的设计实现中通常使用互斥信号量，而不会使用信号量。那既然如此，为什么不直接使用自旋锁和一个int型整数设计信号量呢？这样的话，因为自旋锁本身就有互斥性，代码岂不更为简洁？这样设计，还有一个原因就是之前使用atomic原子变量表示count，但是等待该信号量的进程队列还是需要自旋锁进行保护，有点重复。于是，2.6.37版本内核开始，就使用自旋锁和count设计信号量了。代码如下：
 
     struct semaphore {
         raw_spinlock_t      lock;
@@ -782,7 +790,7 @@ seqlock锁只能允许一个写操作，但是有些时候我们可能需要多�
         struct list_head    wait_list;
     };
 
-这样的设计使用起来更为方便简单。
+这样的设计使用起来更为方便简单。当然了，结构体的变化必然导致操作信号量的函数发生设计上的改变。
 
 <h4 id="5.2.8.1">5.2.8.1 获取和释放信号量</h4>
 
@@ -801,16 +809,14 @@ seqlock锁只能允许一个写操作，但是有些时候我们可能需要多�
         popl %edx
     1:
 
-上面的代码实现的过程大概是，先把信号量的count拷贝到寄存器ecx中，然后使用lock指令原子地将ecx寄存器中的值加1。如果发生溢出，则跳转到标号1处开始执行。使用加载有效地址指令`lea`将寄存器ecx中的值的地址加载到eax寄存器中，也就是说把变量sem->count的地址（因为count是第一个成员，所以其地址就是sem变量的地址）加载到eax寄存器中。至于两个pushl指令把edx和ecx压栈，是为了保存当前值。因为后面调用`__up()`函数的时候约定使用3个寄存器（eax，edx和ecx）传递参数，虽然此处只有一个参数。为此调用C函数的内核栈准备好了，可以调用`__up()`函数了。该函数的代码如下：
+上面的代码实现的过程大概是，先把信号量的count拷贝到寄存器ecx中，然后使用lock指令原子地将ecx寄存器中的值加1。如果eax寄存器中的值大于0，说明没有进程在等待这个信号，则跳转到标号1处开始执行。使用加载有效地址指令`lea`将寄存器ecx中的值的地址加载到eax寄存器中，也就是说把变量sem->count的地址（因为count是第一个成员，所以其地址就是sem变量的地址）加载到eax寄存器中。至于两个pushl指令把edx和ecx压栈，是为了保存当前值。因为后面调用`__up()`函数的时候约定使用3个寄存器（eax，edx和ecx）传递参数，虽然此处只有一个参数。为此调用C函数的内核栈准备好了，可以调用`__up()`函数了。该函数的代码如下：
     
     __attribute__((regparm(3))) void __up(struct semaphore *sem)
     {
         wake_up(&sem->wait);
     }
 
-The up() function increases the count field of the *sem semaphore, and then it checks whether its value is greater than 0. The increment of count and the setting of the flag tested by the following jump instruction must be atomically executed, or else another kernel control path could concurrently access the field value, with disastrous results. If count is greater than 0, there was no process sleeping in the wait queue, so nothing has to be done. Otherwise, the __up() function is invoked so that one sleeping process is woken up. Notice that __up() receives its parameter from the eax register (see the description of the __switch_to() function in the section “Performing the Process Switch” in Chapter 3).
-
-Conversely, when a process wishes to acquire a kernel semaphore lock, it invokes the down( ) function. The implementation of down( ) is quite involved, but it is essentially equivalent to the following:
+反过来，如果一个进程想要请求一个内核信号量，调用`down()`函数，也就是实施p操作。该函数的实现比较复杂，但是大概内容如下：
 
         down:
         movl $sem->count,%ecx
@@ -824,7 +830,9 @@ Conversely, when a process wishes to acquire a kernel semaphore lock, it invokes
         popl %edx
     1:
 
-where __down() is the following C function:
+上面代码实现过程：移动sem->count到ecx寄存器中，然后对ecx寄存器进行原子操作，减1。然后检查它的值是否为负值。如果该值大于等于0，则说明当前进程请求信号量成功，可以执行信号量保护的代码区域；否则，说明信号量已经被占用，进程需要挂起休眠。因而，把sem->count的地址加载到eax寄存器中，并将edx和ecx寄存器压栈，为调用C语言函数做好准备。接下来，就可以调用`__down()`函数了。
+
+`__down()`函数是一个C语言函数，内容如下：
 
     __attribute__((regparm(3))) void __down(struct semaphore * sem)
     {
@@ -851,74 +859,311 @@ where __down() is the following C function:
         current->state = TASK_RUNNING;
     }
 
-The down() function decreases the count field of the *sem semaphore, and then checks whether its value is negative. Again, the decrement and the test must be atomically executed. If count is greater than or equal to 0, the current process acquires the resource and the execution continues normally. Otherwise, count is negative, and the current process must be suspended. The contents of some registers are saved on the stack, and then __down() is invoked.
+`__down()`函数改变进程的运行状态，从TASK_RUNNING到TASK_UNINTERRUPTIBLE，然后把它添加到该信号量的等待队列中。其中sem->wait中包含一个自旋锁spin_lock，使用它保护wait等待队列这个数据结构。同时，还要关闭本地中断。通常，queue操作函数从队列中插入或者删除一个元素，都是需要lock保护的，也就是说，有一个请求、释放锁的过程。但是，__down()函数还使用这个queue的自旋锁保护其它成员，所以扩大了锁的保护范围。所以调用的queue操作函数都是带有`_locked`后缀的函数，表示锁已经在函数外被请求成功了。
 
-Essentially, the __down() function changes the state of the current process from TASK_RUNNING to TASK_UNINTERRUPTIBLE, and it puts the process in the semaphore wait queue. Before accessing the fields of the semaphore structure, the function also gets the sem->wait.lock spin lock that protects the semaphore wait queue (see “How Processes Are Organized” in Chapter 3) and disables local interrupts. Usually, wait queue functions get and release the wait queue spin lock as necessary when inserting and deleting an element. The __down() function, however, uses the wait queue spin lock also to protect the other fields of the semaphore data structure, so that no process running on another CPU is able to read or modify them. To that end, __down() uses the “_locked” versions of the wait queue functions, which assume that the spin lock has been already acquired before their invocations.
+`__down()`函数的主要任务就是对信号量结构体中的count计数进行减1操作。sleepers如果等于0，则说明没有进行在等待队列中休眠；如果等于1，则相反。
 
-The main task of the __down() function is to suspend the current process until the semaphore is released. However, the way in which this is done is quite involved. To easily understand the code, keep in mind that the sleepers field of the semaphore is usually set to 0 if no process is sleeping in the wait queue of the semaphore, and it is set to 1 otherwise. Let’s try to explain the code by considering a few typical cases.
+以MUTEX信号量为例进行说明。
 
-MUTEX semaphore open (count equal to 1, sleepers equal to 0) The down macro just sets the count field to 0 and jumps to the next instruction of the main program; therefore, the __down() function is not executed at all.
+* 第1种情况：count等于1，sleepers等于0。
 
-MUTEX semaphore closed, no sleeping processes (count equal to 0, sleepers equal to 0) The down macro decreases count and invokes the __down() function with the count field set to –1 and the sleepers field set to 0. In each iteration of the loop, the function checks whether the count field is negative. (Observe that the count field is not changed by atomic_add_negative() because sleepers is equal to 0 when the function is invoked.)
+    也就是说，信号量现在没有进程使用，也没有等待该信号量的进程在休眠。`down()`直接通过自减指令设置count为0，满足跳转指令的条件是一个非负数，直接调转到标签1处开始执行，也就是请求信号量成功。那当然也就不会再调用`__down()`函数了。
 
-* If the count field is negative, the function invokes schedule() to suspend the current process. The count field is still set to –1, and the sleepers field to 1. The process picks up its run subsequently inside this loop and issues the test again.
+* 第2种情况：count等于0，sleepers也等于0。
 
-* If the count field is not negative, the function sets sleepers to 0 and exits from the loop. It tries to wake up another process in the semaphore wait queue (but in our scenario, the queue is now empty) and terminates holding the semaphore. On exit, both the count field and the sleepers field are set to 0, as required when the semaphore is closed but no process is waiting for it.
+    这种情况下，会调用`__down()`函数进行处理（count等于-1），设置sleepers等于1。然后判断`atomic_add_negative()`函数的执行结果：因为在进入for循环之前，sleepers先进行了自加，所以，`sem->sleepers-1`等于0。所以，if条件不符合，不跳出循环。那么此时count等于-1，sleepers等于0。也就是说明请求信号量失败，因为已经有进程占用信号量，但是没有进程在等待这个信号量。然后，循环继续往下执行，设置sleepers等于1，表示当前进程将会被挂起，等待该信号量。然后执行schedule()，切换到那个持有信号量的进程执行，执行完之后释放信号量。也就是将count设为1，sleepers设为0。而当前被挂起的进程再次被唤醒后，继续检查if条件是否符合，因为此时count等于1，sleepers等于0。所以if条件为真，将sleepers设为0之后，跳出循环。请求锁失败。
 
-MUTEX semaphore closed, other sleeping processes (count equal to –1, sleepers equal to 1)
-The down macro decreases count and invokes the __down() function with count
-set to –2 and sleepers set to 1. The function temporarily sets sleepers to 2, and
-then undoes the decrement performed by the down macro by adding the value
-sleepers–1 to count. At the same time, the function checks whether count is still
-negative (the semaphore could have been released by the holding process right
-before __down() entered the critical region).
-• If the count field is negative, the function resets sleepers to 1 and invokes
-schedule() to suspend the current process. The count field is still set to –1,
-and the sleepers field to 1.
-• If the count field is not negative, the function sets sleepers to 0, tries to
-wake up another process in the semaphore wait queue, and exits holding the
-semaphore. On exit, the count field is set to 0 and the sleepers field to 0.
-The values of both fields look wrong, because there are other sleeping processes.
-However, consider that another process in the wait queue has been
-woken up. This process does another iteration of the loop; the atomic_add_
-negative() function subtracts 1 from count, restoring it to –1; moreover,
-before returning to sleep, the woken-up process resets sleepers to 1.
+* 第3种情况：count等于0，sleepers等于1。
 
-So, the code properly works in all cases. Consider that the wake_up() function in __
-down() wakes up at most one process, because the sleeping processes in the wait
-queue are exclusive (see the section “How Processes Are Organized” in Chapter 3).
+    进入`__down()`函数之后（count等于-1），设置sleepers等于2。if条件为真，所以设置sleepers等于0，跳出循环。说明已经有一个持有信号量的进程在等待队列中。所以，跳出循环后，尝试唤醒等待队列中的进程执行。
 
-Only exception handlers, and particularly system call service routines, can use the
-down() function. Interrupt handlers or deferrable functions must not invoke down( ),
-because this function suspends the process when the semaphore is busy. For this reason,
-Linux provides the down_trylock( ) function, which may be safely used by one of the previously mentioned asynchronous functions. It is identical to down( ) except
-when the resource is busy. In this case, the function returns immediately instead of
-putting the process to sleep.
+* 第4种情况：count是-1，sleepers等于0。
 
-A slightly different function called down_interruptible( ) is also defined. It is widely
-used by device drivers, because it allows processes that receive a signal while being
-blocked on a semaphore to give up the “down” operation. If the sleeping process is
-woken up by a signal before getting the needed resource, the function increases the
-count field of the semaphore and returns the value –EINTR. On the other hand, if down_
-interruptible( ) runs to normal completion and gets the resource, it returns 0. The
-device driver may thus abort the I/O operation when the return value is –EINTR.
+    这种情况下，进入`__down()`函数之后，count等于-2，sleepers临时被设为1。那么`atomic_add_negative()`函数的计算结果小于0，返回1。if条件为假，继续往下执行，设置sleepers等于1，表明当前进程将被挂起。然后，执行schedule()，切换到持有该信号的进程运行。运行完后，释放信号量，唤醒当前的进程继续执行。而当前被挂起的进程再次被唤醒后，继续检查if条件是否符合，因为此时count等于1，sleepers等于0。所以if条件为真，将sleepers设为0之后，跳出循环。请求锁失败。
 
-Finally, because processes usually find semaphores in an open state, the semaphore
-functions are optimized for this case. In particular, the up() function does not execute
-jump instructions if the semaphore wait queue is empty; similarly, the down()
-function does not execute jump instructions if the semaphore is open. Much of the
-complexity of the semaphore implementation is precisely due to the effort of avoiding
-costly instructions in the main branch of the execution flow.
+* 第5种情况：count是-1，sleepers等于1。
 
+    这种情况下，进入`__down()`函数之后，count等于-2，sleepers临时被设为2。if条件为真，所以设置sleepers等于0，跳出循环。说明已经有一个持有信号量的进程在等待队列中。所以，跳出循环后，尝试唤醒等待队列中的进程执行。
+
+通过上面几种情况的分析，我们可知不管哪种情况都能正常工作。wake_up()每次最多可以唤醒一个进程，因为在等待队列中的进程是互斥的，不可能同时有两个休眠进程被激活。
+
+在上面的分析过程中，我们知道down()函数的实现过程，需要关闭中断，而且这个函数会挂起进程，而中断服务例程中是不能挂起进程的。所以，只有异常处理程序，尤其是系统调用服务例程可以调用down()函数。基于这个原因，Linux还提供了其它版本的请求信号量的函数：
+
+1. down_trylock() 
+
+    可以被中断和延时函数调用。基本上与down()函数的实现一致，除了当信号量不可用时立即返回，而不是将进程休眠外。
+
+2.  down_interruptible()
+
+    广泛的应用在驱动程序中，因为它允许当信号量忙时，允许进程可以接受信号，从而中止请求信号量的操作。如果正在休眠的进程在取得信号量之前被其它信号唤醒，这个函数将信号量的count值加1，并且返回`-EINTR`。正常返回0。驱动程序通常判断返回`-EINTR`后，终止I/O操作。
+
+其实，通过上面的分析，很容易看出down()函数有点鸡肋。它能实现的功能，down_interruptible()函数都能实现。而且down_interruptible()还能满足中断处理程序和延时函数的调用。所以，在2.6.37版本以后的内核中，这个函数已经被废弃。
 
 <h3 id="5.2.9">5.2.9 读写信号量</h3>
 
+#### 读/写信号量的工作原理
+
+读/写信号量和读/写自旋锁类似，不同的地方是进程在等待读/写信号量的时候处于挂起状态，而在等待读/写自旋锁的时候是处于忙等待，也就是自旋的状态中。
+
+那也就是说，读/写信号量同读/写自旋锁一样，对于读操作，多个内核控制路径可以并发请求一个读写信号量；而对于写操作，每个内核控制路径必须独占访问受保护的资源。因此，对于读/写信号量来说，写操作的时候，既不可以进行读操作，也不可以进行写操作。读/写信号量提高了内核中的并发数量，也同时提高了系统的整体性能。
+
+内核严格按照先进先出（FIFO）的原则处理等待读/写信号量的进程。读进程或者写进程一旦请求信号量失败，就被写到信号量等待队列的队尾。当信号量被释放后，队列中的第一个进程先被执行，因为它先被唤醒。如果唤醒的是一个写进程，那么队列中其它进程继续休眠。如果唤醒的是一个读进程，写进程之前的所有读进程都会被唤醒获得信号量；但是写进程之后的读进程继续休眠。
+
+#### 读/写信号量的数据结构
+
+读/写信号量使用数据结构`rw_semaphore`表示，其成员为：
+
+* count
+
+    一个32位的整形数，被分割成两个16位的计数器。高16位的计数器以2的补码形式表示非等待写进程和等待内核控制路径的数量，低16位表示非等待读进程和非等待写进程的总数。
+
+* wait_list
+
+    等待进程的列表。每个元素是一个`rwsem_waiter`数据结构，包含指向休眠进程描述符的指针和一个标志，这个标志表明进程申请信号量是要读取还是写入。
+
+* wait_lock
+
+    自旋锁，用来保护等待队列和`rw_semaphore`数据结构。
+
+#### 读/写信号量的有关API
+
+初始化函数为 `init_rwsem()`，用其可以初始化一个`rw_semaphore`数据结构，将count设为0，wait_lock自旋锁设为未使用，wait_list设为空列表。
+
+`down_read()` 和 `down_write()`函数分别用来请求读信号量和写信号量。同理，`up_read()`和 `up_write()`函数分别用来释放读信号量和写信号量。`down_read_trylock()`和`down_write_trylock()`函数分别与`down_read()` 和 `down_write()`函数类似，只是当信号量忙的时候不会阻塞进程。最后，还有一个重要的函数，`downgrade_write()`，用于写进程使用完写信号量之后，自动将其转换成一个读信号量。这些函数的实现与普通信号量的实现极其类似，所以，在此，我们就不再详细描述其实现过程了。
+
 <h3 id="5.2.10">5.2.10 Completion机制</h3>
+
+Linux 2.6 also makes use of another synchronization primitive similar to semaphores: completions. They have been introduced to solve a subtle race condition that occurs in multiprocessor systems when process A allocates a temporary semaphore variable, initializes it as closed MUTEX, passes its address to process B, and then invokes down() on it. Process A plans to destroy the semaphore as soon as it awakens. Later on, process B running on a different CPU invokes up() on the semaphore. However, in the current implementation up() and down() can execute concurrently on the same semaphore. Thus, process A can be woken up and destroy the temporary semaphore while process B is still executing the up() function. As a result, up() might attempt to access a data structure that no longer exists.
+
+Of course, it is possible to change the implementation of down() and up() to forbid concurrent executions on the same semaphore. However, this change would require additional instructions, which is a bad thing to do for functions that are so heavily used.
+
+The completion is a synchronization primitive that is specifically designed to solve this problem. The completion data structure includes a wait queue head and a flag:
+
+    struct completion {
+        unsigned int done;
+        wait_queue_head_t wait;
+    };
+
+The function corresponding to up() is called complete(). It receives as an argument the address of a completion data structure, invokes spin_lock_irqsave() on the spin lock of the completion’s wait queue, increases the done field, wakes up the exclusive process sleeping in the wait wait queue, and finally invokes spin_unlock_irqrestore().
+
+The function corresponding to down() is called wait_for_completion(). It receives as an argument the address of a completion data structure and checks the value of the done flag. If it is greater than zero, wait_for_completion() terminates, because complete() has already been executed on another CPU. Otherwise, the function adds current to the tail of the wait queue as an exclusive process and puts current to sleep in the TASK_UNINTERRUPTIBLE state. Once woken up, the function removes current from the wait queue. Then, the function checks the value of the done flag: if it is equal to zero the function terminates, otherwise, the current process is suspended again. As in the case of the complete() function, wait_for_completion() makes use of the spin lock in the completion’s wait queue.
+
+The real difference between completions and semaphores is how the spin lock included in the wait queue is used. In completions, the spin lock is used to ensure that complete() and wait_for_completion() cannot execute concurrently. In semaphores, the spin lock is used to avoid letting concurrent down()’s functions mess up the semaphore data structure.
 
 <h3 id="5.2.11">5.2.11 中断禁止</h3>
 
+Interrupt disabling is one of the key mechanisms used to ensure that a sequence of kernel statements is treated as a critical section. It allows a kernel control path to continue executing even when hardware devices issue IRQ signals, thus providing an effective way to protect data structures that are also accessed by interrupt handlers. By itself, however, local interrupt disabling does not protect against concurrent accesses to data structures by interrupt handlers running on other CPUs, so in multiprocessor systems, local interrupt disabling is often coupled with spin locks (see the later section “Synchronizing Accesses to Kernel Data Structures”).
+
+The local_irq_disable( ) macro, which makes use of the cli assembly language instruction, disables interrupts on the local CPU. The local_irq_enable() macro, which makes use of the of the sti assembly language instruction, enables them. As stated in the section “IRQs and Interrupts” in Chapter 4, the cli and sti assembly language instructions, respectively, clear and set the IF flag of the eflags control register. The irqs_disabled() macro yields the value one if the IF flag of the eflags register is clear, the value one if the flag is set.
+
+When the kernel enters a critical section, it disables interrupts by clearing the IF flag of the eflags register. But at the end of the critical section, often the kernel can’t simply set the flag again. Interrupts can execute in nested fashion, so the kernel does not necessarily know what the IF flag was before the current control path executed. In these cases, the control path must save the old setting of the flag and restore that setting at the end.
+
+Saving and restoring the eflags content is achieved by means of the local_irq_save and local_irq_restore macros, respectively. The local_irq_save macro copies the content of the eflags register into a local variable; the IF flag is then cleared by a cli assembly language instruction. At the end of the critical region, the macro local_irq_restore restores the original content of eflags; therefore, interrupts are enabled only if they were enabled before this control path issued the cli assembly language instruction.
+
+
 <h3 id="5.2.12">5.2.12 软中断禁止</h3>
+
+In the section “Softirqs” in Chapter 4, we explained that deferrable functions can be executed at unpredictable times (essentially, on termination of hardware interrupt handlers). Therefore, data structures accessed by deferrable functions must be protected against race conditions.
+
+A trivial way to forbid deferrable functions execution on a CPU is to disable interrupts on that CPU. Because no interrupt handler can be activated, softirq actions cannot be started asynchronously.
+
+As we’ll see in the next section, however, the kernel sometimes needs to disable deferrable functions without disabling interrupts. Local deferrable functions can be enabled or disabled on the local CPU by acting on the softirq counter stored in the preempt_count field of the current’s thread_info descriptor.
+
+Recall that the do_softirq() function never executes the softirqs if the softirq counter is positive. Moreover, tasklets are implemented on top of softirqs, so setting this counter to a positive value disables the execution of all deferrable functions on a given CPU, not just softirqs.
+
+The local_bh_disable macro adds one to the softirq counter of the local CPU, while the local_bh_enable() function subtracts one from it. The kernel can thus use several nested invocations of local_bh_disable; deferrable functions will be enabled again only by the local_bh_enable macro matching the first local_bh_disable invocation.
+
+After having decreased the softirq counter, local_bh_enable() performs two important operations that help to ensure timely execution of long-waiting threads:
+
+1. Checks the hardirq counter and the softirq counter in the preempt_count field of
+the local CPU; if both of them are zero and there are pending softirqs to be executed,
+invokes do_softirq() to activate them (see the section “Softirqs” in
+Chapter 4).
+
+2. Checks whether the TIF_NEED_RESCHED flag of the local CPU is set; if so, a process
+switch request is pending, thus invokes the preempt_schedule() function
+(see the section “Kernel Preemption” earlier in this chapter).
+
 
 <h2 id="5.3">5.3 内核数据结构的同步访问</h2>
 
+A shared data structure can be protected against race conditions by using some of the synchronization primitives shown in the previous section. Of course, system performance may vary considerably, depending on the kind of synchronization primitive selected. Usually, the following rule of thumb is adopted by kernel developers: always keep the concurrency level as high as possible in the system.
+
+In turn, the concurrency level in the system depends on two main factors:
+
+* The number of I/O devices that operate concurrently
+* The number of CPUs that do productive work
+
+To maximize I/O throughput, interrupts should be disabled for very short periods of time. As described in the section “IRQs and Interrupts” in Chapter 4, when interrupts are disabled, IRQs issued by I/O devices are temporarily ignored by the PIC, and no new activity can start on such devices.
+
+To use CPUs efficiently, synchronization primitives based on spin locks should be avoided whenever possible. When a CPU is executing a tight instruction loop waiting for the spin lock to open, it is wasting precious machine cycles. Even worse, as we have already said, spin locks have negative effects on the overall performance of the system because of their impact on the hardware caches.
+
+Let’s illustrate a couple of cases in which synchronization can be achieved while still maintaining a high concurrency level:
+
+* A shared data structure consisting of a single integer value can be updated by declaring it as an atomic_t type and by using atomic operations. An atomic operation is faster than spin locks and interrupt disabling, and it slows down only kernel control paths that concurrently access the data structure.
+
+* Inserting an element into a shared linked list is never atomic, because it consists of at least two pointer assignments. Nevertheless, the kernel can sometimes perform this insertion operation without using locks or disabling interrupts. As an example of why this works, we’ll consider the case where a system call service routine (see “System Call Handler and Service Routines” in Chapter 10) inserts new elements in a singly linked list, while an interrupt handler or deferrable function asynchronously looks up the list.
+
+In the C language, insertion is implemented by means of the following pointer assignments:
+
+    new->next = list_element->next;
+    list_element->next = new;
+
+In assembly language, insertion reduces to two consecutive atomic instructions. The first instruction sets up the next pointer of the new element, but it does not modify the list. Thus, if the interrupt handler sees the list between the execution of the first and second instructions, it sees the list without the new element. If the handler sees the list after the execution of the second instruction, it sees the list with the new element. The important point is that in either case, the list is consistent and in an uncorrupted state. However, this integrity is assured only if the interrupt handler does not modify the list. If it does, the next pointer that was just set within the new element might become invalid.
+
+However, developers must ensure that the order of the two assignment operations cannot be subverted by the compiler or the CPU’s control unit; otherwise, if the system call service routine is interrupted by the interrupt handler between the two assignments, the handler finds a corrupted list. Therefore, a write memory barrier primitive is required:
+        
+        new->next = list_element->next;
+        wmb();
+        list_element->next = new;
+
+<h3 id="5.3.1">5.3.1 自旋锁、信号量和关闭中断的抉择</h3>
+
+Unfortunately, access patterns to most kernel data structures are a lot more complex than the simple examples just shown, and kernel developers are forced to use semaphores, spin locks, interrupts, and softirq disabling. Generally speaking, choosing the synchronization primitives depends on what kinds of kernel control paths access the data structure, as shown in Table 5-8. Remember that whenever a kernel control path acquires a spin lock (as well as a read/write lock, a seqlock, or a RCU “read lock”), disables the local interrupts, or disables the local softirqs, kernel preemption is automatically disabled.
+
+Table 5-8. Protection required by data structures accessed by kernel control paths
+
+| 内核控制路径 | 单核系统 | 多核系统 |
+| ------------ | -------- | -------- |
+| 异常处理程序 | 信号量   | 信号量 |
+| 中断处理程序 | 禁止中断 | 自旋锁 |
+| 可延时函数   | 无       | 无/自旋锁 |
+| 异常处理程序+ <br> 中断处理程序| 禁止中断 | 自旋锁 |
+| 异常处理程序+ <br> 可延时函数  | 禁止软中断 | 自旋锁 |
+| 中断处理程序+ <br> 可延时函数  | 禁止中断 | 自旋锁 |
+| 中断处理程序+ <br> 可延时函数+ <br> 异常处理程序 | 禁止中断 | 自旋锁 |
+
+#### Protecting a data structure accessed by exceptions
+
+When a data structure is accessed only by exception handlers, race conditions are usually easy to understand and prevent. The most common exceptions that give rise to synchronization problems are the system call service routines (see the section “System Call Handler and Service Routines” in Chapter 10) in which the CPU operates in Kernel Mode to offer a service to a User Mode program. Thus, a data structure accessed only by an exception usually represents a resource that can be assigned to one or more processes.
+
+Race conditions are avoided through semaphores, because these primitives allow the process to sleep until the resource becomes available. Notice that semaphores work equally well both in uniprocessor and multiprocessor systems.
+
+Kernel preemption does not create problems either. If a process that owns a semaphore is preempted, a new process running on the same CPU could try to get the semaphore. When this occurs, the new process is put to sleep, and eventually the old process will release the semaphore. The only case in which kernel preemption must be explicitly disabled is when accessing per-CPU variables, as explained in the section “Per-CPU Variables” earlier in this chapter.
+
+#### Protecting a data structure accessed by interrupts
+
+Suppose that a data structure is accessed by only the “top half” of an interrupt handler. We learned in the section “Interrupt Handling” in Chapter 4 that each interrupt handler is serialized with respect to itself—that is, it cannot execute more than once concurrently. Thus, accessing the data structure does not require synchronization primitives.
+
+Things are different, however, if the data structure is accessed by several interrupt handlers. A handler may interrupt another handler, and different interrupt handlers may run concurrently in multiprocessor systems. Without synchronization, the shared data structure might easily become corrupted.
+
+In uniprocessor systems, race conditions must be avoided by disabling interrupts in all critical regions of the interrupt handler. Nothing less will do because no other synchronization primitives accomplish the job. A semaphore can block the process, so it cannot be used in an interrupt handler. A spin lock, on the other hand, can freeze the system: if the handler accessing the data structure is interrupted, it cannot release the lock; therefore, the new interrupt handler keeps waiting on the tight loop of the spin lock.
+
+Multiprocessor systems, as usual, are even more demanding. Race conditions cannot be avoided by simply disabling local interrupts. In fact, even if interrupts are disabled on a CPU, interrupt handlers can still be executed on the other CPUs. The most convenient method to prevent the race conditions is to disable local interrupts (so that other interrupt handlers running on the same CPU won’t interfere) and to acquire a spin lock or a read/write spin lock that protects the data structure. Notice that these additional spin locks cannot freeze the system because even if an interrupt handler finds the lock closed, eventually the interrupt handler on the other CPU that owns the lock will release it.
+
+The Linux kernel uses several macros that couple the enabling and disabling of local interrupts with spin lock handling. Table 5-9 describes all of them. In uniprocessor systems, these macros just enable or disable local interrupts and kernel preemption.
+
+Table 5-9. Interrupt-aware spin lock macros
+
+| Macro | Description |
+| ----- | ----------- |
+| spin_lock_irq(l) | local_irq_disable(); spin_lock(l) |
+
+#### Protecting a data structure accessed by deferrable functions
+
+What kind of protection is required for a data structure accessed only by deferrable functions? Well, it mostly depends on the kind of deferrable function. In the section “Softirqs and Tasklets” in Chapter 4, we explained that softirqs and tasklets essentially differ in their degree of concurrency.
+
+First of all, no race condition may exist in uniprocessor systems. This is because execution of deferrable functions is always serialized on a CPU—that is, a deferrable function cannot be interrupted by another deferrable function. Therefore, no synchronization primitive is ever required.
+
+Conversely, in multiprocessor systems, race conditions do exist because several deferrable functions may run concurrently. Table 5-10 lists all possible cases.
+
+Table 5-10. Protection required by data structures accessed by deferrable functions in SMP
+
+| Deferrable functions accessing the data structure | Protection |
+| ------------------------------------------------- | ----------- |
+| Softirqs | Spin lock |
+| One tasklet |  None |
+| Many tasklets | Spin lock |
+
+A data structure accessed by a softirq must always be protected, usually by means of a spin lock, because the same softirq may run concurrently on two or more CPUs. Conversely, a data structure accessed by just one kind of tasklet need not be protected, because tasklets of the same kind cannot run concurrently. However, if the data structure is accessed by several kinds of tasklets, then it must be protected.
+
+#### Protecting a data structure accessed by exceptions and interrupts
+
+Let’s consider now a data structure that is accessed both by exceptions (for instance, system call service routines) and interrupt handlers.
+
+On uniprocessor systems, race condition prevention is quite simple, because interrupt handlers are not reentrant and cannot be interrupted by exceptions. As long as the kernel accesses the data structure with local interrupts disabled, the kernel cannot be interrupted when accessing the data structure. However, if the data structure is accessed by just one kind of interrupt handler, the interrupt handler can freely access the data structure without disabling local interrupts.
+
+On multiprocessor systems, we have to take care of concurrent executions of exceptions and interrupts on other CPUs. Local interrupt disabling must be coupled with a spin lock, which forces the concurrent kernel control paths to wait until the handler accessing the data structure finishes its work.
+
+Sometimes it might be preferable to replace the spin lock with a semaphore. Because interrupt handlers cannot be suspended, they must acquire the semaphore using a tight loop and the down_trylock() function; for them, the semaphore acts essentially as a spin lock. System call service routines, on the other hand, may suspend the calling processes when the semaphore is busy. For most system calls, this is the expected behavior. In this case, semaphores are preferable to spin locks, because they lead to a higher degree of concurrency of the system.
+
+#### Protecting a data structure accessed by exceptions and deferrable functions
+
+A data structure accessed both by exception handlers and deferrable functions can be treated like a data structure accessed by exception and interrupt handlers. In fact, deferrable functions are essentially activated by interrupt occurrences, and no exception can be raised while a deferrable function is running. Coupling local interrupt disabling with a spin lock is therefore sufficient.
+
+Actually, this is much more than sufficient: the exception handler can simply disable deferrable functions instead of local interrupts by using the local_bh_disable() macro (see the section “Softirqs” in Chapter 4). Disabling only the deferrable functions is preferable to disabling interrupts, because interrupts continue to be serviced by the CPU. Execution of deferrable functions on each CPU is serialized, so no race condition exists.
+
+As usual, in multiprocessor systems, spin locks are required to ensure that the data structure is accessed at any time by just one kernel control.
+
+#### Protecting a data structure accessed by interrupts and deferrable functions
+
+This case is similar to that of a data structure accessed by interrupt and exception handlers. An interrupt might be raised while a deferrable function is running, but no deferrable function can stop an interrupt handler. Therefore, race conditions must be avoided by disabling local interrupts during the deferrable function. However, an interrupt handler can freely touch the data structure accessed by the deferrable function without disabling interrupts, provided that no other interrupt handler accesses that data structure.
+
+Again, in multiprocessor systems, a spin lock is always required to forbid concurrent accesses to the data structure on several CPUs.
+
+#### Protecting a data structure accessed by exceptions, interrupts, and deferrable functions
+
+Similarly to previous cases, disabling local interrupts and acquiring a spin lock is almost always necessary to avoid race conditions. Notice that there is no need to explicitly disable deferrable functions, because they are essentially activated when terminating the execution of interrupt handlers; disabling local interrupts is therefore sufficient.
+
 <h2 id="5.4">5.4 防止竞态条件的示例</h2>
+
+Kernel developers are expected to identify and solve the synchronization problems raised by interleaving kernel control paths. However, avoiding race conditions is a hard task because it requires a clear understanding of how the various components of the kernel interact. To give a feeling of what’s really inside the kernel code, let’s mention a few typical usages of the synchronization primitives defined in this chapter.
+
+<h3 id="5.4.1">5.4.1 引用计数器</h3>
+
+Reference counters are widely used inside the kernel to avoid race conditions due to the concurrent allocation and releasing of a resource. A reference counter is just an atomic_t counter associated with a specific resource such as a memory page, a module, or a file. The counter is atomically increased when a kernel control path starts using the resource, and it is decreased when a kernel control path finishes using the resource. When the reference counter becomes zero, the resource is not being used, and it can be released if necessary.
+
+<h3 id="5.4.2">5.4.2 大内核锁</h3>
+
+In earlier Linux kernel versions, a big kernel lock (also known as global kernel lock, or BKL) was widely used. In Linux 2.0, this lock was a relatively crude spin lock, ensuring that only one processor at a time could run in Kernel Mode. The 2.2 and 2.4 kernels were considerably more flexible and no longer relied on a single spin lock; rather, a large number of kernel data structures were protected by many different spin locks. In Linux kernel version 2.6, the big kernel lock is used to protect old code (mostly functions related to the VFS and to several filesystems).
+
+Starting from kernel version 2.6.11, the big kernel lock is implemented by a semaphore named kernel_sem (in earlier 2.6 versions, the big kernel lock was implemented by means of a spin lock). The big kernel lock is slightly more sophisticated than a simple semaphore, however.
+
+Every process descriptor includes a lock_depth field, which allows the same process to acquire the big kernel lock several times. Therefore, two consecutive requests for it will not hang the processor (as for normal locks). If the process has not acquired the lock, the field has the value –1; otherwise, the field value plus 1 specifies how many times the lock has been taken. The lock_depth field is crucial for allowing interrupt handlers, exception handlers, and deferrable functions to take the big kernel lock: without it, every asynchronous function that tries to get the big kernel lock could generate a deadlock if the current process already owns the lock.
+
+The lock_kernel() and unlock_kernel() functions are used to get and release the big kernel lock. The former function is equivalent to:
+
+    depth = current->lock_depth + 1;
+    if (depth == 0)
+        down(&kernel_sem);
+    current->lock_depth = depth;
+
+while the latter is equivalent to:
+
+    if (--current->lock_depth < 0)
+        up(&kernel_sem);
+
+Notice that the if statements of the lock_kernel( ) and unlock_kernel( ) functions need not be executed atomically because lock_depth is not a global variable—each CPU addresses a field of its own current process descriptor. Local interrupts inside the if statements do not induce race conditions either. Even if the new kernel control path invokes lock_kernel( ), it must release the big kernel lock before terminating.
+
+Surprisingly enough, a process holding the big kernel lock is allowed to invoke schedule(), thus relinquishing the CPU. The schedule() function, however, checks the lock_depth field of the process being replaced and, if its value is zero or positive, automatically releases the kernel_sem semaphore (see the section “The schedule( ) Function” in Chapter 7). Thus, no process that explicitly invokes schedule() can keep the big kernel lock across the process switch. The schedule() function, however, will reacquire the big kernel lock for the process when it will be selected again for execution.
+
+Things are different, however, if a process that holds the big kernel lock is preempted by another process. Up to kernel version 2.6.10 this case could not occur, because acquiring a spin lock automatically disables kernel preemption. The current implementation of the big kernel lock, however, is based on a semaphore, and acquiring it does not automatically disable kernel preemption. Actually, allowing kernel preemption inside critical regions protected by the big kernel lock has been the main reason for changing its implementation. This, in turn, has beneficial effects on the response time of the system.
+
+When a process holding the big kernel lock is preempted, schedule() must not release the semaphore because the process executing the code in the critical region has not voluntarily triggered a process switch, thus if the big kernel lock would be released, another process might take it and corrupt the data structures accessed by the preempted process.
+
+To avoid the preempted process losing the big kernel lock, the preempt_schedule_irq() function temporarily sets the lock_depth field of the process to -1 (see the section “Returning from Interrupts and Exceptions” in Chapter 4). Looking at the value of this field, schedule() assumes that the process being replaced does not hold the kernel_sem semaphore and thus does not release it. As a result, the kernel_sem semaphore continues to be owned by the preempted process. Once this process is selected again by the scheduler, the preempt_schedule_irq() function restores the original value of the lock_depth field and lets the process resume execution in the critical section protected by the big kernel lock.
+
+
+<h3 id="5.4.3">5.4.3 内存描述符读写信号量</h3>
+
+Each memory descriptor of type mm_struct includes its own semaphore in the mmap_sem field (see the section “The Memory Descriptor” in Chapter 9). The semaphore protects the descriptor against race conditions that could arise because a memory descriptor can be shared among several lightweight processes.
+
+For instance, let’s suppose that the kernel must create or extend a memory region for some process; to do this, it invokes the do_mmap() function, which allocates a new vm_area_struct data structure. In doing so, the current process could be suspended if no free memory is available, and another process sharing the same memory descriptor could run. Without the semaphore, every operation of the second process that requires access to the memory descriptor (for instance, a Page Fault due to a Copy on Write) could lead to severe data corruption.
+
+The semaphore is implemented as a read/write semaphore, because some kernel functions, such as the Page Fault exception handler (see the section “Page Fault Exception Handler” in Chapter 9), need only to scan the memory descriptors.
+
+
+<h3 id="5.4.4">5.4.4 Slab Cache列表信号量</h3>
+
+The list of slab cache descriptors (see the section “Cache Descriptor” in Chapter 8) is protected by the cache_chain_sem semaphore, which grants an exclusive right to access and modify the list.
+
+A race condition is possible when kmem_cache_create( ) adds a new element in the list, while kmem_cache_shrink( ) and kmem_cache_reap( ) sequentially scan the list. However, these functions are never invoked while handling an interrupt, and they can never block while accessing the list. The semaphore plays an active role both in multiprocessor systems and in uniprocessor systems with kernel preemption supported.
+
+
+<h3 id="5.4.5">5.4.5 INode节点信号量</h3>
+
+As we’ll see in “Inode Objects” in Chapter 12, Linux stores the information on a disk file in a memory object called an inode. The corresponding data structure includes its own semaphore in the i_sem field.
+
+A huge number of race conditions can occur during filesystem handling. Indeed, each file on disk is a resource held in common for all users, because all processes may (potentially) access the file content, change its name or location, destroy or duplicate it, and so on. For example, let’s suppose that a process lists the files contained in some directory. Each disk operation is potentially blocking, and therefore even in uniprocessor systems, other processes could access the same directory and modify its content while the first process is in the middle of the listing operation. Or, again, two different processes could modify the same directory at the same time. All these race conditions are avoided by protecting the directory file with the inode semaphore.
+
+Whenever a program uses two or more semaphores, the potential for deadlock is present, because two different paths could end up waiting for each other to release a semaphore. Generally speaking, Linux has few problems with deadlocks on semaphore requests, because each kernel control path usually needs to acquire just one semaphore at a time. However, in some cases, the kernel must get two or more locks. Inode semaphores are prone to this scenario; for instance, this occurs in the service routine in the rename( ) system call. In this case, two different inodes are involved in the operation, so both semaphores must be taken. To avoid such deadlocks, semaphore requests are performed in predefined address order.
