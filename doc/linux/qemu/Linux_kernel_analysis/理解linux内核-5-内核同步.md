@@ -933,22 +933,61 @@ seqlock锁只能允许一个写操作，但是有些时候我们可能需要多�
 
 <h3 id="5.2.10">5.2.10 Completion机制</h3>
 
-Linux 2.6 also makes use of another synchronization primitive similar to semaphores: completions. They have been introduced to solve a subtle race condition that occurs in multiprocessor systems when process A allocates a temporary semaphore variable, initializes it as closed MUTEX, passes its address to process B, and then invokes down() on it. Process A plans to destroy the semaphore as soon as it awakens. Later on, process B running on a different CPU invokes up() on the semaphore. However, in the current implementation up() and down() can execute concurrently on the same semaphore. Thus, process A can be woken up and destroy the temporary semaphore while process B is still executing the up() function. As a result, up() might attempt to access a data structure that no longer exists.
+内核编程中的一个常见模式就是在当前进程中，再去启动另外一个活动，比如创建新的内核线程或用户进程、向已存在的进程发起请求、再或者操作某些硬件。针对这些情况，内核当然可以尝试使用信号量同步两个任务，代码如下所示：
 
-Of course, it is possible to change the implementation of down() and up() to forbid concurrent executions on the same semaphore. However, this change would require additional instructions, which is a bad thing to do for functions that are so heavily used.
+    struct semaphore sem;
 
-The completion is a synchronization primitive that is specifically designed to solve this problem. The completion data structure includes a wait queue head and a flag:
+    init_MUTEX_LOCKED(&sem);
+    start_external_task(&sem);
+    down(&sem);
+
+把信号量初始化为一个关闭的互斥信号量，也就是count=0，然后启动外部任务并挂起等待信号量的释放。当外部的任务完成操作后，调用up(&sem)释放信号量，上面的代码继续往下执行。
+
+正常逻辑下，上面的代码一点毛病没有。但世上的事就没有完美的。我们假设两种异常情况：第一种情况是，如果上面的代码是一个通信任务的话（我们都知道，通信任务一般对信号量的竞争都比较激烈），性能往往会变得非常糟糕，因为调用down()函数的进程几乎总是处于等待之中。第二种情况是，在多核系统中，假设定义的信号量只是一个临时变量，按照上面的调用关系，上面的代码一旦被唤醒就要销毁临时信号量的话，这个进程启动的外部任务很可能还处于执行up()函数的过程中。而此时，信号量已经被销毁，up()函数可能会尝试访问一个不存在的信号量数据结构。当然了，第二种情况可以使用其它指令，禁止down()和up()函数的并发执行。但是，这样的话，又增加了新的负荷。所以，并不是一个特别好的选择。
+
+针对上面的情况，Linux内核从2.4.7版本开始，引入了另外一种同步技术：completion机制。
+
+completion同步原语的数据结构如下代码所示：
 
     struct completion {
         unsigned int done;
         wait_queue_head_t wait;
     };
 
-The function corresponding to up() is called complete(). It receives as an argument the address of a completion data structure, invokes spin_lock_irqsave() on the spin lock of the completion’s wait queue, increases the done field, wakes up the exclusive process sleeping in the wait wait queue, and finally invokes spin_unlock_irqrestore().
+可以看出，其由一个整形数done和队列head组成。
 
-The function corresponding to down() is called wait_for_completion(). It receives as an argument the address of a completion data structure and checks the value of the done flag. If it is greater than zero, wait_for_completion() terminates, because complete() has already been executed on another CPU. Otherwise, the function adds current to the tail of the wait queue as an exclusive process and puts current to sleep in the TASK_UNINTERRUPTIBLE state. Once woken up, the function removes current from the wait queue. Then, the function checks the value of the done flag: if it is equal to zero the function terminates, otherwise, the current process is suspended again. As in the case of the complete() function, wait_for_completion() makes use of the spin lock in the completion’s wait queue.
+与信号量的up()函数对应的函数称为complete()函数。它的参数是一个completion数据结构。这个函数会调用spin_lock_irqsave()函数，请求completion等待队列的保护自旋锁，增加done的值，唤醒等待队列中的休眠进程中的一个，最后调用spin_unlock_irqrestore()释放自旋锁。
 
-The real difference between completions and semaphores is how the spin lock included in the wait queue is used. In completions, the spin lock is used to ensure that complete() and wait_for_completion() cannot execute concurrently. In semaphores, the spin lock is used to avoid letting concurrent down()’s functions mess up the semaphore data structure.
+与信号量的down()函数对应的称为wait_for_completion()函数。它的参数也是completion数据结构。这个函数会检查done的值：如果大于0，函数执行终止，因为另一个CPU上已经执行了complete()函数；否则，这个函数添加当前进程到等待队列的队尾，并使进程进入休眠，将其进程状态设为TASK_UNINTERRUPTIBLE（如果代码调用了该函数，而且被等待的任务没有完成，结果就是，等待的任务就是一个不可杀的进程）。一旦进程被唤醒，这个函数就会把当前进程从等待队列中删除。然后，再次检查done的值，如果等于0，则函数执行终止；否则，当前进程会再次被挂起。同complete()函数一样，这个函数也使用自旋锁保护等待队列。
+
+completion和信号量的真正区别是等待队列中的自旋锁如何使用。在completion中，自旋锁被用来保证complete()和wait_for_completion()不会并发执行。在信号量中，自旋锁被用来保证并发执行的两个调用down()的函数不会弄乱信号量数据结构。
+
+关于completion机制如何使用，请参考complete的模块示例。该模块定义了一个这样的模块：任何尝试读取设备的进程都会进入等待状态（通过调用wait_for_completion()函数实现），直到有其它进行尝试写该设备。代码类似于下面的代码：
+
+    DECLARE_COMPLETION(comp);
+    ssize_t complete_read (struct file *filp, char __user *buf, size_t count, loff_t
+            *pos)
+    {
+        printk(KERN_DEBUG "process %i (%s) going to sleep\n",
+                current->pid, current->comm);
+        wait_for_completion(&comp);
+        printk(KERN_DEBUG "awoken %i (%s)\n", current->pid, current->comm);
+        return 0;
+    }
+    ssize_t complete_write (struct file *filp, const char __user *buf, size_t count,
+            loff_t *pos)
+    {
+        printk(KERN_DEBUG "process %i (%s) awakening the readers...\n",
+                current->pid, current->comm);
+        complete(&comp);
+        return count; /* 成功，避免重试 */
+    }
+
+在上面的示例中，可能存在多个进程同时读取设备。对设备的一次写操作只能试一个读操作完成，而无法通知其它正在读操作的进程。
+
+completion机制的一个典型应用就是，在模块exit的时候，终止内核线程。在一些典型的例子中，驱动程序的内部工作是在内核线程中使用while(1)循环中实现的。当模块准备好清理时，exit函数就会告诉线程需要退出，然后等待线程的completion事件。基于这个目的，内核提供了一个特殊的函数供线程调用：
+
+    void complete_and_exit(struct completion *c, long retval);
 
 <h3 id="5.2.11">5.2.11 中断禁止</h3>
 
