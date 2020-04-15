@@ -991,57 +991,52 @@ completion机制的一个典型应用就是，在模块exit的时候，终止内
 
 <h3 id="5.2.11">5.2.11 中断禁止</h3>
 
-Interrupt disabling is one of the key mechanisms used to ensure that a sequence of kernel statements is treated as a critical section. It allows a kernel control path to continue executing even when hardware devices issue IRQ signals, thus providing an effective way to protect data structures that are also accessed by interrupt handlers. By itself, however, local interrupt disabling does not protect against concurrent accesses to data structures by interrupt handlers running on other CPUs, so in multiprocessor systems, local interrupt disabling is often coupled with spin locks (see the later section “Synchronizing Accesses to Kernel Data Structures”).
+作为嵌入式软件开发人员，对于禁止中断肯定不陌生。尤其是基于MCU的嵌入式软件，因为就一个微处理器核，所以禁止中断是实现临界代码段的有效手段。笔者比较熟悉的μC/OS-II或III，就是使用禁止中断保护临界代码段。当然了，这样的临界代码段一般较短，就几行代码而已。如果太长，会影响整个系统任务的调度，也有可能导致中断信号的丢失。
 
-The local_irq_disable( ) macro, which makes use of the cli assembly language instruction, disables interrupts on the local CPU. The local_irq_enable() macro, which makes use of the of the sti assembly language instruction, enables them. As stated in the section “IRQs and Interrupts” in Chapter 4, the cli and sti assembly language instructions, respectively, clear and set the IF flag of the eflags control register. The irqs_disabled() macro yields the value one if the IF flag of the eflags register is clear, the value one if the flag is set.
+同样，Linux也不会放弃禁止中断这么好的同步机制。它保证内核控制路径可以继续执行，其访问的数据结构不会被中断处理程序破坏。但是，多核系统中，中断禁止是一个局部概念，也就是说，只是某一个CPU核中断被禁止，不能阻止运行在其它CPU上的中断处理程序访问要保护的数据结构。所以，在多核系统中，内核数据结构的保护一般是禁止中断搭配自旋锁一起使用。
 
-When the kernel enters a critical section, it disables interrupts by clearing the IF flag of the eflags register. But at the end of the critical section, often the kernel can’t simply set the flag again. Interrupts can execute in nested fashion, so the kernel does not necessarily know what the IF flag was before the current control path executed. In these cases, the control path must save the old setting of the flag and restore that setting at the end.
+local_irq_disable()利用cli汇编指令，禁止局部CPU的中断；local_irq_enable()利用sti汇编指令使能中断。正如在讲解"IRQ和中断"时所说的那样，cli和sti汇编指令，分别用来清除和设置eflags寄存器中的IF标志。
 
-Saving and restoring the eflags content is achieved by means of the local_irq_save and local_irq_restore macros, respectively. The local_irq_save macro copies the content of the eflags register into a local variable; the IF flag is then cleared by a cli assembly language instruction. At the end of the critical region, the macro local_irq_restore restores the original content of eflags; therefore, interrupts are enabled only if they were enabled before this control path issued the cli assembly language instruction.
+当内核代码进入临界代码段时，通过清除eflags寄存器中的IF标志实现禁止中断，从而保护临界代码段。但是，当内核离开临界代码段的时候，内核是否该恢复之前的IF标志呢？还是不做任何处理？显然，不做任何处理是不可以的，因为那样的话，就会丢失某些中断信号，这对于一个安全可靠的系统而言，是非常荒谬的。我们知道中断是以嵌套的方式被执行的，所以内核无需知道之前是什么具体的IF标志。只需要记录之前的标志值，在退出临界代码段的时候恢复之前的IF标志即可。
 
+保存和恢复eflags内容，可以分别通过local_irq_save()和local_irq_restore()实现。local_irq_save拷贝eflags内容到一个局部变量中，然后调用cli指令清除IF标志。退出临界代码段的时候，local_irq_restore再把局部变量中的内容拷贝到eflags寄存器中。
 
 <h3 id="5.2.12">5.2.12 软中断禁止</h3>
 
-In the section “Softirqs” in Chapter 4, we explained that deferrable functions can be executed at unpredictable times (essentially, on termination of hardware interrupt handlers). Therefore, data structures accessed by deferrable functions must be protected against race conditions.
+在讲软中断的时候，我们知晓可延时函数的执行时间是不可预测的（基本上都是在硬件中断处理程序终止的时候，因为软中断的实现大部分时候都是给tasklet服务的，而tasklet的用处就是协助硬件处理程序处理那些耗时长，又不是那么紧急的任务的）。因此，可延时函数要访问的数据结构必须被保护起来，防止竞态条件的产生。
 
-A trivial way to forbid deferrable functions execution on a CPU is to disable interrupts on that CPU. Because no interrupt handler can be activated, softirq actions cannot be started asynchronously.
+可能很多人都想到了一个简单粗暴的方法，直接禁止那个CPU的中断不就可以了吗。没有中断处理程序被激活，软中断的行为也就不会发生混乱。
 
-As we’ll see in the next section, however, the kernel sometimes needs to disable deferrable functions without disabling interrupts. Local deferrable functions can be enabled or disabled on the local CPU by acting on the softirq counter stored in the preempt_count field of the current’s thread_info descriptor.
+但是，事情不会那么简单，有时候，内核需要只禁止可延时函数，而不禁止中断。那怎么实现呢？
 
-Recall that the do_softirq() function never executes the softirqs if the softirq counter is positive. Moreover, tasklets are implemented on top of softirqs, so setting this counter to a positive value disables the execution of all deferrable functions on a given CPU, not just softirqs.
+回忆do_softirq()函数，如果软中断计数器（存储在当前线程thread_info描述符的preempt_count成员中）是正数，它就不会处理软中断。所以，将这个计数器设为正数，软中断不会执行，在其上的所有可延时函数也不会执行。
 
-The local_bh_disable macro adds one to the softirq counter of the local CPU, while the local_bh_enable() function subtracts one from it. The kernel can thus use several nested invocations of local_bh_disable; deferrable functions will be enabled again only by the local_bh_enable macro matching the first local_bh_disable invocation.
+local_bh_disable()给局部CPU的软中断计数器加1，local_bh_enable()则是将其减1。local_bh_disable()可以嵌套多调用几次，如果调用local_bh_enable()的次数匹配，可延时函数就会被使能。
 
-After having decreased the softirq counter, local_bh_enable() performs two important operations that help to ensure timely execution of long-waiting threads:
+为了确保及时执行长时间等待的线程，local_bh_enable()对软中断计数器执行减1操作之后，还有执行两个重要的操作：
 
-1. Checks the hardirq counter and the softirq counter in the preempt_count field of
-the local CPU; if both of them are zero and there are pending softirqs to be executed,
-invokes do_softirq() to activate them (see the section “Softirqs” in
-Chapter 4).
+1. 检查preempt_count中的硬中断计数器和软中断计数器。如果都是0，且有挂起的软中断要执行，直接调用do_softirq()激活它们。
 
-2. Checks whether the TIF_NEED_RESCHED flag of the local CPU is set; if so, a process
-switch request is pending, thus invokes the preempt_schedule() function
-(see the section “Kernel Preemption” earlier in this chapter).
-
+2. 检查局部CPU的 TIF_NEED_RESCHED标志是否被设置；如果被设置，说明此时有进程正在请求调度，然后调用preempt_schedule()执行抢占调度。
 
 <h2 id="5.3">5.3 内核数据结构的同步访问</h2>
 
-A shared data structure can be protected against race conditions by using some of the synchronization primitives shown in the previous section. Of course, system performance may vary considerably, depending on the kind of synchronization primitive selected. Usually, the following rule of thumb is adopted by kernel developers: always keep the concurrency level as high as possible in the system.
+前面，我们学习了这么多内核同步技术。那我们该怎么选择呢？选择不同的内核同步技术，可能对系统的性能影响很大。根据经验，基本可以遵守这么一条准则：**尽可能高地保证系统的并发性**。
 
-In turn, the concurrency level in the system depends on two main factors:
+而系统的并发水平又依赖于两个关键的因素：
 
-* The number of I/O devices that operate concurrently
-* The number of CPUs that do productive work
+* 可以并发访问的I/O设备数量；
+* 能够执行有效工作的CPU数量。
 
-To maximize I/O throughput, interrupts should be disabled for very short periods of time. As described in the section “IRQs and Interrupts” in Chapter 4, when interrupts are disabled, IRQs issued by I/O devices are temporarily ignored by the PIC, and no new activity can start on such devices.
+为了最大化I/O的吞吐量，中断禁止的时间应该尽可能短。我们知道，如果中断被禁止，I/O设备发出的IRQ信号会被PIC中断控制器临时性地忽略，也就不会相应I/O设备的请求。
 
-To use CPUs efficiently, synchronization primitives based on spin locks should be avoided whenever possible. When a CPU is executing a tight instruction loop waiting for the spin lock to open, it is wasting precious machine cycles. Even worse, as we have already said, spin locks have negative effects on the overall performance of the system because of their impact on the hardware caches.
+为了使CPU的效率最大化，基于自旋锁的内核同步原语尽可能不用。因为，当CPU忙等待自旋锁被释放的时候，其实浪费了珍贵的机器执行周期。甚至更糟糕的是，自旋锁还会影响硬件Cache，强迫Cache失效，从而从内存中重新读取数据，刷新Cache，这大大降低了系统的整体性能。这就是为什么多核系统不能达到1+1=2的效果的原因。
 
-Let’s illustrate a couple of cases in which synchronization can be achieved while still maintaining a high concurrency level:
+让我们举几个例子来说明如何在保持高并发水平的同时还能实现同步：
 
-* A shared data structure consisting of a single integer value can be updated by declaring it as an atomic_t type and by using atomic operations. An atomic operation is faster than spin locks and interrupt disabling, and it slows down only kernel control paths that concurrently access the data structure.
+* 如果共享的数据结构是一个简单的整数，那么可以使用atomic_t类型的原子变量声明它。原子操作比自旋锁和禁止中断都快，它只是降低了并发访问数据的内核控制路径的执行速度。
 
-* Inserting an element into a shared linked list is never atomic, because it consists of at least two pointer assignments. Nevertheless, the kernel can sometimes perform this insertion operation without using locks or disabling interrupts. As an example of why this works, we’ll consider the case where a system call service routine (see “System Call Handler and Service Routines” in Chapter 10) inserts new elements in a singly linked list, while an interrupt handler or deferrable function asynchronously looks up the list.
+* 但是，往链表中插入元素就不是原子的，因为至少包含两个指针赋值操作。然而，内核有时候可以在不使用锁或禁止中断的前提下执行这种插入操作。比如，系统调用服务例程中，系统调用插入新元素到一个单链表中，而中断处理程序或可延时函数异步遍历这个列表，就无须锁的保护。
 
 In the C language, insertion is implemented by means of the following pointer assignments:
 
