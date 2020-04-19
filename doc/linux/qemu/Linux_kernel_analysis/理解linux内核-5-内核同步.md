@@ -18,7 +18,7 @@
         + [5.2.11 中断禁止](#5.2.11)
         + [5.2.12 软中断禁止](#5.2.12)
     - [5.3 内核数据结构的同步访问](#5.3)
-        + [5.3.1 如何选择自旋锁、信号量和关闭中断的使用时机](#5.3.1)
+        + [5.3.1 如何选择自旋锁、信号量和关闭中断](#5.3.1)
     - [5.4 防止竞态条件的示例](#5.4)
         + [5.4.1 引用计数器](#5.4.1)
         + [5.4.2 大内核锁](#5.4.2)
@@ -1038,24 +1038,30 @@ local_bh_disable()给局部CPU的软中断计数器加1，local_bh_enable()则�
 
 * 但是，往链表中插入元素就不是原子的，因为至少包含两个指针赋值操作。然而，内核有时候可以在不使用锁或禁止中断的前提下执行这种插入操作。比如，系统调用服务例程中，系统调用插入新元素到一个单链表中，而中断处理程序或可延时函数异步遍历这个列表，就无须锁的保护。
 
-In the C language, insertion is implemented by means of the following pointer assignments:
+另外，在内核的实现代码中，我们经常需要对列表进行插入操作，通常使用指针赋值的方式实现，如下所示：
 
     new->next = list_element->next;
     list_element->next = new;
 
-In assembly language, insertion reduces to two consecutive atomic instructions. The first instruction sets up the next pointer of the new element, but it does not modify the list. Thus, if the interrupt handler sees the list between the execution of the first and second instructions, it sees the list without the new element. If the handler sees the list after the execution of the second instruction, it sees the list with the new element. The important point is that in either case, the list is consistent and in an uncorrupted state. However, this integrity is assured only if the interrupt handler does not modify the list. If it does, the next pointer that was just set within the new element might become invalid.
+将上面的代码转换成汇编语言之后，就成为2条连续的原子指令操作。第1条指令建立新元素的next指针，但是不会修改列表。第2条指令将其存入对应的内存位置。假设，在这2条指令执行之间来一个中断信号，则中断处理程序看到的列表没有新元素；如果中断信号在第2条指令执行之后到来，则中断处理程序看到是的已经插入新元素的列表。任何一种情况，列表的数据都是正确的，没有被破坏的。但是，必须保证中断处理程序不会修改这个列表。如果其修改了列表，next指针很可能就会变成非法值。
 
-However, developers must ensure that the order of the two assignment operations cannot be subverted by the compiler or the CPU’s control unit; otherwise, if the system call service routine is interrupted by the interrupt handler between the two assignments, the handler finds a corrupted list. Therefore, a write memory barrier primitive is required:
+更重要的是，这两条指令是由时序关系的。只有先创建了next指针，才能给其赋值；否则，操作不合法。所以，对于上面的代码，内核开发者应该保证它们的执行顺序，不会被编译器或者CPU控制单元破坏。否则，在两条赋值语句之间插入进来执行的中断服务程序，会发现一个被破坏了的列表。这时候，往往需要一个写内存屏障原语，如下所示：
         
         new->next = list_element->next;
         wmb();
         list_element->next = new;
 
-<h3 id="5.3.1">5.3.1 自旋锁、信号量和关闭中断的抉择</h3>
+到这儿，很多人可能会纳闷：为什么我在编写内核代码或者驱动程序的时候，怎么机会不使用wmb()之类的内存屏障呢？那是因为，Linux内核提供的操作函数API已经封装了内存屏障原语。所以，大部分时候我们不需要关心它。
 
-Unfortunately, access patterns to most kernel data structures are a lot more complex than the simple examples just shown, and kernel developers are forced to use semaphores, spin locks, interrupts, and softirq disabling. Generally speaking, choosing the synchronization primitives depends on what kinds of kernel control paths access the data structure, as shown in Table 5-8. Remember that whenever a kernel control path acquires a spin lock (as well as a read/write lock, a seqlock, or a RCU “read lock”), disables the local interrupts, or disables the local softirqs, kernel preemption is automatically disabled.
+通过上面的分析，我们可以得出的结论就是：尽可能提高系统的并发性，也就是压榨CPU能够有效工作的时间。为此，在保护要访问的数据的同时，尽可能不要选择自旋锁、信号量和关闭中断之类的加锁机制。因为它们往往让CPU处于无效工作时间中，降低系统的性能。
 
-Table 5-8. Protection required by data structures accessed by kernel control paths
+但是，许多时候我们别无选择，只能使用这些降低系统性能的加锁机制。当我们不得不面对的时候，我们又该如何抉择呢？
+
+<h3 id="5.3.1">5.3.1 如何选择自旋锁、信号量和关闭中断</h3>
+
+不幸的是，访问内核数据结构的形式远远比上面的示例复杂多了，迫使内核开发者不得不启动信号量、自旋锁和中断禁止这些锁原语。通常来讲，具体选择哪种加锁机制，取决于访问数据的是哪种内核控制路径，如下表所示。但需要注意的一点是，无论何时，内核控制路径请求一个自旋锁（包括读写锁，seqlock和RCU）时，都会禁止局部中断或者软中断，从而禁止内核抢占。
+
+表5-8 不同内核控制路径访问的数据结构需要的锁
 
 | 内核控制路径 | 单核系统 | 多核系统 |
 | ------------ | -------- | -------- |
@@ -1067,87 +1073,132 @@ Table 5-8. Protection required by data structures accessed by kernel control pat
 | 中断处理程序+ <br> 可延时函数  | 禁止中断 | 自旋锁 |
 | 中断处理程序+ <br> 可延时函数+ <br> 异常处理程序 | 禁止中断 | 自旋锁 |
 
-#### Protecting a data structure accessed by exceptions
+在了解这些不同的内核控制路径访问的数据结构应该如何保护之前，我们先来复习几个概念：
 
-When a data structure is accessed only by exception handlers, race conditions are usually easy to understand and prevent. The most common exceptions that give rise to synchronization problems are the system call service routines (see the section “System Call Handler and Service Routines” in Chapter 10) in which the CPU operates in Kernel Mode to offer a service to a User Mode program. Thus, a data structure accessed only by an exception usually represents a resource that can be assigned to one or more processes.
+1. 硬中断和软中断的区别
 
-Race conditions are avoided through semaphores, because these primitives allow the process to sleep until the resource becomes available. Notice that semaphores work equally well both in uniprocessor and multiprocessor systems.
+    严格意义上来说，中断可以分为同步中断和异步中断。而所谓的同步中断肯定就是CPU自身产生的中断，也就是所谓的异常。比如，除零操作就会产生硬件错误，在嵌入式内核中很常见这之类的错误。对于这类错误，首先应该能避免就避免，这是我们嵌入式开发者或者内核开发者必须要考虑的工作；实在无法避免（有时候可能还要故意产生硬件异常，比如Linux就利用页错误做特殊处理），就要编写异常处理程序进行必要处理，比如发送信号给当前进程等。
 
-Kernel preemption does not create problems either. If a process that owns a semaphore is preempted, a new process running on the same CPU could try to get the semaphore. When this occurs, the new process is put to sleep, and eventually the old process will release the semaphore. The only case in which kernel preemption must be explicitly disabled is when accessing per-CPU variables, as explained in the section “Per-CPU Variables” earlier in this chapter.
+    对于异常，在此不做过多描述。所以，在此，所说的中断特指异步中断，主要用来服务I/O设备还有CPU之间的中断。为了及时响应外部I/O设备和其它CPU，中断直接打断CPU的执行，让其执行对应的中断处理程序。所以，中断处理程序必须占用CPU的时间极短，且不能发生阻塞操作，但允许嵌套中断执行。
 
-#### Protecting a data structure accessed by interrupts
+    但是，有时候，中断信号所引发的操作比较复杂，但是可以分为需要及时处理和可以延时处理的部分。对于需要及时处理的部分就交给中断处理程序直接处理就好了，也就是我们常说的概念-顶半部。而对于可延时处理的部分，Linux提出了其它的概念来处理，比如说软中断、tasklet和工作队列。
 
-Suppose that a data structure is accessed by only the “top half” of an interrupt handler. We learned in the section “Interrupt Handling” in Chapter 4 that each interrupt handler is serialized with respect to itself—that is, it cannot execute more than once concurrently. Thus, accessing the data structure does not require synchronization primitives.
+2. 软中断
 
-Things are different, however, if the data structure is accessed by several interrupt handlers. A handler may interrupt another handler, and different interrupt handlers may run concurrently in multiprocessor systems. Without synchronization, the shared data structure might easily become corrupted.
+    那软中断的工作原理又是什么呢？软中断是内核在编译阶段就预先定义好的，这是一个数组，数组元素个数正好是内核支持的软中断数量（Linux目前是32个，但实际只用了6个），而恰恰，内核为每个CPU都维护着一个表示软中断挂起标志位的32位变量，正好对应上面的数组元素个数。也就是说，哪个CPU将相应的bit位设置为1，这个CPU就需要处理这个软中断，至于软中断处理程序在预编译的时候已经写好了。这样的处理行为与硬中断完全一样，对于同一个软中断，每个CPU都有可能执行处理（所以，软中断要访问的数据结构必须使用自旋锁进行保护）。唯一不同的是，软中断的触发时机与硬中断不同：硬中断直接由硬件打断CPU的执行，调用相应的处理程序；而软中断的触发时机完全由内核设计者定义（也就是说，你可以让它任何时候触发）。但是，这样的机制也就固化了其处理行为，因为是预先定义好的。也就是说，用户无法根据自己的需要，设计自定义的软中断处理程序了。这怎么能行呢？于是，Linux在此基础上又提出了另一个概念，tasklet。
 
-In uniprocessor systems, race conditions must be avoided by disabling interrupts in all critical regions of the interrupt handler. Nothing less will do because no other synchronization primitives accomplish the job. A semaphore can block the process, so it cannot be used in an interrupt handler. A spin lock, on the other hand, can freeze the system: if the handler accessing the data structure is interrupted, it cannot release the lock; therefore, the new interrupt handler keeps waiting on the tight loop of the spin lock.
+3. tasklet
 
-Multiprocessor systems, as usual, are even more demanding. Race conditions cannot be avoided by simply disabling local interrupts. In fact, even if interrupts are disabled on a CPU, interrupt handlers can still be executed on the other CPUs. The most convenient method to prevent the race conditions is to disable local interrupts (so that other interrupt handlers running on the same CPU won’t interfere) and to acquire a spin lock or a read/write spin lock that protects the data structure. Notice that these additional spin locks cannot freeze the system because even if an interrupt handler finds the lock closed, eventually the interrupt handler on the other CPU that owns the lock will release it.
+    Linux拿出其中的2个软中断，专门处理tasklet（一个高优先级，一个低优先级）。但是，tasklet的处理流程又大不一样。怎么不一样呢？就是哪个CPU激活的tasklet，一般就由哪个CPU执行，效率优先嘛。但是，不排除，在一个CPU上激活，在另一个CPU上执行的使用情况。但是，无论哪种情况，它们的执行都是与CPU绑定在一起的，也就是一一对应，也就是不存在并发访问同一个tasklet的时候。
 
-The Linux kernel uses several macros that couple the enabling and disabling of local interrupts with spin lock handling. Table 5-9 describes all of them. In uniprocessor systems, these macros just enable or disable local interrupts and kernel preemption.
+4. 工作队列
 
-Table 5-9. Interrupt-aware spin lock macros
+    其实工作队列与tasklet的行为极其类似，只是软中断和tasklet都是在中断上下文中调用的，也就是不允许阻塞；而工作队列是运行在进程上下文中，也就是说，这是为内核线程处理延时任务提供的一种机制。故暂时不在本文的讨论范畴之内。
 
-| Macro | Description |
+#### 异常程序访问的数据结构
+
+只有异常处理程序访问的数据结构，可能产生的竞态条件简单易懂，也很容易保护。最常见的异常处理程序就是系统调用，因为它可能被多个进程并发调用，从而为用户态的程序提供内核服务。所以说，异常处理程序访问的数据结构就是可以分配给一个或多个进程的一种资源。
+
+避免这种资源可能产生的竞态条件，可以选择信号量，因为大部分情况下，想要访问这个资源的进程如果没有得到资源的使用权的话会选择休眠等待。而恰好，信号量就是这样的一种加锁机制。如果请求信号量失败，进程挂起，让出CPU的使用权给其它进程。这种情况下，自旋锁是不合适的，因为它是忙等待，一直占用CPU。值得一提的是，不论是单核系统还是多核系统，信号量都能工作的很好。
+
+即使是开启内核抢占，也不会产生问题。如果持有信号量的进程被抢占，新进程会尝试申请信号量。但是，这时候申请信号量肯定失败，从而新进程进入休眠，等待旧进程释放信号量。
+
+#### 中断程序访问的数据结构
+
+我们这儿要讨论的数据结构只是被中断程序的顶半部访问，不涉及底半部访问的数据结构，这类数据结构属于可延时函数访问的数据结构的范畴，后面再讨论。我们在学习中断的时候，已经知道，中断处理程序中的处理是串行化的，也就是说不会发生并发访问。所以，也就不需要同步。
+
+但是，当数据结构被多个中断程序访问的时候，就会发生并发访问产生的竞态问题。尤其是在多核系统中，一个数据结构可能被多个不同的中断程序并发访问。这时候就需要同步了。
+
+单核系统，竞态条件很好避免，只要关闭中断即可。其它同步技术也不合适。信号量阻塞进程，而中断万万不能被阻塞。另一方面，自旋锁会冻结系统：如果中断中正在访问的数据结构被中断，它不会释放锁；而新的中断程序一直在忙等待这个锁。其实就是发生了死锁。
+
+多核系统处理更为复杂一些。因为中断都是局部中断，也就是每个CPU独享的。所以，只是简单的关闭中断无法有效避免竞态条件。因为，即使中断被禁止，其它CPU上的中断处理程序还会继续执行。所以，这时候需要关闭中断的同时，再申请一个自旋锁或者读写自旋锁保护数据结构。值得注意的是，这类自旋锁不会冻结系统。首先，因为关闭局部中断，所以同一CPU上的中断程序不会执行，也就不会发生上面所说的死锁。其次，因为是多核系统，中断程序发现锁被占用了，也不会阻止其它CPU上的中断程序释放这个锁。所以，无论哪种情况都不会发生死锁的情况。
+
+为了方便处理多核系统中这种局部中断禁止和自旋锁结合在一起使用的情况，Linux提供了一些宏，如下表所示。单核系统中，这些宏只能禁止中断或者禁止内核抢占。
+
+表5-9 与中断有关的自旋锁宏
+
+| 宏    | 描述        |
 | ----- | ----------- |
-| spin_lock_irq(l) | local_irq_disable(); spin_lock(l) |
+| spin_lock_irq(l)                  | local_irq_disable();  <br> spin_lock(l) |
+| unlock_irq(l)                     | spin_unlock(l);       <br> local_irq_enable() |
+| spin_lock_bh(l)                   | local_bh_disable();   <br> spin_lock(l) |
+| spin_unlock_bh(l)                 | spin_unlock(l);       <br> local_bh_enable() |
+| spin_lock_irqsave(l,f)            | local_irq_save(f);    <br> spin_lock(l) |
+| spin_unlock_irqrestore(l,f)       | spin_unlock(l);       <br> local_irq_restore(f) |
+| read_lock_irq(l)                  | local_irq_disable( ); <br> read_lock(l) |
+| read_unlock_irq(l)                | read_unlock(l);       <br> local_irq_enable( ) |
+| read_lock_bh(l)                   | local_bh_disable( );  <br> read_lock(l) |
+| read_unlock_bh(l)                 | read_unlock(l);       <br> local_bh_enable( ) |
+| write_lock_irq(l)                 | local_irq_disable();  <br> write_lock(l) |
+| write_unlock_irq(l)               | write_unlock(l);      <br> local_irq_enable( ) |
+| write_lock_bh(l)                  | local_bh_disable();   <br> write_lock(l) |
+| write_unlock_bh(l)                | write_unlock(l);      <br> local_bh_enable( ) |
+| read_lock_irqsave(l,f)            | local_irq_save(f);    <br> read_lock(l) |
+| read_unlock_irqrestore(l,f)       | read_unlock(l);       <br> local_irq_restore(f) |
+| write_lock_irqsave(l,f)           | local_irq_save(f);    <br> write_lock(l) |
+| write_unlock_irqrestore(l,f)      | write_unlock(l);      <br> local_irq_restore(f) |
+| read_seqbegin_irqsave(l,f)        | local_irq_save(f);    <br> read_seqbegin(l) |
+| read_seqretry_irqrestore(l,v,f)   | read_seqretry(l,v);   <br> local_irq_restore(f) |
+| write_seqlock_irqsave(l,f)        | local_irq_save(f);    <br> write_seqlock(l) |
+| write_sequnlock_irqrestore(l,f)   | write_sequnlock(l);   <br> local_irq_restore(f) |
+| write_seqlock_irq(l)              | local_irq_disable();  <br> write_seqlock(l) |
+| write_sequnlock_irq(l)            | write_sequnlock(l);   <br> local_irq_enable() |
+| write_seqlock_bh(l)               | local_bh_disable();   <br> write_seqlock(l) |
+| write_sequnlock_bh(l)             | write_sequnlock(l);   <br> local_bh_enable() |
 
-#### Protecting a data structure accessed by deferrable functions
+#### 可延时函数访问的数据结构
 
-What kind of protection is required for a data structure accessed only by deferrable functions? Well, it mostly depends on the kind of deferrable function. In the section “Softirqs and Tasklets” in Chapter 4, we explained that softirqs and tasklets essentially differ in their degree of concurrency.
+通过前面软中断、tasklet等概念的梳理，想必你对它们要访问的数据需要的保护方式有了一些初步的理解：采用哪种同步技术保护数据结构，完全取决于是属于哪类可延时函数。接下来，我们详细一一分析。
 
-First of all, no race condition may exist in uniprocessor systems. This is because execution of deferrable functions is always serialized on a CPU—that is, a deferrable function cannot be interrupted by another deferrable function. Therefore, no synchronization primitive is ever required.
+单核系统，通过上面的分析，不论是哪种机制访问数据结构，都不会产生竞态条件。因为它不会被其它可延时函数中断。也就无需使用同步了。
 
-Conversely, in multiprocessor systems, race conditions do exist because several deferrable functions may run concurrently. Table 5-10 lists all possible cases.
+相反，多核系统就可能发生并发访问所带来的竞态问题。如下表所示，根据可延时函数的类型进行了列举：
 
-Table 5-10. Protection required by data structures accessed by deferrable functions in SMP
+| 延时函数类型 | 保护机制 |
+| ------------ | -------- |
+| 软中断       | 自旋锁   |
+| 一个tasklet  | 无需锁   |
+| 多个tasklet  | 自旋锁   |
 
-| Deferrable functions accessing the data structure | Protection |
-| ------------------------------------------------- | ----------- |
-| Softirqs | Spin lock |
-| One tasklet |  None |
-| Many tasklets | Spin lock |
+如前所述，软中断总是需要自旋锁进行保护，因为即使是同一个软中断也有可能被多个CPU并发访问。相反，一个tasklet不需要锁的保护，因为同一个tasklet不会发生并发访问。但是，如果数据被多个tasklet访问，就需要加锁保护了。
 
-A data structure accessed by a softirq must always be protected, usually by means of a spin lock, because the same softirq may run concurrently on two or more CPUs. Conversely, a data structure accessed by just one kind of tasklet need not be protected, because tasklets of the same kind cannot run concurrently. However, if the data structure is accessed by several kinds of tasklets, then it must be protected.
+#### 异常和中断同时访问的数据结构
 
-#### Protecting a data structure accessed by exceptions and interrupts
+如果数据结构既被异常处理程序（如系统调用）访问，又被中断处理程序访问，那该怎么保护数据呢？
 
-Let’s consider now a data structure that is accessed both by exceptions (for instance, system call service routines) and interrupt handlers.
+对于这种情况，单核系统的处理非常简单，关闭中断即可。因为中断程序不可重入，也不能被异常处理程序中断。所以只要关闭中断，内核访问数据就不会被中断。
 
-On uniprocessor systems, race condition prevention is quite simple, because interrupt handlers are not reentrant and cannot be interrupted by exceptions. As long as the kernel accesses the data structure with local interrupts disabled, the kernel cannot be interrupted when accessing the data structure. However, if the data structure is accessed by just one kind of interrupt handler, the interrupt handler can freely access the data structure without disabling local interrupts.
+多核系统，我们就不得不考虑多个CPU的并发访问了。所以与中断访问数据一样，采用关闭中断与自旋锁相结合的方式。
 
-On multiprocessor systems, we have to take care of concurrent executions of exceptions and interrupts on other CPUs. Local interrupt disabling must be coupled with a spin lock, which forces the concurrent kernel control paths to wait until the handler accessing the data structure finishes its work.
+但是，有时候使用信号量代替上面的自旋锁可能更好。由其是异常处理程序等不到锁需要挂起的时候。举例来说，系统调用和中断同时访问某个数据：中断处理程序尝试申请信号量（调用down_trylock()），失败就不断尝试，还是相当于自旋锁的忙等待；另一方面，系统调用如果申请信号量失败，就挂起，让CPU执行其它操作，这完全符合系统调用时的预期行为。这种情况，信号量优于自旋锁，因为它让系统有一个更高的并发性能。
 
-Sometimes it might be preferable to replace the spin lock with a semaphore. Because interrupt handlers cannot be suspended, they must acquire the semaphore using a tight loop and the down_trylock() function; for them, the semaphore acts essentially as a spin lock. System call service routines, on the other hand, may suspend the calling processes when the semaphore is busy. For most system calls, this is the expected behavior. In this case, semaphores are preferable to spin locks, because they lead to a higher degree of concurrency of the system.
+#### 异常和可延时函数同时访问的数据结构
 
-#### Protecting a data structure accessed by exceptions and deferrable functions
+异常和可延时函数同时访问数据时，处理方式与异常和中断同时访问数据时类似。因为可延时函数本质上都是中断激活的，也是运行在中断上下文中的，在运行期间不会被异常中断。也就是说，使用关闭中断和自旋锁相结合的方式就足够了。
 
-A data structure accessed both by exception handlers and deferrable functions can be treated like a data structure accessed by exception and interrupt handlers. In fact, deferrable functions are essentially activated by interrupt occurrences, and no exception can be raised while a deferrable function is running. Coupling local interrupt disabling with a spin lock is therefore sufficient.
+实际上，不用关闭硬中断即可，也就是调用local_bh_disable宏，只关闭可延时函数的执行。因为中断处理程序并没有访问数据，所以，只禁止可延时函数比禁止中断更有效率，因为中断可以继续被CPU响应。而在单个CPU上执行可延时函数是串行执行的，没有竞态条件产生。（这儿，禁止可延时函数指的是禁止再激活软中断，tasklet之类的，但是之前已经激活的还是要执行的。）
 
-Actually, this is much more than sufficient: the exception handler can simply disable deferrable functions instead of local interrupts by using the local_bh_disable() macro (see the section “Softirqs” in Chapter 4). Disabling only the deferrable functions is preferable to disabling interrupts, because interrupts continue to be serviced by the CPU. Execution of deferrable functions on each CPU is serialized, so no race condition exists.
+正如多数情况一样，多核系统中，自旋锁保证任何时候只有一个内核控制路径访问数据。
 
-As usual, in multiprocessor systems, spin locks are required to ensure that the data structure is accessed at any time by just one kernel control.
+#### 中断和可延时函数同时访问的数据结构
 
-#### Protecting a data structure accessed by interrupts and deferrable functions
+这种情况与中断和异常同时访问数据相似。单核系统，禁止中断即可。多核系统需要再加上自旋锁。
 
-This case is similar to that of a data structure accessed by interrupt and exception handlers. An interrupt might be raised while a deferrable function is running, but no deferrable function can stop an interrupt handler. Therefore, race conditions must be avoided by disabling local interrupts during the deferrable function. However, an interrupt handler can freely touch the data structure accessed by the deferrable function without disabling interrupts, provided that no other interrupt handler accesses that data structure.
+#### 中断、异常和可延时函数同时访问的数据结构
 
-Again, in multiprocessor systems, a spin lock is always required to forbid concurrent accesses to the data structure on several CPUs.
+与上一种情况一样，故不再累述。
 
-#### Protecting a data structure accessed by exceptions, interrupts, and deferrable functions
+<h2 id="5.4">5.4 防止竞态条件的例子</h2>
 
-Similarly to previous cases, disabling local interrupts and acquiring a spin lock is almost always necessary to avoid race conditions. Notice that there is no need to explicitly disable deferrable functions, because they are essentially activated when terminating the execution of interrupt handlers; disabling local interrupts is therefore sufficient.
-
-<h2 id="5.4">5.4 防止竞态条件的示例</h2>
-
-Kernel developers are expected to identify and solve the synchronization problems raised by interleaving kernel control paths. However, avoiding race conditions is a hard task because it requires a clear understanding of how the various components of the kernel interact. To give a feeling of what’s really inside the kernel code, let’s mention a few typical usages of the synchronization primitives defined in this chapter.
+要想一个系统不崩溃，性能还得好，同步技术是非常关键的。但是，完全避免竞态条件几乎是难于上青天。因为它要求对内核各个功能模块之间的交互得有一个清晰深刻的理解。下面我们看一下Linux内核中一些具体保护数据访问的示例，加深对其理解，甚至可以在自己的内核设计上借鉴一下。
 
 <h3 id="5.4.1">5.4.1 引用计数器</h3>
 
-Reference counters are widely used inside the kernel to avoid race conditions due to the concurrent allocation and releasing of a resource. A reference counter is just an atomic_t counter associated with a specific resource such as a memory page, a module, or a file. The counter is atomically increased when a kernel control path starts using the resource, and it is decreased when a kernel control path finishes using the resource. When the reference counter becomes zero, the resource is not being used, and it can be released if necessary.
+引用计数器是内核中保护某个资源或者模块的一种有效手段，比如分配内存，使用某个内核模块，或者打开某个文件的时候。它是一个atomic_t类型的原子变量。当内核中某个程序访问该资源的时候，计数器加1，当内核程序释放资源，计数器减1。当计数器的值为0时，它就可以被释放了。
 
 <h3 id="5.4.2">5.4.2 大内核锁</h3>
+
+关于这部分请参阅网友universus写的这篇文章-[大内核锁将何去何从](https://blog.csdn.net/universus/article/details/5623971)。我觉得写得还是非常详细的。
 
 In earlier Linux kernel versions, a big kernel lock (also known as global kernel lock, or BKL) was widely used. In Linux 2.0, this lock was a relatively crude spin lock, ensuring that only one processor at a time could run in Kernel Mode. The 2.2 and 2.4 kernels were considerably more flexible and no longer relied on a single spin lock; rather, a large number of kernel data structures were protected by many different spin locks. In Linux kernel version 2.6, the big kernel lock is used to protect old code (mostly functions related to the VFS and to several filesystems).
 
@@ -1180,19 +1231,17 @@ To avoid the preempted process losing the big kernel lock, the preempt_schedule_
 
 <h3 id="5.4.3">5.4.3 内存描述符读写信号量</h3>
 
-Each memory descriptor of type mm_struct includes its own semaphore in the mmap_sem field (see the section “The Memory Descriptor” in Chapter 9). The semaphore protects the descriptor against race conditions that could arise because a memory descriptor can be shared among several lightweight processes.
+每个内存描述符都可以使用数据结构mm_struct进行表达，它有一个成员mmap_sem，专门用来保护该描述符避免竞态条件的发生。因为每个内存描述符可以被几个轻量级进程共享。这是用户态多线程共享内存的硬件基础。
 
-For instance, let’s suppose that the kernel must create or extend a memory region for some process; to do this, it invokes the do_mmap() function, which allocates a new vm_area_struct data structure. In doing so, the current process could be suspended if no free memory is available, and another process sharing the same memory descriptor could run. Without the semaphore, every operation of the second process that requires access to the memory descriptor (for instance, a Page Fault due to a Copy on Write) could lead to severe data corruption.
+假设内核需要为某个进程创建或扩展一段内存区域。为此，调用do_mmap()函数，分配一个新的类型为vm_area_struct虚拟内存给进程。在这个过程中，如果已经没有内存可用，且每段内存都有一个信号量保护，所以，当前进程挂起，其它进程还可以正常访问他们的共享内存继续运行。但是，如果没有信号量保护，当前进程申请内存就会成功（其实可能占用了其它进程的内存）。而与当前进程共享内存的进程就会请求访问内存描述符（比如，写时复制（Copy on Write）导致的页错误），从而导致严重的数据损坏。
 
-The semaphore is implemented as a read/write semaphore, because some kernel functions, such as the Page Fault exception handler (see the section “Page Fault Exception Handler” in Chapter 9), need only to scan the memory descriptors.
-
+此处一般使用的是读/写信号量，因为大部分的内核函数，比如页错误异常处理程序只需要查看内存描述符，不会修改它。这样可以提高系统的并发性能。
 
 <h3 id="5.4.4">5.4.4 Slab Cache列表信号量</h3>
 
-The list of slab cache descriptors (see the section “Cache Descriptor” in Chapter 8) is protected by the cache_chain_sem semaphore, which grants an exclusive right to access and modify the list.
+slab是一种Linux内核内存分配算法，slab分配算法采用cache存储内核对象。这些对象的描述符使用一个列表进行管理。这个列表使用一个称为cache_chain_sem的信号量进行保护，从而对列表进行独占访问。
 
-A race condition is possible when kmem_cache_create( ) adds a new element in the list, while kmem_cache_shrink( ) and kmem_cache_reap( ) sequentially scan the list. However, these functions are never invoked while handling an interrupt, and they can never block while accessing the list. The semaphore plays an active role both in multiprocessor systems and in uniprocessor systems with kernel preemption supported.
-
+因为往这个列表中插入新对象的同时，kmem_cache_shrink()和kmem_cache_reap()会扫描这个列表，这就带来了竞态条件的发生。当然了，中断不会调用这些函数，所以不需要信号量。所以，主要是在支持内核抢占的多核和单核系统中起作用。所以选择信号量而不是自旋锁。
 
 <h3 id="5.4.5">5.4.5 INode节点信号量</h3>
 
