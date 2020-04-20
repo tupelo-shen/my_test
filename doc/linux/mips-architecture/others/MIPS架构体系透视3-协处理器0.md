@@ -1,0 +1,3 @@
+In addition to its normal computational functions, any CPU needs units to handle interrupts, configuration options, and some way of observing or controlling on-chip functions like caches and timers. But it’s difficult to do this in the neat implementation-independent way that the ISA does for the computational instruction set.
+
+It would be desirable, and be easier for you to follow, if we could introduce this through some chapters that separate out the different functions, and we’re going to do that. But we have to describe the common mechanisms used to implement these features first. You should read the first part of this chapter before tackling the next three chapters of this book; take particular note of the use of the word coprocessor as explained on Page 46.
