@@ -1,7 +1,8 @@
-* [7.1 如何请求内核服务](#7.1)
-    - [7.1.1 内核抢占](#7.1.1)
-* [7.2 IEEE754浮点标准及其背景](#7.2)
+<h1 id="0">0 目录</h1>
 
+* [7.1 浮点数基本介绍](#7.1)
+* [7.2 IEEE754标准及其背景知识](#7.2)
+* [7.12 按需初始化和使能FPU](#7.12)
 
 ---
 
@@ -11,7 +12,8 @@ In 1987 the MIPS FPA set a new benchmark for performance for microprocessor math
 
 Since then the MIPS FPA has been pulled onward by Silicon Graphics’s need for math performance that would once have been the preserve of supercompeters. I expect to see a lot more embedded applications that need very high floating-point performance in the next few years, so even the most abstruse and high-end features may move rapidly down the MIPS family.
 
-# 7.1 A Basic Description of Floating Point
+# 7.1 浮点数基本介绍
+<h2 id="7.1">7.1 浮点数基本介绍</h2>
 
 Floating-point math retains a great deal of mystery. You probably have a very clear idea of what it is for, but you may be hazy about the details. This section describes the various components of the data and what they mean. In so doing we are bound to tell most of you things you already know; please skip ahead but keep an eye on the text!
 
@@ -29,7 +31,8 @@ is the same value as binary
 
 However, neither the mantissa nor the exponent are stored just like this in standard formats — and to understand why, we need to review a little history.
 
-#7.2 The IEEE754 Standard and Its Background
+#7.2 IEEE754标准及其背景知识
+<h2 id="7.2">7.2 IEEE754标准及其背景知识</h2>
 
 Because floating point deals with the approximate representations of numbers (in the same way as decimals do), computer implementations used to differ in the details of their behavior with regard to very small or large numbers. This meant that numerical routines, identically coded, might behave differently. In some sense these differences shouldn’t have mattered: You only got different answers in circumstances where no implementation could really produce a “correct” answer.
 
@@ -60,3 +63,5 @@ The operations regulated by IEEE754 include every operation that MIPS FPAs can d
 
 # 7.13 Floating-Point Emulation
 <h2 id="7.13">7.13 浮点仿真</h2>
+
+<div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
