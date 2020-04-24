@@ -242,15 +242,16 @@ MIPS64架构完全兼容MIPS32架构，执行MIPS32指令时，总是使用通�
 
 <h2 id="9.4">9.4 寻址模式</h2>
 
-As noted previously, the hardware supports only one addressing mode, base reg+offset, where offset is in the range −32768 to 32767. However, the assembler will synthesize code to access data at addresses specified in various other ways:
+MIPS架构的寻址模式非常简单，就是寄存器+偏移量的方式，偏移量的范围是−32768~32767（也就是16位的立即数）。如果编程人员想要使用其它寻址方式，汇编器将会使用寄存器+偏移量的方式进行组合实现。这些其它寻址方式如下所示：
 
-1. Direct: A data label or external variable name supplied by you
-2. Direct+index: An offset from a labeled location specified with a register
-3. Constant: Just a large number, interpreted as an absolute 32-bit address
-4. Register indirect: Just register+offset with an offset of zero
+1. 直接寻址：也就是访问某个标签，其指向某个数据或者变量。
+2. 直接寻址+索引：使用寄存器指定偏移量。
+3. 常量寻址：直接作为32位地址使用。
+4. 寄存器间接寻址：寄存器+偏移量，但是此处的偏移量等于0。
 
-When these methods are combined with the assembler’s willingness to do simple constant arithmetic at compile time and the use of a macro processor, you are able to do most of what you might want. Here are some examples:
+我们直接看下面的示例：
 
+    #源码实现       =>  MIPS汇编器实现
     lw $2, ($3)     =>  lw $2, 0($3)
     lw $2, 8+4($3)  =>  lw $2, 12($3)
     lw $2, addr     =>  lui at, %hi(addr)
@@ -259,22 +260,22 @@ When these methods are combined with the assembler’s willingness to do simple 
                         addu at, at, $3
                         sw $2, %lo(addr)(at)
 
-The symbol addr in the above examples can be any of the following:
+符号addr可以是下面任何一种：
 
-* A relocatable symbol—the name of a label or variable (whether in this module or elsewhere)
+* 一个可重定位的符号，比如标签和变量名称；
 
-* A relocatable symbol ± a constant expression (the assembler/linker can handle this at system build time)
+* 一个可重定位的符号+常量表达式（汇编器或链接器会解析）；
 
-* A 32-bit constant expression (e.g., the absolute address of a device register)
+* 32位常量表达式（比如设备配置寄存器的绝对地址）。
 
-The constructs %hi() and %lo() represent the high and low 16 bits of the address. This is not quite the straightforward division into low and high halfwords that it looks, because the 16-bit offset field of an lw is interpreted as signed. So if the addr value is such that bit 15 is a 1, then the %lo(addr) value will act as negative, and we need to increment %hi(addr) to compensate:
+`%hi()`和`%lo()`代表地址的高16位和低16位。它并不是直接把一个32位的WORD分成2个16位的半字。因为lw指令把16位的偏移量解释为带符号的立即数。也就是说，如果bit15等于1的话，%lo(addr)的值就会是负值。所以，我们需要增加%hi(addr)进行补偿，如下所示：
 
 | addr        | %hi(addr) | %lo(addr) |
 | ----------- | --------- | --------- |
 | 0x1234.5678 | 0x1234    | 0x5678    |
 | 0x1000.8000 | 0x1001    | 0x8000    |
 
-The la (load address) macro instruction provides a similar service for addresses to that provided for integer constants by li:
+`la`宏指令实现加载地址，与`li`宏指令及其类似，只是一个加载地址，一个加载立即数：
 
     la $2, 4($3)    =>  addiu $2, $3, 4
     la $2, addr     =>  lui at, %hi(addr)
@@ -283,71 +284,54 @@ The la (load address) macro instruction provides a similar service for addresses
                         addiu $2, at, %lo(addr)
                         addu $2, $2, $3
 
-In principle, la could avoid messing around with apparently negative %lo( ) values by using an ori instruction. But load/store instructions have a signed 16-bit address offset, and as a result the linker is already equipped with the ability to fix up addresses into two parts that can be added correctly. So la uses the add instruction to avoid the linker having to understand two different fix-up types.
+原则上，`la`指令可以通过使用`ori`指令避免`%lo()`为负值的时候。但是`load/store`指令使用一个带符号位的16位地址偏移量（这样在访问内存的时候更方便），导致linker链接器已经使用了这种修复地址的技术。所以，`la`指令为了避免linker需要理解两种不同的修复地址的方法，而选择使用add指令实现。
 
-9.4.1 Gp-Relative Addressing
+9.4.1 gp相对寻址
 
-A consequence of the way the MIPS instruction set is crammed into 32-bit operations is that accesses to compiled-in locations usually require at least two instructions, for example:
+MIPS指令集使用32操作数的结果就是，访问某个地址通常需要两条指令实现：
 
     lw $2, addr     =>  lui at, %hi(addr)
                         lw $2, %lo(addr)(at)
 
-In programs that make a lot of use of global or static data, this can make the compiled code significantly fatter and slower.
+如果在程序中，大量使用global或static数据，会使编译后的代码非常臃肿，执行效率低下。
 
-Early MIPS compilers introduced a fix for this, which has been carried into most MIPS toolchains. It’s usually called gp-relative addressing. This technique requires the cooperation of the compiler, assembler, linker, and start-up code to pool all of the “small” variables and constants into a single memory region; then it sets register $28 (known as the global pointer or gp register) to point to the middle of this region. (The linker creates a special symbol, gp, whose address is the middle of this region. The address of gpmust then be loaded into the gp register by the start-up code, before any load or store instructions are used.) So long as all the variables together take up no more than 64 KB of space, all the data items are now within 32 KB of the midpoint, so a load turns into:
+早期的MIPS编译器引入一种小技巧修复这个问题，称为`gp相对寻址`（gp->global pointer）。这个技术需要编译器、汇编器、链接器和启动代码的配合才能实现。启动代码start_up.S中把所有较小的变量和常数存入一段内存区域；然后设置寄存器$28（被称为gp指针或gp寄存器）指向这段内存区域的中间位置（链接器会创建一个特殊的符号gp，指向该内存区域的中间位置。启动代码执行load或store指令之前，必须把gp的值加载到gp寄存器中）。但是要求所有的变量所占的空间不超过64KB，也就是上下各32KB。现在，访问某个变量的指令就变成了下面这样：
 
     lw $2, addr     =>  lw $2, addr - _gp(at)
 
-The problem is that the compiler and assembler must decide which variables can be accessed via gp at the time the individual modules are compiled. The usual test is to include all objects of less than a certain size (eight bytes is the usual default). This limit can usually be controlled by the “-G n” compiler/assembler option; specifying “-G 0”will switch this optimization off altogether.
+可以看出，上面的实现，最终只会生成一条机器指令。显然，这可以节省代码量。但是，这里存在的问题是在编译各个模块的时候，编译器和汇编器必须决定哪些变量可以通过gp访问。通常要求所包含的对象小于一定的字节数（默认是8个字节）。这个限制可以通过编译汇编选项`-G n`进行控制，如果n等于0，则是将这个优化选项关闭。
 
-While it is a useful trick, there are some pitfalls to watch out for. You must take special care when writing assembly code to declare global data items consistently and correctly:
+虽然这是一个非常有用的小技巧，但是也有许多小陷阱需要留意。下面是一些避免陷阱的一些措施：
 
-* Writable, initialized small data items must be put explicitly into the
-    
-    .sdata section.
+* 可写的、已初始化过的数据项显式地存放到`.sdata`数据段。
 
-* Global common datamust be consistently declared with the correct size:
+* 全局通用数据必须正确声明大小：
 
     .comm smallobj, 4
     .comm bigobj, 100
 
-* Small external variables should also be explicitly declared:
+* 对外可见的变量必须使用`.extern`进行声明：
 
     .extern smallext, 4
 
-Most assemblers will not act on a declaration unless it precedes the use  of the variable.
+    大部分的汇编器都是在使用变量之前处理声明，除此之外，不予理会。
 
-In C, you must declare global variables correctly in all modules that use them. For external arrays, either omit the size, like this:
+程序的运行方式决定了这种方法是否可行。许多实时操作系统使用一段独立的代码实现内核，应用程序通过大范围的子程序调用接口调用内核函数。没有一个有效的方法，可以在内核代码和应用程序代码的gp之间来回切换。这种情况下，应用程序或者OS必须至少一个使用`-G 0`进行编译。
 
-    extern int extarray[];
+如果使用了`-G 0`选项编译了某个模块，那么与该模块相关的所有链接库也都得需要使用`-G 0`选项进行编译。否则，会给出一些稀奇古怪的错误信息。
 
-or give the correct size:
+<h2 id="9.5">9.5 目标文件和内存布局</h2>
 
-    int cmnarray[NARRAY];
+本段我们主要对MIPS架构常见的内存布局做个简要的介绍，也对内存布局和目标文件之间的关系提出了几个重要的点。了解代码加载到系统内存中的方式对我们很有帮助，尤其是，代码第一次在系统硬件上运行时。
 
-Sometimes the way programs are run means this method can’t be used. Some real-time operating systems (and many PROM monitors) are built with a separately linked chunk of code implementing the kernel, and applications invoke kernel functions with long-range subroutine calls. There’s no costeffective method by which you could switch back and forth between the two different values of gp that will be used by the application and OS, respectively. In this case either the applications or the OS (but not necessarily both)must be built with -G 0.
+MIPS架构常见的内存布局如图9-1所示。汇编程序中，使用下面这些标记各个段：
 
-When the -G 0 option has been used for compilation of any set of modules, it is usually essential that all libraries linked in with them should be compiled that way. If the linker is confronted with modules that disagree on whether a named variable should be put in the small or regular data sections, it’s likely to give you peculiar and unhelpful error messages.
+    .text, .rdata, 和 .data
 
-<h2 id="9.5">9.5 Object File and Memory Layout</h2>
-
-
-This chapter concludes with a brief look at the way programs are typically laid out in system memory and notes some important points about the relationship between the memory layout and the object files produced by the toolchain. It’s very useful to have a basic understanding of the way your code should appear after it’s loaded into the system’s memory, especially if you’re going to face the task of getting MIPS code to run for the first time on newly developed system hardware.
-
-The conventional code and data sections defined by MIPS conventions are illustrated (for ROMable programs) in Figure 9.1.
-
-Within an assembly program the sections are selected as described in the groupings that follow.
-
-    .text, .rdata, and .data
-
-Simply put the appropriate section name before the data or instructions, as shown in this example:
+应该在数据和指令之前添加正确的段标识符，比如：
 
         .rdata
     msg:.asciiz "Hello world!\n"
-
-
-FIGURE 9.1 ROMable program’s object code segments and typical memory layout.
-
         .data
     table:
         .word 1
@@ -357,24 +341,20 @@ FIGURE 9.1 ROMable program’s object code segments and typical memory layout.
     func:sub sp, 64
         ...
 
-* .lit4 and .lit8 Sections: Floating-Point Implicit Constants
 
-are given as arguments to the li.s or li.d macro instructions. Some assemblers and linkers will save space by combining identical constants. .lit4 and .lit8 may be included in the “small data” region if the application is built to use gp-relative addressing.
+<img src="">
 
-* .bss, .comm, and .lcomm Data
+图9-1 程序的各个目标代码段和内存布局
 
-This section name is also not used as a directive. It is used to collect all static or global uninitialized data declared in C modules. It’s a feature of C thatmultiple same-named definitions in different modules are acceptable so long as not more than one of them is initialized, and the .bss section is often used for data that is not initialized anywhere. FORTRAN programmers would recognize this as what is called common data—that’s where the name of the directive comes from.
+* `.lit4`和`.lit8`段：浮点常数数据段
 
-You always have to specify a size for the data (in bytes).When the programis linked, the item will get enough space for the largest size. If any module declares it in an initialized data section, all the sizes are used and that definition is used:
+    主要是传递给li.s或li.d宏指令的参数。有些汇编器和链接器会组合相同的常数以节省空间。如果使能了`-G n`编译选项，也有可能使用gp相对寻址，将`.lit4`和`.lit8`浮点常数段存放到全局的`小数据`那个特殊的数据段中。
+    
+* `.bss`、`.comm`和`.lcomm`数据段
+    
+    未初始化数据段。用来存储C代码中所有的静态和全局未初始化的数据。FORTRAN语言常常成为common data，这也是.comm的由来。
 
-    .comm dbgflag, 4    # global common variable, 4 bytes
-    .lcomm sum, 4       # local common variable, 8 bytes
-    .lcomm array, 100   # local common variable, 100 bytes
-
-
-“Uninitialized” is actually a misnomer. In C, static or global variables that are not explicitly initialized should be set to zero before the program starts—a job for the operating system or start-up code.
-
-* .sdata, Small Data, and .sbss
+* `.sdata`、小数据段和`.sbss`
 
 These sections are used as alternatives to the .data and .bss sections above by toolchains that want to separate out smaller data objects. Toolchains for MIPS processors do this because the resulting small-object section is compact enough to allow an efficient access mechanism that relies on maintaining a data pointer in a reserved register gp, as described in section 9.4.1.
 
