@@ -6,7 +6,7 @@
 
 一张图说明它们的区别：
 
-<img src="">
+<img src="https://github.com/tupelo-shen/my_test/blob/master/doc/linux/mips-architecture/sel4/images/whitepaper_1_1.PNG">
 
 总结seL4微内核的优缺点：
 
