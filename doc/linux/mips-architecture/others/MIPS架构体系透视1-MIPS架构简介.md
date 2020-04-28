@@ -10,92 +10,54 @@
 
 ---
 
-MIPS is the most elegant among the effective RISC architectures; even the competition thinks so, as evidenced by the strong MIPS influence seen in later architectures like DEC’s Alpha and HP’s Precision. Elegance by itself doesn’t get you far in a competitive marketplace, but MIPS microprocessors have usually managed to be among the fastest of each generation by remaining among the simplest.
+众多RISC精简指令集架构中，MIPS架构是最优雅的"舞者"。就连它的竞争者也为其强大的影响力所折服。DEC公司的Alpha指令集（现在已被放弃）和HP的Precision都受其影响。虽说，优雅不足以让其在残酷的市场中固若金汤，但是，MIPS架构还是以最简单的设计成为每一代CPU架构中，执行效率最快的那一个。
 
-Relative simplicity was a commercial necessity for MIPS, which spun off from an academic project as a small design group using multiple semiconductor partners to make and market the chips. As a result the architecture has the largest range of active manufacturers in the industry - working from ASIC cores (LSI Logic, Toshiba, Philips, NEC) through low-cost CPUs (iDT, LSI) and from low-end 64-bit (IDT, NKK, NEC) to the top (NEC, Toshiba, and IDT).
+作为一个从学术项目孵化而来的成果，简单的架构是MIPS架构商业化的需要。它拥有一个小的设计团队，制造和商业推广交给它的半导体合作伙伴们。结果就是，在半导体行业领域中，它拥有广泛的合作制造商：LSI逻辑、LSI、东芝、飞利浦、NEC和IDT等都是它的合作伙伴。值得一提的是，国内的龙芯买断了它的指令集架构，成为芯片国产化的佼佼者。
 
-At the low end the CPU is 1.5 mm2 (rapidly disappearing from sight in the “system on a chip”); at the high end the R10000 is nearly an inch square and generates 30W of heat — and when first launched was probably the fastest CPU on the planet. And although MIPS looks like an outsider, sales volumes seem healthy enough: 44M MIPS CPUs were shipped in 1997, mostly into embedded applications.
+在低端CPU领域，MIPS架构昙花一现。目前主要应用于嵌入式行业，比如路由器领域，几乎占据了大部分的市场。
 
-The MIPS CPU is one of the RISC CPUs, born out of a particularly fertile period of academic research and development. RISC(reduced instruction set computer) is an attractive acronym that, like many such, probably obscures reality more than it reveals it. But it does serve as a useful tag for a number of new CPU architectures launched between 1986 and 1989, which owe their remarkable performance to ideas developed a few years earlier by a couple of seminal research projects. Someone commented that “a RISC is any computer architecture defined after 1984”; although meant as a jibe at the industry’s use of the acronym, the comment is also true — no computer defined after 1984 can afford to ignore the RISC pioneers’ work.
+MIPS架构的CPU是RISC精简指令CPU中的一种，诞生于RISC学术研究最为活跃的时期。RISC（精简指令集计算机）这个缩略语是1986年-1989年之间诞生的所有新CPU架构的一个标签TAG，它为新诞生的这些高性能架构提供了想法上的创新。有人形象的说，"RISC是1984年之后诞生的所有计算机架构的基础"。虽说，略显夸张，但也是无可争议的事实，谁也无法忽略RISC精简指令集的那些先驱们所做的贡献。
 
-One of these pioneering projects was the MIPS project at Stanford. Theproject name MIPS (named for the key phrase microcomputer without interlocked pipeline stages) is also a pun on the familiar unit ”millions of instructions per second” The Stanford group’s work showed that pipelining, although a well-known technique, had been drastically underexploited by earlier architectures and could be much better used, particularly when combined with 1980 silicon design.
+MIPS领域最无法忽视的贡献者是Stanford大学的MIPS项目。之所以命名成MIPS，即可以代表`microcomputer without interlocked pipeline stages`-无互锁流水线的微处理器的英文意思，又可以代表`millions of instructions per second`每秒执行百万指令的意思，真是一语双关。看起来，MIPS架构主要研究方向还是CPU的流水线架构，让它如何更高效地工作。那接下来，我们就从流水线开始讲起。
 
-1.1 Pipelines
+> 流水线的互锁是影响CPU指令执行效率的关键因素之一。
+
 <h2 id="1.1">1.1 流水线</h2>
 
-Once upon a time in a small town in the north of England, there was Evie’s fish and chip shop. Inside, each customer got to the head of the queue and asked for his or her meal (usually fried cod, chips, mushy peas,1 and a cup of tea). Then each customer waited for the plate to be filled before going to sit down.
+假设有一家餐馆，我们称之为Evie的炸鱼薯条店。在其中，每一名顾客排队取餐（炸鳕鱼、炸薯片、豌豆糊、一杯茶）。店员装好盘子后，顾客找桌子坐下来就餐。这是，我们常见的餐馆就餐方式。
 
-Evie’s chips were the best in town, and every market day the lunch queue stretched out of the shop. So when the clog shop next door shut down, Evie rented it and doubled the number of tables. But they couldn’t fill them! The queue outside was as long as ever, and the busy townsfolk had no time to sit over their cooling tea.
+Evie的薯条是当地最好的小吃。所以，每当赶大集的时候，长长的队伍都要延伸到店外。所以，当隔壁的木屐店关门的时候，Evie盘下来，扩大了店面，增加了桌子。但是，这还是于事无补。因为忙碌的市民根本没空坐下来喝杯茶。（因为Evie还没有找到排长队的根本原因，......）
 
-They couldn’t add another serving counter; Evie’s cod and Bert’s chips were what made the shop. But then they had a brilliant idea. They lengthened the counter and Evie, Bert, Dionysus, and Mary stood in a row. As customers came in, Evie gave them a plate with their fish, Bert added the chips, Dionysus spooned out the mushy peas, and Mary poured the tea and took the money. The customers kept walking; as one customer got his peas, the next was already getting chips and the one after that fish. Less hardy folk don’t eat mushy peas — but that’s no problem, those customers just got nothing but a vacant smile from Dionysus.
+Evie炸鳕鱼和Bert的薯条是店里的招牌，来的顾客都会点这两样。但是他们只有一个柜台，所以，当有一名顾客执行点一杯茶的时候，而恰好他又在点鳕鱼和薯条的顾客后面，那他只能等待了.....。终于有一天，Evie想起了一个绝妙的主意：他们把柜台延长，Evie、Bert、Dionysus和Mary四名店员一字排开；每当顾客进来，Evie负责鳕鱼装盘，Bert添加薯条，Dionysus盛豌豆糊，Mary倒茶并结账。这样，一次可以有四名顾客同时被服务，多么天才的想法啊。
 
-The queue shortened and soon they bought the shop on the other side as well for extra table space. ..
+再也没有长长的排队人群，Evie的店收入增加了......。
 
-That’s a pipeline. Divide any repetitive job into a number of sequential parts and arrange that the work moves past the workers, with each specialist doing his or her part for each unit of work in turn. Although the total time any customer spends being served has gone up, there are four customers being served at once and about three times as many customers being served in that market day lunch hour. Figure 1.1 shows Evie’s organization, as drawn by her son Einstein in a rare visit to non-virtual reality.2
+这就是流水线，将重复的工作分成若干份，每个人负责其中一份。虽然每名顾客总的服务时间延长，但是，同时有四名顾客被服务，提高了整个取餐付账的效率。下图1-1就是Evie店里的流水线结构图。
 
-Seen as a collection of instructions in memory, a program ready to run doesn’t look much like a queue of customers. But when you look at it from the CPU’s point of view, things change. The CPU fetches each instruction from memory, decodes it, finds any operands it needs, performs the appropriate action, and stores any results — and then it goes and does the same thing all over again. The program waiting to be run is a queue of instructions waiting to flow through the CPU one at a time.
+<img src="">
 
-The use of pipelining is not new with RISC microprocessors. What makes the difference is the redesign of everything — starting with the instruction set — to make the pipeline more efficient.1 So how do you make a pipeline efficient? Actually, that’s probably the wrong question. The right one is, what makes a pipeline inefficient?
+那么，我们将CPU执行一条指令分解成取指令、解码、查找操作数、执行运算、存储结果五步操作的话，是不是跟上面Evie的店里的流水线就极其类似了呢。本质上讲，等待执行的程序就是一个个指令的队列，等待CPU一个个执行。
+
+流水线当然不是RSIC指令集的新发明，CSIC复杂指令集也采用流水线的设计。差异就是，RSIC重新设计指令集，使流水线更有效率。那到底什么是制约流水线效率的关键因素呢？
 
 <h3 id="1.1.1">1.1.1 制约流水线效率的因素</h3>
 
-lt’s not good if one stage takes much longer than the others. The organization
-of Evie’s shop depends on Mary’s ability to pour tea with one hand while
-giving change with the other — if Mary takes longer than the others, the
-whole queue will have to slow down to match her.
+我们都知道那个著名的"木桶效应"：决定木桶的装水量的是最短的那个木头，而不是最长的。同样的，如果我们保证指令执行的每一步都占用相同时间的话，那么这个流水线将是一个完美的高效流水线。但现实往往是残酷的，CPU的工作频率远远大于读写内存的工作频率（都不是一个量级）。
 
-In a pipeline, you try to make sure that every stage takes roughly the
-same amount of time. A circuit design often gives you the opportunity to
-trade the complexity of logic off against its speed, so designers can assign
-work to different stages until everything is just right.
+让我们回到Evie的店中。顾客Cyril是一个穷人，经常缺钱，所以在Mary没有收到他的钱之前，Evie就不会为他服务。那么，现在Cyril就卡在Evie的位置处，知道Mary处理完前面三名顾客，再给他结完账，Evie才会继续为他服务。所以，在这个取餐的流水线上，Cyril就是一个麻烦制造者，因为他需要一个他人正在使用资源（Mary结账）。
+Daphne and Lola always come in together (in that order) and share their meals. Lola won’t have chips unless Daphne gets some tea (too salty without something to drink). Lola waits on tenterhooks in front of Bert until Daphne gets to Mary, and so a gap appears in the pipeline. This is a dependency (and the gap is called a pipeline bubble).
 
-The hard problem is not difficult actions, it’s awkward customers. Back in
-the chip shop Cyril is often short of cash, so Evie won’t serve him until Mary
-has counted his money. When Cyril arrives, he’s stuck at Evie’s position
-until Mary has finished with the three previous customers and can check his
-pile of old bent coins. Cyril is trouble because when he comes in he needs a
-resource (Mary’s counting) that is being used by previous customers. He’s a
-resource conflict.
+Not all dependencies are a problem. Frank always wants exactly the same meal as Fred, but he can follow him down the counter anyway — if Fred gets chips, Frank gets chips. . .
 
-Daphne and Lola always come in together (in that order) and share their
-meals. Lola won’t have chips unless Daphne gets some tea (too salty without
-something to drink). Lola waits on tenterhooks in front of Bert until Daphne
-gets to Mary, and so a gap appears in the pipeline. This is a dependency (and
-the gap is called a pipeline bubble).
-
-Not all dependencies are a problem. Frank always wants exactly the same
-meal as Fred, but he can follow him down the counter anyway — if Fred gets
-chips, Frank gets chips. . .
-
-If you could get rid of awkward customers, you could make a more efficient
-pipeline. This is hardly an option for Evie, who has to make her living in a
-town of eccentrics. Intel is faced with much the same problem: The appeal
-of its CPUs relies on the customer being able to go on running all that old
-software. But with a new CPU you get to define the instruction set, and you
-can define many of the awkward customers out of existence. In Section 1.2
-we’ll show how MIPS did that, but first we’ll come back to computer hardware
-in general with a discussion of caching.
+If you could get rid of awkward customers, you could make a more efficient pipeline. This is hardly an option for Evie, who has to make her living in a town of eccentrics. Intel is faced with much the same problem: The appeal of its CPUs relies on the customer being able to go on running all that old software. But with a new CPU you get to define the instruction set, and you can define many of the awkward customers out of existence. In Section 1.2 we’ll show how MIPS did that, but first we’ll come back to computer hardware in general with a discussion of caching.
 
 <h3 id="1.1.2">1.1.2 流水线和缓存</h3>
 
-We said earlier that efficient pipeline operation requires every stage to take
-the same amount of time. But a 1996 CPU can add two 64-bit numbers about
-10 times quicker than it can fetch a piece of data from memory.
+We said earlier that efficient pipeline operation requires every stage to take the same amount of time. But a 1996 CPU can add two 64-bit numbers about 10 times quicker than it can fetch a piece of data from memory.
 
-So effective pipelining relies on another technique to speed most memory
-accesses by a factor of 10-the use of caches. A cache is a small, very fast,
-local memory that holds copies of memory data. Each piece of data is kept
-with a record of its main memory address (the cache tag) and when the CPU
-wants data the cache gets searched and, if the requisite data is available, it’s
-sent back quickly. Since we’ve no way to guess what data the CPU might be
-about to use, the cache merely keeps copies of data the CPU has had to fetch
-from main memory in the recent past; data is discarded from the cache when
-its space is needed for more data arriving from memory.
+So effective pipelining relies on another technique to speed most memory accesses by a factor of 10-the use of caches. A cache is a small, very fast, local memory that holds copies of memory data. Each piece of data is kept with a record of its main memory address (the cache tag) and when the CPU wants data the cache gets searched and, if the requisite data is available, it’s sent back quickly. Since we’ve no way to guess what data the CPU might be about to use, the cache merely keeps copies of data the CPU has had to fetch from main memory in the recent past; data is discarded from the cache when its space is needed for more data arriving from memory.
 
-Even a simple cache will provide the data the CPU wants more than 90%
-of the time, so the pipeline design need only allow enough time to fetch data
-from the cache: A cache miss is a relatively rare event and we can just stop
-the CPU when it happens.
+Even a simple cache will provide the data the CPU wants more than 90% of the time, so the pipeline design need only allow enough time to fetch data from the cache: A cache miss is a relatively rare event and we can just stop the CPU when it happens.
 
 <img src="">
 
