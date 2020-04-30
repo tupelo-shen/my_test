@@ -10,7 +10,7 @@ Cache的替换策略决定了主存中的数据块会拷贝到cache中的哪个�
 
 #### 2.1 直接映射
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/cache_principle_1_1.PNG">
 
 这是一种多对一的映射关系。在这种映射方式下，主存中的每个数据块只能有一个line与之对应，因此直接映射也称为`单路组相关联`。在1990年代初期，直接映射是当时最流行的机制，Alpha的21064、21064A和21164的L1级的`D Cache`和`I Cache`都采用直接映射。它所需的硬件资源非常有限，每次对主存的访问都固定到一个指定的line，这种简单明了有一系列的好处，最大的优点是在200～300MHz CPU主频的情况下，Load-Use Latency可以快到只需要1个cycle！
 
@@ -28,7 +28,7 @@ Cache的替换策略决定了主存中的数据块会拷贝到cache中的哪个�
 
 #### 2.2 2路组相关联
 
-<img src=" ">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/cache_principle_1_2.PNG">
 
 一个2组2路相关联的如上图所示，cache分成s组，每组包含两个line，也称为两路，主存中的每个数据块只能位于s个组中的某一个，但可以在指定组中的任意一个line中。
 
