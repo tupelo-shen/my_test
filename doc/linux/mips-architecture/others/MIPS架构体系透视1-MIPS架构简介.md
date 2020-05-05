@@ -5,7 +5,7 @@
     - [1.1.2 制约流水线效率的因素](#1.1.2)
 * [1.2 MIPS架构5级流水线](#1.2)
 * [1.3 RISC和CISC对比](#1.3)
-* [1.4 有代表性的MIPS架构芯片](#1.4)
+* [1.4 MIPS架构的发展](#1.4)
 * [1.5 MIPS架构和CISC架构的对比](#1.5)
 
 ---
@@ -106,134 +106,143 @@ MIPS本身就是基于流水线优化设计的架构，所以，将MIPS指令分
 
 <h2 id="1.3">1.3 RISC和CISC对比</h2>
 
-We can now have a go at defining what we mean by these overused terms. For me, RISC is an adjective applied to machine architectures/instruction sets. In the mid-1980s, it became attached to a group of relatively new architectures in which the instruction set had been cunningly and effectively specified to make pipelined implementations efficient and successful. It’s a useful term because of the great similarity of approach apparent in SPARC, MIPS, PowerPC, HP Precision, DEC Alpha, and (to a lesser extent) in ARM.
+我们如何区分RISC和CISC指令集定义上的区别。在我看来，RISC就是架构和指令集关系的描述。20世纪80年代中期，诞生了一批新的架构，在这些架构中，巧用指令集以最大化这些基于流水线实现的架构的效率。这些被巧用的指令集就被称为精简指令集，采用这些指令集的架构也就称为精简指令集计算机（RISC）。基于RSIC精简指令集设计的CPU架构有SPARC、MIPS、PowerPC、HP Precision、DEC Alpha和ARM。
 
-By contrast to this rather finely aimed description, CISC (Complex Instruction Set Computing) is used negatively to describe architectures whose definition has not been shaped by those insights about pipelined implementations. The RISC revolution was so successful that no post-1985 architecture has abandoned the basic RISC principles;4 thus, CISC architectures are inevitably those born before 1985. In this book you can reasonably assume that something said about CISC is being said to apply to both Intel’s x86 family and Motorola’s 680x0.
+与此形成鲜明对比的是，CISC复杂指令集计算机与流水线的实现没有多大关系。CISC的设计出发点主要是从代码的易用性上考虑的。1985年之后的计算机架构，基本上都是基于RISC实现的。CISC主要是1985年之前的架构使用。比如英特尔公司的X86架构和摩托罗拉公司的680x系列。
 
-Both terms are corrupted when they are applied not to instruction sets but to implementations. It’s certainly true that Intel accelerated the performance of its far-from-RISC x86 family by applying implementation tricks pioneered by RISC builders. But to describe these implementations as having a RISC core is misleading.
+总结来说，RISC和CISC的共同点都是对指令集的描述，但是RISC对于CPU的流水线架构的实现影响比较大，而CISC指令集对于架构的影响不大。虽然，现在的X86架构大量借鉴了RISC的一些实现技巧，用来提升自己的性能。但其本质上还是复杂指令集计算机（CISC）架构。
 
-<h2 id="1.4">1.4 有代表性的MIPS架构芯片</h2>
+<h2 id="1.4">1.4 MIPS架构的发展</h2>
 
-It’s time to take a tour through the evolution of MIPS processors and the systems that use them, over the span of the past 20 years or so. We’ll look at events in the order they occurred, roughly speaking, with a few scenic detours. Along the way, we’ll see that although the MIPS architecture was originally devised with UNIX workstations in mind, it has since found its way into all sorts of other applications—many of which could hardly have been foreseen during the early years. You’ll get to know some of these names much better in the chapters that follow.
+纵观MIPS架构的近40年的发展历程，虽经历过辉煌，但现在也日渐式微。网上有许许多多关于MIPS架构的评论或者见解。笔者对于市场一窍不通，故不在此班门弄斧。但是我本人还是非常欣赏MIPS架构的设计理念：强调软硬件协同提高性能，同时简化硬件设计。
 
-And although much has happened to the instruction set as well as the silicon, the user-level software from a 1985 R2000 would run perfectly well and quite efficiently on any modern MIPS CPU. That’s possibly the best backward compatibility achievement of any popular architecture.
+咱们在此提一下国内的龙芯公司，号称"国产芯"。它由于直接买断了MIPS指令集的授权，所以不受技术封锁的影响。而且，MIPS指令集的授权和ARM指令集的授权有着本质上的不同：MIPS授权后，允许设计厂商自行对架构或者指令集进行自定义；但是ARM授权不允许厂商对其授权的架构进行自定义（当然了，近些年，ARM也已经授权了苹果、高通等公司可以自行定义ARM授权的架构）。所以，龙芯选择MIPS是技术上的选择，也是时代的选择。虽然，最近几年RISC-V开源指令集非常火热，但是其上的软件生态同样需要布局。而龙芯已经在MIPS架构上花费了20年的人力物力，也已经有了一些技术上的沉淀。完全掉头转向RISC-V开源指令集也是不太现实的。希望龙芯能够在CPU领域继续深耕，逐步完善生态系统，实现真正的国产芯片自主化吧。
 
 <h2 id="1.5">1.5 MIPS和CISC的对比</h2>
 
-Programmers who have some assembly-language-level knowledge of earlier architectures—particularly those brought up on x86 or 680x0 CISC instruction sets—may get some surprises from the MIPS instruction set and register model.We’ll try to summarize them here, so you don’t get sidetracked later into doomed searches for things that don’t quite exist, like a stack with push/pop instructions!
+大部分的程序员对汇编语言的认知都来源于X86架构，毕竟是最早的CPU架构之一。但是，当你看见基于MIPS架构的汇编代码时，你还是得到一些惊喜。我个人的感觉就是，基于MIPS架构的汇编语言理解起来还是比较容易的，毕竟它是精简指令集。但是，它又有一些程序代码设计上的奇技淫巧，需要我们额外理解。我们将通过以下几个方面进行归纳总结：
 
-We’ll consider the following: constraints on MIPS operations imposed to make the pipeline efficient; the radically simple load/store operations; possible operations that have been deliberately omitted; unexpected features of the instruction set; and the points where the pipelined operation becomes visible to the programmer.
+1. 为了提高流水线的效率而对MIPS指令操作所施加的限制；
+2. 极度简单的load/store操作；
+3. 有意省略的一些操作；
+4. 指令集的一些预想不到的特性；
+5. 流水线操作中对程序员可见的那些点。
 
-The Stanford group that originally dreamed up MIPS was paying particular attention to the short, simple pipeline it could afford to build. But it’s a testament to the group’s judgment that many of the decisions that flowed from that have proven to make more ambitious implementations easier and faster, too.
-
-1.5.1 Constraints on MIPS Instructions
+最初提出MIPS设想的斯坦福大学的研究小组，特别关注能够实现的简短的流水线架构。后来的事实也证明，他们的判断是完全正确的，由流水线而引申出的许多设计决定被证明，能够更容易、更快速地实现更高的性能。
 
 <h3 id="1.5.1">1.5.1 MIPS指令集的限制</h3>
 
-* All instructions are 32 bits long:
+* 所有的指令都是32位长度：
 
-    That means that no instruction can fit into only two or three bytes of memory (so MIPS binaries are typically 20 percent to 30 percent bigger than for 680x0 or 80x86) and no instruction can be bigger.
+    这意味着没有指令仅占用2个或3个字节的内存空间（也就是说，通常情况下，MIPS架构的二进制文件比X86架构大百分之二十或三十），也没有指令超过4个字节。
 
-    It follows that it is impossible to incorporate a 32-bit constant into a single instruction (there would be no instruction bits left to encode the operation and the target register). The MIPS architects decided to make space for a 26-bit constant to encode the target address of a jump or jump to subroutine; but that’s only for a couple of instructions. Other instructions find room only for a 16-bit constant. It follows that loading an arbitrary 32-bit value requires a two-instruction sequence, and conditional branches are limited to a range of 64-K instructions.
+    这样的结果就是，只通过一条指令无法操作32位常数。因为一个32位指令，没有足够的位为操作数和目标寄存器进行编码。MIPS架构的设计者为两条指令保留了26位，这两条特殊的指令就是跳转jump指令，一个跳转到指定的目标地址，一个跳转到子程序。其它的指令都只有16位留给常数。于是，加载任意一个32位的常数，都需要2条指令才能实现，条件分支被限制到64K的作用范围。
 
-* Instruction actions must fit the pipeline:
 
-    Actions can only be carried out in the right pipeline phase and must be complete in one clock. For example, the register write-back phase provides for just one value to be stored in the register file, so instructions can only change one register.
+* 指令操作必须适合流水线：
 
-    Integer multiply and divide instructions are too important to leave out but can’t be done in one clock. MIPS CPUs have traditionally provided them by dispatching these operations into a separately pipelined unit we’ll talk about later.
+    指令的每一步操作都必须在流水线的正确阶段执行，且必须在一个时钟周期内完成。比如，寄存器写回操作只提供写一个值到寄存器中，所以指令在这个阶段只能改变某个寄存器的内容。
 
-* Three-operand instructions:
+    乘除指令无法在一个时钟周期内完成。MIPS架构的CPU使用的策略就是，将这部分操作分配到单独的一个流水线上进行操作（我们在其它文章中，再讨论这个话题）。
 
-    Arithmetical/logical operations don’t have to specify memory locations, so there are plenty of instruction bits to define two independent sources and one destination register. Compilers love three-operand instructions, which give optimizers much more scope to improve code that handles complex expressions.
+* 3个操作数的指令：
 
-* The 32 registers:
+    编译器偏爱三个操作数的运算，对于复杂的表达式能够有更大的优化空间。而算术/逻辑运算指令不需要存储操作，所以有足够的位表示两个源操作寄存器和一个目的寄存器。
 
-    The choice of the number of registers is largely driven by software requirements, and a set of 32 general-purpose registers is easily the most popular in modern architectures. Using 16 would definitely not be as many as modern compilers like, but 32 is enough for a C compiler to keep frequently accessed data in registers in all but the largest and most intricate functions. Using 64 or more registers requires a bigger instruction field to encode registers and also increases context-switch overhead.
+* 32个通用寄存器：
 
-* Register zero:
+    通用寄存器的个数是由软件需求驱动的，32个通用寄存器是现代计算机架构中常用的数量。如果使用16个寄存器并不能完全满足现代编译器的需要，而使用32个寄存器对于C编译器是完全足够的，足以覆盖最大最复杂的函数调用关系。但是，使用64个寄存器需要占用指令中更多的位去编码寄存器，也会增加上下文切换时的负荷（需要保存的寄存器更多）。
 
-    $0 always returns zero, to give a compact encoding of that useful constant.
+* 寄存器$0：
 
-* No condition codes:
+    寄存器$0总是返回一个0常数。0是最常用的一个常数，直接用一个寄存器表示，可以减少常数向寄存器的加载操作。
 
-    One feature of the MIPS instruction set that is radical even among the 1985 RISCs is the lack of any condition flags. Many architectures have multiple flags for “carry,” “zero,” and so on. CISC architectures typically set these flags according to the result written by any or a large subset of machine instructions, while some RISC architectures retain flags (though typically they are only set explicitly, by compare instructions).
+* 指令不含条件码:
 
-    The MIPS architects decided to keep all this information in the register file: Compare instructions set general-purpose registers and conditional branch instructions test general-purpose registers. That does benefit a pipelined implementation, in that whatever clever mechanisms are built in to reduce the effect of dependencies on arithmetical/logical operations will also reduce dependencies in compare/branch pairs.
+    即使相比其它RISC架构，MIPS指令集也具有一个重要特性就是没有任何条件标志。许多架构使用进位、零等多个标志。像X86等CISC复杂指令集架构的指令中有一些位专门表示是否根据结果设置这些标志位。就是一些RISC指令集架构也保留了一些这样的标志位，比如说ARM，尽管通常只有比较指令可以设置这些标志位。
 
-    We’ll see later that efficient conditional branching (at least in one favorite simple pipeline organization) means that the decision about whether to branch or not has to be squeezed into only half a pipeline stage; the architecture helps out by keeping the branch decision tests very simple. So MIPS conditional branches test a single register for sign/zero or a pair of registers for equality.
+    MIPS架构决定使用寄存器保存这些信息：比较指令根据结果设置通用寄存器，条件分支指令检查判断这些通用寄存器。这样的操作，非常有利于流水线架构的实现，因为这样的机制，比较/分支指令不需要再依赖于算术/逻辑操作，也就是说，它们之间彼此都是独立的，流水线的实现也就更简单。它们之间的逻辑关系由软件实现，这也是MIPS架构的设计理念：强调软硬件结合，简化硬件设计。
+
+    有效的条件分支指令要求，必须在半个时钟周期内做出是否要跳转的决定；MIPS架构通过尽可能简单地测试条件是否满足实现，比如，判断某个寄存器的值是否为符号位或者等于0，再比如，判断两个寄存器的值是否相等。
 
 <h3 id="1.5.2">1.5.2 寻址和内存访问</h3>
 
-* Memory references are always plain register loads and stores:
+* 访问内存都是先load/store到寄存器中：
 
-    Arithmetic on memory variables upsets the pipeline, so it is not done. Every memory reference has an explicit load or store instruction. The large register file makes this much less of a problem than it sounds.
+    算术指令如果直接操作内存变量会破坏简化流水线设计的理念。所以，对内存变量进行操作的时候，先将其加载到寄存器中，然后再对寄存器进行算术逻辑操作。完成后，将将结果再存储到内存中对应的位置。
 
-* Only one data-addressing mode:
+* 只有一种数据寻址模式，寄存器寻址：
 
-    Almost all loads and stores select the memory location with a single base register value modified by a 16-bit signed displacement (a limited register-plus-register address mode is available for floating-point data).
+    几乎所有的加载和存储都是通过寄存器基址加上16位的偏移实现的。
 
-* Byte-addressed:
+* 字节寻址：
 
-    Once data is in a register of a MIPS CPU, all operations always work on the whole register. But the semantics of languages such as C fit badly on a machine that can’t address memory locations down to byte granularity, so MIPS gets a complete set of load/store operations for 8- and 16-bit variables (we will say byte and halfword). Once the data has arrived in a register it will be treated as data of full register length, so partial-word load instructions come in two flavors—sign-extend and zero-extend.
+    MIPS架构中的寄存器是一个整体，所有的操作都是对整个寄存器的操作。所以，无法实现字节或者半字这样的操作。但是，C语言之类的语法又要求可以按照字节或半字进行操作。MIPS架构采取的方式就是，提供一组load/store指令，分别加载字节、半字或WORD大小的内存变量。一旦数据加载到寄存器中，它就看作为一个寄存器长度大小的数据（比如说，32位架构就是32位整数，64位架构就被看作为64位整数）。所以，对于这些字节或半字的load操作，还需要考虑符号位。于是，又延伸出两种加载指令的形式：符号扩展或零扩展。
 
-* Load/stores must be aligned:
+* load/store操作必须对齐：
 
-    Memory operations can only load or store data from addresses aligned to suit the data type being transferred. Bytes can be transferred at any address, but halfwords must be even-aligned and word transfers aligned to four-byte boundaries. Many CISC microprocessors will load/store a four-byte itemfromany byte address, but the penalty is extra clock cycles.
+    MIPS架构内存访问必须是按对齐方式进行的。字节可以是任何地址，但是半字就必须是偶数地址对齐，WORD必须是4字节对齐的方式。CISC指令集架构的微处理器可以从任意地址处读取一个4字节的数据，代价就是需要多花费一些时钟周期。
 
-    However, the MIPS instruction set architecture (ISA) does include a couple of peculiar instructions to simplify the job of loading or storing at improperly aligned addresses.
+    但是，MIPS指令集一些特殊的指令，以简化未正确对齐的地址上load和store的工作。
 
-* Jump instructions:
+* 跳转指令：
 
-    The limited 32-bit instruction length is a particular problem for branches in an architecture that wants to support very large programs. The smallest opcode field in a MIPS instruction is 6 bits, leaving 26 bits to define the target of a jump. Since all instructions are four-byte aligned in memory, the two least significant address bits need not be stored, allowing an address range of 228 = 256 MB. Rather than make this branch PC relative, this is interpreted as an absolute address within a 256-MB segment. That’s inconvenient for single programs larger than this, although it hasn’t been much of a problem yet! Branches out of segment can be achieved by using a jumpregister instruction, which can go to any 32-bit address.
+    指令的长度限制为32位，对于想要大范围跳转的分支指令是一个很大的问题。MIPS指令中最小的操作码域是6位，为跳转的目的地址保留了26位。因为内存中的指令代码都是4字节对齐的，也就是说，最低2位不需要保存，那么允许访问的程序范围就是2^28，等于256MB。这个地址不是相对于PC（程序计数器）的，而是被解释为256M的代码段中一个绝对地址。这样以来，对于大于256M的单个程序非常不便。虽然，可以使用寄存器保存跳转目标，然后再使用跳转指令跳转到32位地址的任何地方。
 
-    Conditional branches have only a 16-bit displacement field—giving a 218-byte range, since instructions are four-byte aligned—which is interpreted as a signed PC-relative displacement. Compilers can only code a simple conditional branch instruction if they know that the target will be within 128 KB of the instruction following the branch.
+    条件分支指令只有16位的偏移量，对于4字节对齐的内存空间，其访问的范围是2^18B。但是这儿的地址可以解释为相对PC寄存器的正负范围。所以，编译器只有知道目标地址在分支指令前后128KB的范围内才能正确地编码条件分支指令。
 
 <h3 id="1.5.3">1.5.3 MIPS没有的特性</h3>
 
-* No byte or halfword arithmetic:
+* 没有字节或半字算术运算：
 
-    All arithmetical and logical operations are performed on 32-bit quantities. Byte and/or halfword arithmetic requires significant extra resources and many more opcodes, and it is rarely really useful. The C language’s semantics cause most calculations to be carried out with int precision, and for MIPS int is a 32-bit integer. However, where a program explicitly does arithmetic as short or char, a MIPS compiler must insert extra code to make sure that the results wrap and overflow as they would on a native 16- or 8-bit machine.
+    所有的算术和逻辑操作都是基于32位完成的。操作字节或者半字要求更多的额外资源和更多的操作码，所以，一般不推荐使用。但是，如果程序中显式地使用short或者char类型的数据进行运算，支持MIPS架构的编译器必须额外地插入一些机器指令，保证结果能够像在真正的16位或8位机器上那样正确运行。
 
-* No special stack support:
+* 没有对堆栈寄存器的特定支持：
 
-    Conventional MIPS assembly usage does define one of the registers as a stack pointer, but there’s nothing special to the hardware about sp. There is a recommended format for the stack frame layout of subroutines, so that you can mix modules from different languages and compilers; you should almost certainly stick to these conventions, but they have no relationship to the hardware. A stack pop wouldn’t fit the pipeline, because it would have two register values to write (the data from the stack and the incremented pointer value).
+    虽然，传统意义上的MIPS汇编代码确定也会定义一个寄存器作为堆栈指针寄存器，但是，硬件上没有规定那个寄存器是特定的sp寄存器。而像ARM和X86架构有一个特定的sp寄存器。我们都知道，对于函数调用的实现，有一些约定俗成的格式，比如说`System V ABI`。有一种推荐的子程序调用时堆栈栈帧布局，这样可以混合使用汇编语言和C语言编程，使用不同的编译器选项进行编译。但是这一切和硬件都没有关系，需要人为实现。堆栈的pop操作不符合流水线的执行，因为它要写两个寄存器（来自堆栈的数据和增加的指针值）。
 
-* Minimal subroutine support:
+* 最少的子程序支持：
 
-    There is one special feature: jump instructions have a jump and link option, which stores the return address into a register. $31 is the default, so for convenience and by convention $31 becomes the return address register.
+    跳转指令也与我们习惯上的认知有所不同：具有跳转（jump）和链接（link）跳转指令，把返回地址写入到一个固定的寄存器中。默认使用$31作为返回地址寄存器。
 
-    This is less sophisticated than storing the return address on a stack, but it has some significant advantages. Two examples will give you a feeling for the argument: First, it preserves a pure separation between branch and memory-accessing instructions; second, it can aid efficiency when calling small subroutines that don’t need to save the return address on the stack at all.
+    这比把返回地址保存到堆栈中更为简单，而且还有许多优点。举两个例子让你对这种论断有一个直观感受：第一，它把分支指令和内存访问指令分离开来；第二，当调用不需要保存返回地址的子程序时，有助于提高效率。
 
-* Minimal interrupt handling:
+* 最少的中断处理：
 
-    It is hard to see how the hardware could do less. It stashes away the restart location in a special register, modifies the machine state just enough to let you find out what happened and to disallow further interrupts, then jumps to a single predefined location in low memory. Everything else is up to the software.
+    很难看到比这做得更少的硬件了。它把程序重新运行的地址保存到一个特定寄存器中，修改机器状态，然后禁止中断。做完这些后，跳转到一段保存到低内存中的预定义好的程序，之后的工作完全由软件控制。
 
-* Minimal exception handling:
+    其实，现在处理器对于中断都是基于能少则少的原则进行处理。硬件上，MIPS架构则是只保存了一个重新运行的地址，而像X86架构，还需要保存eflags、cs、eip、ss和esp等寄存器。所以，MIPS的中断处理更为简单。
 
-    Interrupts are just one sort of exception (the MIPS word exception covers all sorts of events where the CPU may want to interrupt normal sequential processing and invoke a software handler). An exception may result from an interrupt, an attempt to access virtual memory that isn’t physically present, or many other things. You go through an exception, too, on a deliberately planted trap instruction like a system call that is used to get into the kernel in a protected OS. All exceptions result in control passing to the same fixed entry point.7
+* 最少的异常处理：
 
-    On any exception, a MIPS CPU does not store anything on a stack, write memory, or preserve any registers for you.
+    异常的硬件处理其实同中断处理一样。MIPS架构把中断看作为异常的一种，MIPS的异常涵盖了CPU想要中断所有顺序的执行，调用软件处理程序所产生的所有事件。比如中断、试图访问物理地址不存在的虚拟内存或者其它事情都可以产生异常。还有比如故意植入的trap陷阱指令，像为了访问内核态程序的系统调用都是一种异常。所有的异常都导致CPU的控制权传递给一个固定的入口点。
 
-    By convention, two general-purpose registers are reserved so that exception routines can bootstrap themselves (it is impossible to do anything on a MIPS CPU without using some registers). For a program running in any system that takes interrupts or traps, the values of these registers may change at any time, so you’d better not use them.
+    对于任何异常，MIPS架构的CPU不会存储任何东西到堆栈上，也不会写内存或者保存任何寄存器。一切都由你自己决定。这与ARM和X86架构都是不一样的。
 
-<h3 id="1.5.4">1.5.4 MIPS架构流水线的好处</h3>
+    按照约定，MIPS架构也保留了2个通用寄存器，让异常程序可以自举（在MIPS架构的CPU上，不使用寄存器是无法工作的）。但是，对于一个旨在多架构上运行的、允许中断或陷阱（trap）的通用系统，这两个寄存器的值随时会发生变化，最后不要使用它们。
 
-So far, this has all been what you might expect from a simplified CPU. However, making the instruction set pipeline friendly has some stranger effects as well, and to understand them we’re going to draw some pictures.
+<h3 id="1.5.4">1.5.4 MIPS架构流水线的延迟</h3>
 
-* Delayed branches:
+前面我们讨论的都是简化CPU的设计带来的一些结果。但是，为了使指令集对流水线更友好，也产生了一些奇怪的效应，想要理解它们并不容易：
 
-    The pipeline structure of the MIPS CPU (Figure 1.3) means that when a jump/branch instruction reaches the execute phase and a new program counter is generated, the instruction after the jump will already have been started. Rather than discard this potentially useful work, the architecture dictates that the instruction after a branch must always be executed before the instruction at the target of the branch. The instruction position following any branch is called the branch delay slot. If nothing special was done by the hardware, the decision to branch or not, together with the branch target address, would emerge at the end of the ALU pipestage—by which time, as Figure 1.3 shows, you’re too late to present an address for an instruction in even the next-but-one pipeline slot.
+* 分支延迟：
 
-    But branches are important enough to justify special treatment, and you can see fromFigure 1.3 that a special path is provided through the ALU to make the branch address available half a clock cycle early. Together with the odd half-clock-cycle shift of the instruction fetch stage, that means that the branch target can be fetched in time to become the next but one,so the hardware runs the branch instruction, then the branch delay slot instruction, and then the branch target—with no other delays.
+    <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_1_3.PNG">
 
-    It is the responsibility of the compiler system or the assembly programming wizard to allowfor and even to exploit the branch delay; it turns out that it is usually possible toarrange that the instruction in the branchdelay slot does useful work. Quite often, the instruction that would otherwise have been placed before the branch can be moved into the delay slot.
+    如上图的流水线结构图所示，当一个jump指令在读取阶段时，又产生了新的PC寄存器值，jump指令后的指令也被启动了。MIPS架构规定，分支指令后的指令总是在分支目标指令之前执行。跟随在分支指令后的指令位置被称为`分支延迟槽`，具体物理意义有点抽象，对应上图的话，就是横向上的一格。对于分支延迟槽，如果硬件不做任何特殊处理的话，决定是否跳转以及跳转的目标地址等，这些工作就会在ALU阶段结束时才能完成，此时即使是在下下个流水线槽都来不及提供一个指令地址。
 
-    This can be a bit tricky on a conditional branch, where the branch delay instruction must be (at least) harmless on both paths. Where nothing useful can be done, the delay slot is filled with a nop instruction. Many MIPS assemblers will hide this odd feature from you unless you explicitly ask them not to.
+    但是分支指令的重要性足以给其特殊处理，从上图可以看出，通过特殊的处理，ALU阶段可以在半个时钟周期内就使目标地址可用。连同取指令提前的半个周期，刚好在下下个流水线槽得到分支目标地址作为指令开始执行。所以，CPU控制单元执行的顺序是，分支指令，分支延迟槽指令，然后是分支目标指令，中间没有延时。
 
-* Late data from load (load delay slot):
+    如何利用好这个分支延迟槽，就是编译器或者汇编程序编写者的责任了。可以适当安排位于分支延迟槽中的指令做些有用的工作。也可以把不影响执行顺序的指令安排到分支延迟槽中执行。
 
-    Another consequence of the pipeline is that a load instruction’s data arrives from the cache/memory system after the next instruction’s ALU phase starts—so it is not possible to use the data from a load in the following instruction. (See Figure 1.4 for how this works.)
+    对于条件分支指令，这个比较复杂，至少保证位于分支延迟槽的指令对两个分支都是无害的。如果是在没有可以安排的指令，可以添加一个nop指令。这也是我们经常在MIPS架构的汇编代码中看到的处理方式。
 
-    The instruction position immediately after the load is called the load delay slot, and an optimizing compiler will try to do something useful with it. The assembler will hide this from you but may end up putting in a nop. On modern MIPS CPUs the load result is interlocked: If you try to use the result too early, the CPU stops until the data arrives. But on early MIPS CPUs, there were no interlocks, and the attempt to use data in the load delay slot led to unpredictable results.
+* 数据加载延迟（加载延时槽）：
+    
+    <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_1_4.PNG">
+
+    简化的流水线另一个结果就是，当下一条指令到达ALU阶段的时候，上一条load指令的数据才开始从cache或内存中到达。也就是说，load指令后的下一条指令还是不能使用数据的。
+
+    那么load指令后的位置，就称为`加载延时槽`。带有优化的编译器总是尝试利用这个加载延时槽。有时候，编译器会把这个位置填充一个nop操作。最新的MIPS架构CPU上，load操作也是采用了互锁机制：如果你尝试过早使用这个数据，CPU会停止执行，等待这个数据到达。但是，在早期的CPU上，没有互锁机制，过早的使用这个数据，会产生不可预料的结果。
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
