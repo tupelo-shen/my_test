@@ -6,32 +6,12 @@
 
 ---
 
-You are increasingly unlikely to meet a MIPS floating-point coprocessor — always known as floating-point accelerator, or FPA — in the flesh. In newer MIPS CPUs the FPA is either part of the CPU or isn’t there at all.
+本章我们讨论一下MIPS架构中的FPU浮点单元。
 
-In 1987 the MIPS FPA set a new benchmark for performance for microprocessor math performance in affordable workstations. Unlike the CPU, which was mostly a rather straightforward implementation relying on its basic architecture for its performance, the FPA was a heroic silicon design brisling with innovation and ingenuity. Of course, now everyone has learned how to do it!
-
-Since then the MIPS FPA has been pulled onward by Silicon Graphics’s need for math performance that would once have been the preserve of supercompeters. I expect to see a lot more embedded applications that need very high floating-point performance in the next few years, so even the most abstruse and high-end features may move rapidly down the MIPS family.
-
-# 7.1 浮点数基本介绍
 <h2 id="7.1">7.1 浮点数基本介绍</h2>
 
-Floating-point math retains a great deal of mystery. You probably have a very clear idea of what it is for, but you may be hazy about the details. This section describes the various components of the data and what they mean. In so doing we are bound to tell most of you things you already know; please skip ahead but keep an eye on the text!
+浮点数在计算机中是如何表示的，可以自行google或者其它方法。
 
-People who deal with numbers that may be very large or very small are used to using exponential (scientific) notation; for example, the distance from the earth to the sun is 93 × 106 miles. The number is defined by 93, themantissa, and 6, the exponent.
-
-The same distance can be written 9.3 × 107 miles. Numerical analysts like to use the second form; a decimal exponent with a mantissa between 1.0 and 9.999. . . ... is called normalized.1 The normalized form is useful for computer representation, since we don’t have to keep separate information about the position of the decimal point.
-
-Computer-held floating-point numbers are an exponential form, but in base 2 instead of base 10. Both mantissa and exponent are held as binary fields. Just changing the exponent into a power of two, the distance quoted above is 1.38580799102783203125 × 2^26 miles. The mantissa can be expressed as a binary “decimal”, which is just like a real decimal; for example, 
-
-    1.38580799102783203125 = 1 + 3 × 10^(-1) + 8 × 10^(-2) + 5 × 10^(-3) + ...
-
-is the same value as binary
-
-    1.01100010110001000101 = 1 + 0 × 2^(-1) + 1 × 2^(-2) + 1 × 2^(-3) + ...
-
-However, neither the mantissa nor the exponent are stored just like this in standard formats — and to understand why, we need to review a little history.
-
-#7.2 IEEE754标准及其背景知识
 <h2 id="7.2">7.2 IEEE754标准及其背景知识</h2>
 
 Because floating point deals with the approximate representations of numbers (in the same way as decimals do), computer implementations used to differ in the details of their behavior with regard to very small or large numbers. This meant that numerical routines, identically coded, might behave differently. In some sense these differences shouldn’t have mattered: You only got different answers in circumstances where no implementation could really produce a “correct” answer.
@@ -44,7 +24,111 @@ Perhaps IEEE754 has too many options, but it is a huge improvement on the chaos 
 
 The operations regulated by IEEE754 include every operation that MIPS FPAs can do in hardware, plus some that must be emulated by software. IEEE754 legislates the following:
 
-# 7.12 Initialization and Enabling on Demand
+<h2 id="7.3">7.3 IEEE754浮点数如何存储</h2>
+
+IEEE recommends a number of different binary formats for encoding floatingpoint numbers, at several different sizes. But all of them have some common ingenious features, which are built on the experience of implementers in the early chaotic years.
+
+The first thing is that the exponent is not stored as a signed binary number, but biased so that the exponent field is always positive: The exponent value 1 represents the tiniest (most negative) legitimate exponent value; for the 64-bit IEEE format the exponent field is 11 bits long and can hold numbers from 0 to 2,047. The exponent values 0 and 2,047 (all ones, in binary) are kept back for special purposes we’ll come to in a moment, so we can represent a range of exponents from −1,022 to +1,023.
+
+For a number:
+
+    mantissa × 2^exponent
+
+we actually store the binary representation of:
+
+    exponent + 1,023
+
+in the exponent field.
+
+The biased exponent (together with careful ordering of the fields) has the useful effect of ensuring that FP comparisons (equality, greater than, less than, etc.) have the same result as is obtained from comparing two signed integers composed of the same bits. FP compare operations can therefore be provided by cheap, fast, and familiar logic.
+
+<h3 id="7.3.1">7.3.1 IEEE尾数和规格化</h3>
+
+The IEEE format uses a single sign bit separate fromthe mantissa (0 for positive, 1 for negative). So the stored mantissa only has to represent positive numbers. All properly represented numbers in IEEE format are normalized, so:
+
+    1 ≤ mantissa < 2
+
+This means that the most significant bit of the mantissa (the single binary digit before the point) is always a 1, so we don’t actually need to store it. The IEEE standard calls this the hidden bit.
+
+So now the number 93,000,000, whose normalized representation has a binary mantissa of 1.01100010110001000101 and a binary exponent of 26, is represented in IEEE 64-bit format by setting the fields:
+
+    mantissafield = 01100010110001000101000 . . .
+    exponentfield = 1049 = 10000011001
+
+Looking at it the other way, a 64-bit IEEE number with an exponent field of E and a mantissa field of m represents the number f, where:
+
+    f = 1.m × 2^(E−1023)
+
+(provided that you accept that 1.m represents the binary fraction with 1 before the point and the mantissa field contents after it).
+
+7.3.2 Reserved Exponent Values for Use with Strange Values
+
+The smallest and biggest exponent field values are used to represent otherwiseillegal quantities.
+
+E == 0 is used to represent zero (with a zero mantissa) and denormalized forms, for numbers too small to represent in the standard form. The denormalized number with E zero and mantissa m represents f, where:
+
+    f = 0.m × 2^(−1022)
+
+As denormalized numbers get smaller, precision is progressively lost. No MIPS FPU built to date is able to cope with either generating denormalized results or computing with them, and operations creating or involving them will be punted to the software exception handler. Modern MIPS FPUs can be configured to replace a denormalized result with a zero and keep going.
+
+E == 111. . . 1 (i.e., the binary representation of 2,047 in the 11-bit field used for an IEEE double) is used to represent the following:
+
+* With the mantissa zero, it is the illegal values +inf, −inf (distinguished by the usual sign bit).
+
+* With the mantissa nonzero, it is a NaN. For MIPS, the most significant bit of the mantissa determines whether the NaN is quiet (MS bit 0) or signaling (MS bit 1). This choice is not part of the IEEE standard and is opposite to the convention used by most other IEEE-compatible architectures.3
+
+<h3 id="7.3.3">7.3.3 MIPS架构浮点数据格式</h3>
+
+MIPS架构采用了IEEE754的两种浮点数：
+
+* 单精度
+
+    在内存中占用32位的存储空间。MIPS的编译器使用单精度表示C语言的float类型。
+
+* 双精度
+
+    在内存中占用64位的存储空间。MIPS编译器使用双精度表示C语言的double类型。
+
+浮点数在内存和寄存器中的布局，参考下图：
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_7_1.PNG">
+
+表示浮点数的C语言结构体，如下所示：
+
+    #if BYTE_ORDER == BIG_ENDIAN /* 大端模式 */
+    struct ieee754dp_konst {
+        unsigned sign:1;
+        unsigned bexp:11;
+        unsigned manthi:20; /* 无法直接定义52位 */
+        unsigned mantlo:32;
+    };
+    struct ieee754sp_konst {
+        unsigned sign:1;
+        unsigned bexp:8;
+        unsigned mant:23;
+    };
+    #else           /* 小端模式 */
+    struct ieee754dp_konst {
+        unsigned mantlo:32;
+        unsigned manthi:20;
+        unsigned bexp:11;
+        unsigned sign:1;
+    };
+    struct ieee754sp_konst {
+        unsigned mant:23;
+        unsigned bexp:8;
+        unsigned sign:1;
+    };
+    #endif
+
+<h2 id="7.4">7.4 IEEE754浮点数如何存储</h2>
+<h2 id="7.5">7.5 IEEE754浮点数如何存储</h2>
+<h2 id="7.6">7.6 IEEE754浮点数如何存储</h2>
+<h2 id="7.7">7.7 IEEE754浮点数如何存储</h2>
+<h2 id="7.8">7.8 IEEE754浮点数如何存储</h2>
+<h2 id="7.9">7.9 IEEE754浮点数如何存储</h2>
+<h2 id="7.10">7.10 IEEE754浮点数如何存储</h2>
+<h2 id="7.11">7.11 IEEE754浮点数如何存储</h2>
 <h2 id="7.12">7.12 按需初始化和使能FPU</h2>
 
 通常情况下，一旦复位会将CPU的SR寄存器设置为禁止所有可选配的协处理器，包括FPU（协处理器1）。SR的CU1比特位可以设置FPU工作。对于遵循MIPS-III及以后的FPU，可以使用32个64位寄存器；对于MIPS-I兼容模式，可以使用32个32位寄存器（偶数号的寄存器可用）。
