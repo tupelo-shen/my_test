@@ -1,3 +1,5 @@
+本文将自己常用的一个makefile一步步按照解决需求的思路，逐步深入。并没有枯燥地讲解makefile的基础，而是在涉及的地方进行说明。这样，在解决问题的兴奋中，逐渐也掌握了makefile编写的真谛。希望对大家有帮助。
+
 # 1 makefile初探
 
 如果没有makefile，我们编译C或者C++代码只能是手动一个个敲，然后再编译。比如，有一个文件`hello.c`,
@@ -300,7 +302,7 @@
 
 # 7 添加依赖关系的支持
 
-新的makefile如下：
+有时候，我们改动了某个头文件或者源文件，不想`make clean`，再重新`make`。只想直接编译改动相关的文件而已。那么，按照这个需求实现的新makefile，内容如下所示：
 
     # 编译器
     CC := gcc
@@ -313,6 +315,7 @@
     SUB_INCS_DIR:= -I ./sub/inc
     # 构建目录
     BUILD_DIR   := ./build
+    DEPS_DIR    := $(BUILD_DIR)/deps
 
     # 源文件
     # OBJS      +=  $(patsubst %.c,%.o, $(wildcard $(SRC_DIR)/*.c $(SUB_SRC_DIR)/*.c))
@@ -320,7 +323,7 @@
     # 目标文件
     OBJS    += $(addprefix $(BUILD_DIR)/,$(patsubst %.c,%.o,$(notdir $(wildcard $(SRC_DIR)/*.c $(SUB_SRC_DIR)/*.c))))
     # 添加依赖关系
-    C_DEPS  := $(OBJS:.o=.d)
+    C_DEPS  := $(addprefix $(DEPS_DIR)/,$(patsubst %.c,%.d,$(notdir $(wildcard $(SRC_DIR)/*.c $(SUB_SRC_DIR)/*.c))))
 
     TARGET  := hello
 
@@ -332,26 +335,59 @@
     # $@即hello，$^即$(OBJS)中，所有的.o目标文件
     # 如果此处只有一个依赖文件，比如hello.o，也可以用$<替代$^
 
-    # 这时候因为目标文件已经脱离了源文件的环境，
+    # 1. 这时候因为目标文件已经脱离了源文件的环境，
     # 用makefile隐含规则自动编译已经不可行了。
-    # 我们显式执行编译
+    # 我们显式执行编译。
+    # 2. 把之前的$^修改为$<，要不然不符合一一对应的关系
     $(BUILD_DIR)/%.o:$(SRC_DIR)/%.c
-        $(CC) -c $(SUB_INCS_DIR) -o $@ $^
+        $(CC) -c $(SUB_INCS_DIR)  $< -o $@
     $(BUILD_DIR)/%.o:$(SUB_SRC_DIR)/%.c
-        $(CC) -c $(SUB_INCS_DIR) -o $@ $^
+        $(CC) -c $(SUB_INCS_DIR)  $< -o $@
 
     # 添加依赖关系
-    $(BUILD_DIR)/%.d : $(SRC_DIR)/%.c
-        @set -e; rm -f $@; $(CC) -MM $< $(SUB_INCS_DIR) > $@.$$$$; \
-        sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+    $(DEPS_DIR)/%.d : $(SRC_DIR)/%.c
+        @set -e; $(CC) -MM $(SUB_INCS_DIR) $< > $@.$$$$; \
+        sed 's,\($*\)\.o[ :]*,$(BUILD_DIR)/\1.o $@ : ,g' < $@.$$$$ > $@; \
         rm -f $@.$$$$
-    $(BUILD_DIR)/%.d : $(SUB_SRC_DIR)/%.c
-        @set -e; rm -f $@; $(CC) -MM $< $(SUB_INCS_DIR) > $@.$$$$; \
-        sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+    $(DEPS_DIR)/%.d : $(SUB_SRC_DIR)/%.c
+        @set -e; $(CC) -MM $(SUB_INCS_DIR) $< > $@.$$$$; \
+        sed 's,\($*\)\.o[ :]*,$(BUILD_DIR)/\1.o $@ : ,g' < $@.$$$$ > $@; \
         rm -f $@.$$$$
-     
-    -include $(C_DEPS)
+
+    include $(C_DEPS)
 
     .PHONY: clean       # 伪目标的意义就是，无论如何都执行下面的命令
     clean:
         rm -f $(TARGET) $(OBJS) $(C_DEPS)
+
+现在编译后的文件树结构为：
+
+    .
+    ├── build
+    │   ├── deps
+    │   │   ├── hello1.d
+    │   │   ├── hello2.d
+    │   │   ├── hello.d
+    │   │   ├── sub_routine1.d
+    │   │   └── sub_routine2.d
+    │   ├── hello1.o
+    │   ├── hello2.o
+    │   ├── hello.o
+    │   ├── sub_routine1.o
+    │   └── sub_routine2.o
+    ├── hello
+    ├── hello1.c
+    ├── hello2.c
+    ├── hello.c
+    ├── makefile
+    └── sub
+        ├── inc
+        │   ├── sub_routine1.h
+        │   └── sub_routine2.h
+        └── src
+            ├── sub_routine1.c
+            └── sub_routine2.c
+
+至此，makefile的讲解到此为止了。上面的makefile应该能满足大部分中小规模的项目开发了。
+
+如果你还有其它的想法，可以与我交流。
