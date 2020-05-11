@@ -318,9 +318,7 @@ More complex modes such as double-register or scaled index must be implemented w
 
 <h2 id="2.5">2.5 存储器与寄存器的数据类型</h2>
 
-MIPS CPUs can load or store between one and eight bytes in a single operation.
-Naming conventions used in the documentation and to build instruction
-mnemonics are as follows.
+MIPS CPUs can load or store between one and eight bytes in a single operation. Naming conventions used in the documentation and to build instruction mnemonics are as follows.
 
 2.5.1 Integer Data Types
 
