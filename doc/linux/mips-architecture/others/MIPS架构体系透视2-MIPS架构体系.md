@@ -2,9 +2,16 @@
 
 * [2.1 MIPS汇编语言的风格初探](#2.1)
 * [2.2 寄存器](#2.2)
-* [2.3 RISC和CISC对比](#2.3)
-* [2.4 MIPS架构的发展](#2.4)
-* [2.5 MIPS架构和CISC架构的对比](#2.5)
+* [2.3 整数乘法硬件单元](#2.3)
+* [2.4 加载与存储：寻址方式](#2.4)
+* [2.5 存储器与寄存器的数据类型](#2.5)
+    - [2.5.1 整数数据类型](#2.5.1)
+    - [2.5.2 非对齐load和store](#2.5.2)
+    - [2.5.3 内存中的浮点数](#2.5.3)
+* [2.6 汇编语言的合成指令](#2.6)
+* [2.7 MIPS I到MIPS64指令集](#2.7)
+* [2.8 基本地址空间](#2.8)
+* [2.9 流水线可见性](#2.9)
 
 ---
 
@@ -201,132 +208,54 @@ MIPS有32个通用寄存器（$0-$31），各寄存器的功能及汇编程序�
 
     MIPS有个jal(jump-and-link,跳转并链接)指令，在跳转到某个地址时，把下一条指令的 地址放到$ra中，用于支持子程序调用。例如，调用程序把参数放到$a0~$a3,然后使用jal指令跳转到子程序执行；被调用过程完成后，把结果放到$v0,$v1寄存器中，然后使用`jr $ra`返回。
 
-## MIPS 指令总结
 
-下表是MIPS指令总结表，供以后查阅使用：
+<h2 id="2.3">2.3 整数乘法硬件单元</h2>
 
-| 指令 | 举例 | 功能描述 |
-| ---- | ---- | -------- |
-| LB   | LB R1, 0(R2) | 从存储器中读取一个字节的数据到寄存器中 |
-| LH   | LH R1, 0(R2) | 从存储器中读取半个字的数据到寄存器中 |
-| LW   | LW R1, 0(R2) | 从存储器中读取一个字的数据到寄存器中 |
-| LD   | LD R1, 0(R2) | 从存储器中读取双字的数据到寄存器中 |
-| L.S  | L.S R1, 0(R2)| 从存储器中读取单精度浮点数到寄存器中 |
-| L.D  | L.D R1, 0(R2)| 从存储器中读取双精度浮点数到寄存器中 |
-| LBU  | LBU R1, 0(R2)| 功能与LB指令相同，但读出的是无符号数据 |
-| LHU  | LHU R1, 0(R2)| 功能与LH指令相同，但读出的是无符号数据 |
-| LWU  | LWU R1, 0(R2)| 功能与LW指令相同，但读出的是无符号数据 |
-| SB   | SB R1, 0(R2) | 把一个字节的数据从寄存器存储到存储器中 |
-| SH   | SH R1，0(R2) | 把半个字节的数据从寄存器存储到存储器中 |
-| SW   | SW R1, 0(R2) | 把一个字的数据从寄存器存储到存储器中   |
-| SD   | SD R1, 0(R2) | 把两个字节的数据从寄存器存储到存储器中 |
-| S.S  | S.S R1, 0(R2)| 把单精度浮点数从寄存器存储到存储器中   |
-| S.D  | S.D R1, 0(R2)| 把双精度数据从存储器存储到存储器中     |
-| DADD | DADD R1,R2,R3| 把两个定点寄存器的内容相加             |
-| DADDI| DADDI R1,R2,#3|把一个寄存器的内容加上一个立即数       |
-| DADDU| DADDU R1,R2,R3|不带符号的加                           |
-| DADDIU|DADDIU R1,R2,#3| 把一个寄存器的内容加上一个无符号的立即数|
-| ADD.S| ADD.S F0,F1,F2|把一个单精度浮点数加上一个双精度浮点数，结果是单精度浮点数|
-| ADD.D| ADD.D F0,F1,F2|把一个双精度浮点数加上一个单精度浮点数，结果是双精度浮点数|
-| ADD.PS|ADD.PS F0,F1,F2|两个单精度浮点数相加，结果是单精度浮点数|
-| DSUB | DSUB R1,R2,R3 | 两个寄存器的内容相减，也就是定点数的减 |
-| DSUBU| DSUBU R1,R2,R3| 不带符号的减 |
-| SUB.S| SUB.S F1,F2,F3| 一个双精度浮点数减去一个单精度浮点数，结果为单精度 |
-| SUB.D| SUB.D F1,F2,F3| 一个双精度浮点数减去一个单精度浮点数，结果为双精度浮点数 |
-| SUB.PS| SUB.SP F1,F2,F3 | 两个单精度浮点数相减 |
-| DDIV | DDIV R1,R2,R3 | 两个定点寄存器的内容相除，也就是定点除 |
-| DDIVU| DDIVU R1,R2,R3 | 不带符号的除法运算 |
-| DIV.S| DIV.S F1,F2,F3 | 一个双精度浮点数除以一个单精度浮点数，结果为单精度浮点数 |
-| DIV.D| DIV.D F1,F2,F3 | 一个双精度浮点数除以一个单精度浮点数，结果为双精度浮点数 |
-| DIV.PS|DIV.PS F1,F2,F3| 两个单精度浮点数相除，结果为单精度 |
-| DMUL | DMUL R1,R2,R3| 两个定点寄存器的内容相乘，也就是定点乘 |
-| DMULU| DMULU R1,R2,R3 | 不带符号的乘法运算 |
-| MUL.S| DMUL.S F1,F2,F3| 一个双精度浮点数乘以一个单精度浮点数，结果为单精度浮点数 |
-| MUL.D| DMUL.D F1,F2,F3| 一个双精度浮点数乘以一个单精度浮点数，结果为双精度浮点数 |
-| MUL.PS|DMUL.PS F1,F2,F3|两个单精度浮点数相乘，结果为单精度浮点数|
-| AND  | AND R1,R2,R3 | 与运算，两个寄存器中的内容相与 |
-| ANDI | ANDI R1,R2,#3 | 一个寄存器中的内容与一个立即数相与 |
-| OR   | OR R1,R2,R3  | 或运算，两个寄存器中的内容相或 |
-| ORI  | ORI R1,R2,#3  | 一个寄存器中的内容与一个立即数相或 |
-| XOR  | XOR R1,R2,R3 | 异或运算，两个寄存器中的内容相异或 |
-| XORI | XORI R1,R2,#3 | 一个寄存器中的内容与一个立即数异或 |
-| BEQZ | BEQZ R1,0      | 条件转移指令，当寄存器中内容为0时转移发生 |
-| BENZ | BNEZ R1,0      | 条件转移指令，当寄存器中内容不为0时转移发生 |
-| BEQ  | BEQ R1,R2      | 条件转移指令，当两个寄存器内容相等时转移发生 |
-| BNE  | BNE R1,R2      | 条件转移指令，当两个寄存器中内容不等时转移发生 |
-| J    | J name         | 直接跳转指令，跳转的地址在指令中 |
-| JR   | JR R1          | 使用寄存器的跳转指令，跳转地址在寄存器中 |
-| JAL  | JAL R1 name    | 直接跳转指令，并带有链接功能，指令的跳转地址在指令中，跳转发生时要把返回地址存放到R31这个寄存器中 |
-| JALR | JALR R1 | 使用寄存器的跳转指令，并且带有链接功能，指令的跳转地址在寄存器中，跳转发生时指令的放回地址放在R31这个寄存器中|
-| MOV.S| MOV.S F0,F1    | 把一个单精度浮点数从一个浮点寄存器复制到另一个浮点寄存器 |
-| MOV.D| MOV.D F0,F1    | 把一个双精度浮点数从一个浮点寄存器复制到另一个浮点寄存器 |
-| MFC0 | MFC0 R1,R2     | 把一个数据从通用寄存器复制到特殊寄存器 |
-| MTC0 | MTC0 R1,R2     | 把一个数据从特殊寄存器复制到通用寄存器 |
-| MFC1 | MFC1 R1,F1     | 把一个数据从定点寄存器复制到浮点寄存器 |
-| MTC1 | MTC1 R1,F1     | 把一个数据从浮点寄存器复制到定点寄存器 |
-| LUI  | LUI R1,#42     | 把一个16位的立即数填入到寄存器的高16位，低16位补零 |
-| DSLL | DSLL R1,R2,#2  | 双字逻辑左移 |
-| DSRL | DSRL R1,R2,#2  | 双字逻辑右移 |
-| DSRA | DSRA R1,R2,#2  | 双字算术右移 |
-| DSLLV| DSLLV R1,R2,#2 | 可变的双字逻辑左移 |
-| DSRLV| DSRLV R1,R2,#2 | 可变的双字罗伊右移 |
-| DSRAV| DSRAV R1,R2,#2 | 可变的双字算术右移 |
-| SLT  | SLT R1,R2,R3   | 如果R2的值小于R3，那么设置R1的值为1，否则设置R1的值为0 |
-| SLTI | SLTI R1,R2,#23 | 如果寄存器R2的值小于立即数，那么设置R1的值为1，否则设置寄存器R1的值为0 |
-| SLTU | SLTU R1,R2,R3  | 功能与SLT一致，但是带符号的 |
-| SLTUI| SLTUI R1,R2,R3 | 功能与SLT一致，但不带符号 |
-| MOVN | MOVN R1,R2,R3  | 如果第三个寄存器的内容为负，那么复制一个寄存器的内容到另外一个寄存器 |
-| MOVZ | MOVZ R1,R2,R3  | 如果第三个寄存器的内容为0，那么复制一个寄存器的内容到另外一个寄存器 |
-| TRAP | ---- | 根据地址向量转入管态 |
-| ERET | ---- | 从异常中返回到用户态 |
-| MADD.S | ---- | 一个双精度浮点数与单精度浮点数相乘加，结果为单精度 |
-| MADD.D | ---- | 一个双精度浮点数与单精度浮点数相乘加，结果为双精度 |
-| MADD.PS | ---- | 两个单精度浮点数相乘加，结果为单精度 |
+实现乘法的操作有多种方式：
 
+1. 在标准整数流水线上实现简单乘法操作（例如通过移位即可实现的乘法操作），对于复杂的乘法操作则由软件实现。早期的SPARC处理器就是这样干的。
 
-<h2 id="2.3">2.3 整数、乘法硬件单元及寄存器</h2>
+2. 另外一种避免复杂乘法操作的方法就是，在浮点单元中实现整数乘法。Motorola公司曾经昙花一现的88000系列就是这样实现的。但是，这违反了MIPS架构中浮点单元作为可选项存在的定义。
 
-The MIPS architects decided that integermultiplication was important enough to deserve a hardwired instruction. This was not universal in 1980s, RISCs. One alternative was to implement a multiply step that fits in the standard integer execution pipeline but mandates software routines for every nontrivial multiplication; early SPARC CPUs did just that.
+而MIPS架构的CPU具有一个特殊用途的整数乘法单元，独立于主流水线之外。它实现的基本操作是，将两个通用寄存器大小的值相乘，得到一个2倍于寄存器大小的结果，存储到乘法单元中。指令`mfhi`和`mflo`分别将结果拷贝到2个特定的通用寄存器中。
 
-Another way of avoiding the complexity of the integer multiplier would be to perform integer multiplication in the floating-point unit—a good solution used in Motorola’s short-lived 88000 family—but that would compromise the optional nature of the MIPS floating-point coprocessor.
+因为乘法操作执行比较慢，所以乘法单元硬件实现乘法结果寄存器互锁。后续指令如果过早读取结果的话，CPU会停止执行，直到乘法操作完成。
 
-Instead, a MIPS CPU has a special-purpose integer multiply unit, which is not quite integrated with the main pipeline. The multiply unit’s basic operation is tomultiply two register-sized values together to produce a twice-registersized result, which is stored inside the multiply unit. The instructions mfhi, mflo retrieve the result in two halves into specified general registers. 
+> <font color="blue">
+> 嵌入式编程小技巧：
+> 
+> 能用移位实现的乘除操作，就不要使用`*`和`/`运算。
+> </font>
 
-Since multiply results are not returned so fast as to be automatically available for any subsequent instruction, the multiply result registers are and always were interlocked. An attempt to read out the results before the multiplication is complete results in the CPU being stopped until the operation completes.
+整数乘法单元同样可以完成除法操作，`lo`寄存器保存商，`hi`寄存器保存余数。
 
-The integermultiply unit will also performan integer division between values in two general-purpose registers; in this case the lo register stores the result (quotient) and the hi register stores the remainder.
+乘法操作占用大约4-12个时钟周期，除法操作大约20-80个时钟周期（具体依赖于实现）。有些CPU还有乘法单元流水线（ARM架构就是这样实现的），也就是说，乘法操作可以在每个时钟周期都可以执行，不用再等待上一个操作完成。
 
-You don’t get a multiply unit answer out in one clock: multiply takes 4–12 clock cycles and division 20–80 clock cycles (it depends on the implementation, and for some implementations it depends on the size of the operands). Some CPUs have fully or partially pipelined multiply units—that is, they can start a multiply operation every one or two clocks, even though the result will not arrive for four or five clocks.
+MIPS32/64规范还包含一个`mul`三目乘法指令，将结果的低字节保存到一个通用目的寄存器中。也就是说，这个指令只能计算相乘的结果小于寄存器大小的情况。这个指令还是执行互锁操作，也就是说等到操作完成，才能读取结果；高度优化的软件，仍然会使用分立的指令分别执行乘法操作和读取乘法结果。有些基于MIPS32/64规范的CPU还有累乘操作，连续乘法操作的结果会被相加后保存到`lo/hi`寄存器中。
 
-MIPS32/64 includes a three-operand mul instruction, which returns the low half of themultiply result to a general-purpose register. But that instruction must stall until the operation is finished; highly tuned software will still use separate instructions to start themultiply and retrieve the results. MIPS32/64CPUs (and most other CPUs still on the market) also havemultiply-accumulate operations, where products from successive multiply operations are accumulated inside the lo/hi pair.
+乘除操作从不会产生异常：即使除零操作（但是结果是不可预料的）。编译器通常产生额外的指令检查错误并捕捉错误，比如说除零操作。
 
-Integer multiply and divide operations never produce an exception: not even divide by zero (though the result you get fromthat is unpredictable).Compilers will often generate additional instructions to check for and trap on errors, particularly on divide by zero.
-
-Instructions mthi, mtlo are defined to set up the internal registers from general-purpose registers. They are essential to restore the values of hi and lo when returning from an exception but probably not for anything else.
+指令`mthi`和`mtlo`，用来拷贝通用目的寄存器的值到内部寄存器中。这对于异常返回时，恢复`hi`和`lo`的值是必不可少的，除此之外，可能很少使用。
 
 <h2 id="2.4">2.4 加载与存储：寻址方式</h2>
 
-As mentioned previously, there is only one addressing mode.1 Any load or store machine instruction can be written:
+MIPS架构的CPU寻址方式只有一种：寄存器索引寻址。任何load和store指令都可以写成下面这样：
 
     lw $1, offset($2)
 
-You can use any registers for the destination and source. The offset is a signed, 16-bit number (and so can be anywhere between −32768 and 32767); the program address used for the load is the sum of $2 and the offset. This address mode is normally enough to pick out a particular member of a C structure (offset being the distance between the start of the structure and the member required). It implements an array indexed by a constant; it is enough to reference function variables from the stack or frame pointer and to provide a reasonable-sized global area around the gp value for static and extern variables.
+可以使用任何寄存器作为目的或源寄存器。`offset`是一个有符号的16位数（所以，范围是−32768~32768）；要加载的地址是寄存器`$2+offset`的值。`offset`可用于索引结构体成员，数组成员或者函数栈上的变量；再或者配合gp寄存器访问全局静态变量（static和extern）。
 
-The assembler provides the semblance of a simple direct addressing mode to load the values of memory variables whose address can be computed at link time.
+汇编器提供了一种直接寻址的写法，但是在编译时，会将其转换成上面的机器指令格式。
 
-More complex modes such as double-register or scaled index must be implemented with sequences of instructions.
+更复杂的双寄存器寻址或者可变址索引寻址都必须使用多条指令才能实现。也就是说，我们在编写或者看到的汇编代码中，复杂的寻址指令都是编译器提供的伪指令，在编译阶段，编译器会将其转换成真正的机器指令。
 
 <h2 id="2.5">2.5 存储器与寄存器的数据类型</h2>
 
-MIPS CPUs can load or store between one and eight bytes in a single operation. Naming conventions used in the documentation and to build instruction mnemonics are as follows.
+MIPS架构CPU单条指令可以可以存取1-8个字节。
 
-2.5.1 Integer Data Types
+<h2 id="2.5.1">2.5.1 整数数据类型</h2>
 
-Byte and halfword loads come in two flavors. Sign-extending instructions lb
-and lh load the value into the least significant bits of the 32-bit register but fill
-the high-order bits by copying the sign bit (bit 7 of a byte, bit 15 of a halfword).
-This correctly converts a signed integer value to a 32-bit signed integer, as shown
-in the following chart.
+字节（byte）和半字（halfword）在load时，分为两种情况。带符号扩展指令lb和lh，将值加载到32位寄存器的低有效位，用符号位（字节的话是bit7，半字的话是bit15）填充高有效位。
 
 | 数据类型 | 字节数 | 助记符 |
 | -------- | ------ | ------ |
@@ -335,158 +264,176 @@ in the following chart.
 | halfword | 2      | lh     |
 | byte     | 1      | lb     |
 
+无符号指令lbu和lhu实施0扩展；也就是说，将具体的值加载到32位寄存器的低有效位，将高有效位填充0。
 
-The unsigned instructions lbu and lhu zero-extend the data; they load the value into the least significant bits of a 32-bit register and fill the high-order bits with zeros.
-
-For example, if the byte-wide memory location whose address is in t1
-contains the value 0xFE (−2, or 254 if interpreted as unsigned), then:
+比如：在地址t1处存储着值0xFE（可以解释为-2或者254（无符号）），分别使用有符号指令和无符号指令进行读取：
 
     lb t2, 0(t1)
     lbu t3, 0(t1)
 
-will leave t2 holding the value 0xFFFF.FFFE (−2 as signed 32-bit value) and t3 holding the value 0x0000 00FE (254 as signed or unsigned 32-bit value).
+那么加载完成后，t2=0xFFFFFFFFE（一个32位的有符号数-2），t3=0x000000FE（252）。
 
-The above description relates to MIPS machines considered as 32-bit CPUs, but many have 64-bit registers. It turns out that all partial-word loads (even unsigned ones) sign-extend into the top 32 bits; this behavior looks bizarre but is helpful, as is explained in section 2.7.3.
+上面是按照32位描述的，对于64位也是适用的，只是操作位数扩大一倍而已。
 
-Subtle differences in the way shorter integers are extended to longer ones are a historical cause of C portability problems, and the modern C standards have very definite rules to remove possible ambiguity. On machines like the MIPS, which cannot do 8- or 16-bit precision arithmetic directly, expressions involving short or char variables require the compiler to insert extra instructions to make sure things overflow when they should; this is nearly always undesirable and rather inefficient.When porting code that uses small integer variables to a MIPS CPU, you should consider identifying which variables can be safely changed to int.
+上述短整数向长整数扩展的细微差异是C语言移植的历史原因造成的，现代C标准有明确的的规则消除可能的歧义。像MIPS这类的机器，不能直接执行8位或16位算术运算，如果涉及到short或char型变量的表达式，就要求编译器插入额外的指令保证运算正确；这应该尽量避免。当你移植代码到MIPS架构的CPU上，涉及到小整数时，要充分考虑哪些变量可以使用int型。
 
-2.5.2 Unaligned Loads and Stores
+<h2 id="2.5.2">2.5.2 非对齐load和store</h2>
 
-Normal loads and stores in the MIPS architecture must be aligned; halfwords
-may be loaded only from two-byte boundaries and words only from four-byte
-boundaries. A load instruction with an unaligned address will produce a trap.
-Because CISC architectures such as the MC680x0 and Intel x86 do handle
-unaligned loads and stores, you may come across this as a problem when porting
-software; in extremity, youmay even decide to install a trap handler that will
-emulate the desired load operation and hide this feature fromthe application—
-but that’s going to be horribly slow unless the references are very rare.
+MIPS架构的load和store操作必须是对齐的，halfword加载以2字节为边界，32位以4字节为边界。load指令如果访问非对齐地址会产生自陷（trap）。因为CISC指令集架构比如X86架构确实能够处理非对齐load和store，所以，当你移植这上面的软件到MIPS架构上时，可能会遇到问题。也许，你会说，我可以写一个trap处理程序，在其中，模拟非对齐load操作；从而对应用程序隐藏这个硬件细节。除非，非对齐的访问比较少，否则，性能会比较差。
 
-All data items declared by C code will be correctly aligned.
+有时候，可能确实需要访问非对齐的数据。MIPS架构确实也提供了一个`ulw`宏指令，由两个指令组成，比一个个字节的加载，移位，再相加，更高效。还有一个宏指令`ulh`，使用2个load，一个移位和一个位或操作组合而成，提供非对齐的半字加载操作。
 
-Where you knowin advance that you want to code a transfer froman address
-whose alignment is unknown and that may turn out to be unaligned, the architecture
-does allow for a two-instruction sequence (much more efficient than a
-series of byte loads, shifts, and adds). The operation of the constituent instructions
-is obscure and hard to grasp, but they are normally generated by the
-macro-instruction ulw (unaligned load word). They’re described fully in
-section 8.5.1.
+默认，C编译器会正确对齐所有数据，但是也有例外情况（比如，从文件中导入数据或者与其它CPU共享数据时），这时候可能要求能够有效地处理非对齐的整数。所以，有些编译器允许指定数据的类型为非对齐的，从而产生特殊的代码来处理。
 
-A macro-instruction ulh (unaligned load half) is also provided and is synthesized
-by two loads, a shift, and a bitwise “or” operation.
+<h2 id="2.5.3">2.5.3 内存中的浮点数</h2>
 
-By default, a C compiler takes trouble to align all data correctly, but there are
-occasions (e.g., when importing data from a file or sharing data with a different
-CPU) when being able to handle unaligned integer data efficiently is a requirement.
-Most compilers permit you to flag a data type as potentially unaligned
-and will generate (reasonably efficient) special code to cope—see section 11.1.5.
-
-2.5.3 Floating-Point Data in Memory
-
-Loads into floating-point registers from memory move data without any interpretation—
-you can load an invalid floating-point number (in fact, an arbitrary
-bit pattern) and no FP error will result until you try to do arithmetic with it.
-
-On 32-bit processors, this allows you to load single-precision values by a
-load into an even-numbered floating-point register, but you can also load a
-double-precision value by a macro instruction, so that on a 32-bit CPU the
-assembly instruction:
+从内存中加载浮点数到浮点寄存器中，没有任何限制。对于32位处理器，允许加载单精度值到偶数编号的浮点寄存器中。但是，你也能够使用宏指令`l.d`加载双精度值。如下所示：
 
     l.d $f2, 24(t1)
 
-is expanded to two loads to consecutive registers:
+编译器会展开为两条指令：
 
     lwc1 $f2, 24(t1)
     lwc1 $f3, 28(t1)
 
-On a 64-bit CPU, l.d is the preferred alias for the machine instruction ldc1, which does the whole job.
+在64位机器上，`l.d`是`ldc1`机器指令的优选别名。
 
-Any C compiler that complies with the MIPS/SGI rules aligns eight-bytelong
-double-precision floating-point variables to eight-byte boundaries. The
-32-bit hardware does not require this alignment, but it’s done for forward compatibility:
-64-bit CPUs will trap if asked to load a double from a location that
-is not eight-byte aligned.
+遵循`MIPS/SGI`规则的任何C编译器都会将double型浮点数按照8字节对齐。32位处理器没有这个对齐要求，但还是这样做是向后兼容：如果加载一个非8字节对齐的地址处的内容，64位CPU会陷入自陷。
 
 <h2 id="2.6">2.6 汇编语言的合成指令</h2>
 
-MIPS machine code might be rather dreary to write; although there are
-excellent architectural reasons why you can’t load a 32-bit constant value into
-a register with a single instruction, assembly programmers don’t want to think
-about it every time. So the GNU assembler (and other good MIPS assemblers)
-will synthesize instructions for you. You just write an li (load immediate)
-instruction and the assembler will figure out when it needs to generate two
-machine instructions.
+前边我们或多或少提及了一些编译器的伪指令等概念，也可以成为合成指令。因为它是编译器通过多条指令合成的一个伪指令。
 
-This is obviously useful, but it can be abused. Some MIPS assemblers end
-up hiding the architecture to an extent that is not really necessary. In this book,
-we will try to use synthetic instructions sparingly, and we will tell you when it
-happens. Moreover, in the instruction tables, we will consistently distinguish
-between synthetic and machine instructions.
+为什么需要伪指令呢？
 
-It ismy feeling that these features are there to help human programmers and
-that serious compilers should generate instructions that are one-for-one with
-machine code.3 But in an imperfect world many compilers will in fact generate
-synthetic instructions.
+因为MIPS架构只有一种寻址方式。如果我想加载一个立即数到寄存器中，需要先把立即数的地址拷贝到寄存器中，然后再使用load指令从相应的地址处加载立即数，需要两条指令。本身，汇编程序就够晦涩了，现在我只想加载个立即数，还要让我记住两条指令，这太不人道了。所以，伟大的GNU工程中的汇编器提供了合成指令。还是加载立即数，现在，我只需要使用`li`（等于`load immediate`）合成指令就可以写了。合成指令的命名是不是也很直接。最后由编译器生成两条机器指令。
 
-Helpful things the assembler does include the following:
+此处，又再一次体现了MIPS架构的设计理念：**硬件尽量简单，辅以软件实现**。编译器提供的辅助有：
 
-* A 32-bit load immediate: You can code a load with any value (including a
-memory location that will be computed at link time), and the assembler
-will break it down into two instructions to load the high and low half of
-the value.
+* 加载32位立即数：
 
-* Load from memory location: You can code a load froma memory-resident
-variable. The assemblerwill normally replace this by loading a temporary
-register with the high-order half of the variable’s address, followed by a
-load whose displacement is the low-order half of the address. Of course,
-this does not apply to variables defined inside C functions, which are
-implemented either in registers or on the stack.
+    直接加载立即数。
 
-* Efficient access to memory variables: Some C programs contain many references
-to static or extern variables, and a two-instruction sequence
-to load/store any of them is expensive. Some compilation systems, with
-the help of some runtime support, get around this. Certain variables
-are selected at compile/assemble time (most commonly the assembler
-selects variables that occupy eight or less bytes of storage) and are kept
-together in a single section of memory that must end up smaller than
-64 KB. The runtime system then initializes one register—$28 or gp by
-convention—to point to the middle of this section.
+* 从内存加载数据： 
 
-Loads and stores to these variables can now be coded as a single
-gp-relative load or store.
+    你可以编码一个load，实现从内存中读取变量。汇编器会把变量地址的高字节存储在临时寄存器中，然后使用地址的低字节作为偏移量作为load的操作数进行转译（等效于`load t0, lo_addr(t1)`，在这儿`t1`是临时寄存器，存放地址的高字节`hi_addr`）。当然，这不适用于C函数中定义的变量，因为它们要么是在寄存器中，要么在堆栈上。
 
-* More types of branch conditions: The assembler synthesizes a full set of
-branches conditional on an arithmetic test between two registers.
+* 提供更有效的访问内存变量的方式（gp寄存器）： 
 
-* Simple or different forms of instructions: Unary operations such as not
-and neg are produced as a nor or sub with the zero-valued register $0.
-You can write two-operand forms of three-operand instructions and the
-assembler will put the result back into the first-specified register.
+    如果C程序包含大量对static或extern变量的引用，每个load/store操作都需要两条指令，这也是一笔不小的开销。为此，一些编译器就通过实时运行时的gp指针完成这个优化。在编译或者汇编阶段，选择某些变量，把它们聚集到一起组成一块小的区域（不能超过64K）。把中间位置的变量地址存储在gp寄存器（也就是$28）中。后面这需要将gp寄存器作为基址，通过偏移进行访问即可。
 
-* Hiding the branch delay slot: In normal coding the assembler will move
-the instruction you wrote before the branch around into the delay slot if
-it can see it is safe to do so. The assembler can’t seemuch, so it is not very
-good at filling branch delays. An assembly directive .set noreorder
-is available to tell the assembler that you’re in control and it must not
-move instructions about.
+    通过gp相关的load和store，存取这些变量只需要一条指令即可。相关的优化选项是-G，如果是`-G 0`则代表关闭优化。
 
-* Hiding the load delay: Some assemblers may detect an attempt to use the
-result of a load in the immediately succeeding instruction and maymove
-an instruction up or back in sequence if it can.
+* 更多类型的分支指令：
 
-* Unaligned transfers: The unaligned load/store instructions (ulh, ulw,
-etc.) will fetch halfword and word quantities correctly, even if the target
-address turns out to be unaligned.
+    合成更多的分支指令。
 
-* Other pipeline corrections: Some instructions (such as those that use the
-integer multiply unit) have additional constraints on some old CPUs. If
-you have such an old CPU, you may find that your assembler helps out.
+* 不同形式的指令：
 
-In general, if you really want to correlate assembly source language (not
-enclosed by a .set noreorder)with instructions stored in memory, you need
-help. Use a disassembler utility.
+    实现单目运算符，比如not和neg等。也提供了双目运算符。真正的机器指令只支持三目运算。
+
+* 隐藏分支延时槽：
+
+    汇编器可以优化分支延时槽的使用，比如，把它认为正确的分支指令之前的指令填入分支延时槽中。但是，大部分时候，它没有那么牛逼，只是在分支延时槽中填入了nop操作而已。
+
+    如果你不想汇编器改变指令的任何顺序，可以使用汇编伪指令`.set noreorder`进行指定；允许的话，就是`.set reorder`。
+
+* 隐藏加载延时槽：
+
+    编译器可以检测load指令前后的语句是否尝试立即使用load结果，如果是，则可能上下移动一下指令。
+
+* 非对齐转换：
+
+    非对齐load/store指令（ulh和ulw等）。
+
+* 其它的流水线校正：
+
+    一些指令对旧CPU有一些额外的限制（比如说使用乘法单元的指令）。
+
+如果想要查看汇编机器代码，可以借助反汇编工具objdump。
 
 <h2 id="2.7">2.7 MIPS I到MIPS64指令集</h2>
 
+略。
+
 <h2 id="2.8">2.8 基本地址空间</h2>
 
+MIPS架构具有两种特权模式，用户模式和内核模式。现在，我们讨论MIPS架构对内存空间的分配使用情况。
+
+下图是32位架构下的内存布局：
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_2_1.PNG">
+
+从上图可以看出，将内存空间分为了4部分：
+
+1. kuseg（地址范围0x0000.0000–7FFF.FFFF，低2GB）：
+
+    用户态使用的地址空间。必须带有MMU内存管理单元的CPU才能使用这段地址空间。对于没有MMU的处理器，该地址空间的使用取决于实现。但是，为了在没有MMU的硬件上，你写的程序可移植，应该避免使用这段区域。
+
+2. kseg0（地址范围0x8000.0000–9FFF.FFFF，512MB）：
+
+    最高位清零就是物理地址，相当于直接映射物理内存的低512M。这段内存总是通过cache进行访问，所以在使用之前必须配置好Cache。主要用途：如果不使用MMU，则用来保存程序和数据；如果使用MMU，则存放OS内核程序。
+
+3. kseg1（地址范围0xA000.0000–BFFF.FFFF，512MB）：
+
+    前面的3位清零就是物理地址。也被映射到物理地址的低512M。但是，访问不通过Cache。
+
+    系统重启时，唯一能访问的地址空间。复位后的启动入口点就位于这段地址空间（0xBFC00000）。而物理地址的启动入口点就在地址0x1FC00000。因此，初始化启动程序ROM一般使用这个区域，还有许多作为I/O寄存器使用。
+
+4. kseg2（地址范围0xC000.0000–FFFF.FFFF，1GB）：
+
+    内核态可以访问的地址空间，前提是使用MMU。除非是开发操作系统，否则一般不会使用这个空间。有时候，会把这段地址空间分为两部分，分别称为`kseg2`和`kseg3`。`kseg2`就保留给管理模式使用，如果使用了管理模式的话。
+
+<h3 id="2.8.1">2.8.1 简单系统的物理寻址</h3>
+
+对于非常简单的系统，大部分时候物理内存不会超过512MB。所以只需使用`kseg0`和`kseg1`的地址空间即可。但是，如果实在需要，可以将转换项存放于内存管理单元的TLB中，从而访问更高地址的内存。另外，如果是64位CPU，还可以使用额外的空间访问。
+
+<h3 id="2.8.2">2.8.2 内核与用户特权级别</h3>
+
+在内核特权下（CPU启动）可以做任何事情。在用户模式，访问高于2GB以上的地址是非法的，会产生自陷（trap）。如果CPU有MMU，意味着，用户模式下的地址必须经过MMU的转译才能访问物理内存，这样可以阻止用户模式下的程序非法访问内核模式的地址空间。这也意味着，如果MIPS架构的CPU上运行的是一个没有内存映射的OS内核，则用户特权级是多余的。
+
+另外，在用户模式下，一些指令，尤其是OS需要的CPU控制指令是非法的。
+
+改变内核/用户特权模式，不会改变任何行为，只是意味着某些功能在用户模式被禁止。在内核态，CPU能够访问低地址空间，就像它们处于用户模式一样，也使用相同的方式进行转换。
+
+另外还需要注意的是，虽然看上去内核模式专门为操作系统设计的；用户模式处理日常的工作。然而，事实并非如此。很多简单的系统（包括许多实时操作系统）一直处于内核模式运行。
+
+<h3 id="2.8.3">2.8.3 64位地址映射</h3>
+
+MIPS架构的地址总是通过一个寄存器的值加上16位的偏移计算得到。而在64位MIPS架构CPU中，寄存器的位数是64位，所以可以访问的地址空间是2^64，这样巨大的地址空间可以任由我们分配，如下图所示。
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_2_2.PNG">
+
+在上图中，我们可以看出，64位内存地址的扩展部分都位于32位内存地址的中间，这是一个很奇怪的实现技巧。我们知道，MIPS架构在短整数向长整数扩展时，使用了带符号位的扩展方式。在64位CPU上模拟32位指令集时，寄存器的低32位保存实际的地址值，高32位根据bit31位作为符号位进行扩展，这样32位的程序实际访问的是64位程序空间的最低2GB和最高2GB程序空间。这样，扩展的内存映射把最低空间和最高空间用作和32位系统一样的地址空间，扩展的空间就位于这中间了。
+
+事实上，这么大的地址空间大部分时候根本没有意义，除非你正在实现一个虚拟内存操作系统，要不然基本用不上；因此，许多MIPS64用户还是把指针定义为32位长度。这些未映射的地址空间可以用来突破`kseg0`和`kseg1`的512MB的限制，但是，这完全可以通过内存管理单元（TLB）实现。
+
 <h2 id="2.9">2.9 流水线可见性</h2>
+
+关于流水线的可见性，在之前的文章中已经涉及过，比如分支延迟和load延迟。任何一个带有流水线的CPU，如果有指令不能满足一个时钟周期执行完的要求的话，都会面临时序延迟的问题。如果架构设计者隐藏这些时序延迟问题，那么编程模型相对于编程人员就会变得相对容易，但是硬件实现就会复杂。而如果把时序延迟问题暴露给编程人员，让他们通过软件规避这些问题，硬件实现容易了，但是软件设计就会变得复杂。所以，这是一个平衡和选择的问题。
+
+我们知道，MIPS架构的设计理念是：**硬件尽量简单，辅以软件实现**。所以，MIPS架构把一些流水线的时序延迟问题暴露给编程人员或者编译器去优化实现。下面，我们总结一下这些时序延迟问题：
+
+* 分支延迟：
+
+    所有的MIPS架构CPU，紧跟在分支指令后面的指令不论分支指令是否发生跳转都会执行。所以，编程者或者编译器可以选择一条合适的指令放到分支指令的后面，提高CPU的执行效率。最差的情况也要填充一个nop指令。编译器默认情况下，就是填充nop指令。
+
+* 加载（load）延迟：
+
+    优化编译器和编程者应该意识到一次load操作所花费的时间，不要尝试立即使用loading中的数据。load延迟会影响系统性能，硬件设计者尽量保证为load之后的下一条指令准备好数据。
+
+* 浮点单元（协处理器1）的问题：
+
+    浮点运算花费多个时钟周期，典型的MIPS架构FPU硬件有一个某种程度上相对独立的流水线单元。MIPS硬件必须对用户隐藏这些FPU流水线。FP运算被允许和后面的指令并行计算，增加CPU的执行效率。如果在计算没有完成的时候读取结果寄存器，CPU应该停止执行等待计算完成。真正深度优化的编译器拥有指令重复率表和每个目标CPU延迟表，但是，我们大部分时候不想依赖这些。
+
+* CPU控制指令的问题：
+
+    这个是需要慎重对待的东西。当你改变CP0中相应位的时候，潜在地可能正在影响流水线上的各个阶段。
+
+    MIPS32/64规范在第二版后，对这方面进行了改善。与CP0的交互可以分为两部分：一种情况是先前对CP0的操作可能会影响后一条指令的取值，这也是最麻烦的，称为指令遇险；另一种情况就是执行遇险。MIPS架构提供了两种屏障（barrier）指令规避这些情况的发生：一种是用于执行遇险；另外的是加强的分支指令，可以保障在发生指令遇险时的安全。
+
+    在第二版之前，没有提供相关的屏障指令。需要编程者阅读相关的CPU手册，发现应该添加几条填充指令避免这些副作用的发生。
+
+    > <font color="blue">
+    > 这部分的内容跟ARM的内存无序相关问题类似。ARM的解决手段要么锁总线，要么添加内存屏障指令`rmb()`。
+    > </font> 

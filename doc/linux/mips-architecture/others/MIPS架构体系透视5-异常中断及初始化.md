@@ -40,7 +40,7 @@ MIPS架构所涉及的event，都有哪些呢？
 * 外部事件
 
     Some event outside the CPU core—that is, from some real “wire” input signal. These are interrupts.1 Interrupts are used to direct the attention of the CPU to some external event: an essential feature of an OS that attends to more than one different event at a time.
-    CPU核之外的外部中断。
+    来自CPU核外的外部中断。
 
     Interrupts are the only exception conditions that arise from something independent of the CPU’s normal instruction stream. Since you can’t avoid interrupts just by being careful, there have to be software mechanisms to inhibit the effect of interrupts when necessary.
 
