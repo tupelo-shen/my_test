@@ -836,6 +836,36 @@ PrefetchFlush指令会冲洗处理器中的流水线，以便在该指令执行�
 * 寄存器1-控制寄存器
 * 寄存器2-15
 
+<h2 id="B3.1">B3.1 关于协处理器的介绍</h2>
+
+All of the standard memory and system facilities are controlled by coprocessor 15 (CP15), which is known as the System Control coprocessor. Some facilities also use other methods of control, and these are described in the chapters relating to those facilities. For example, the Memory Management Unit described in Chapter B4 Virtual Memory System Architecture is also controlled by page tables in memory.
+
+ARMv6 systems shall include a System Control Coprocessor, with support for automatic interrogation of cache, tightly coupled memory, and coprocessor provision. It also provides the control mechanism for memory management (MMU and MPU support as applicable).
+
+Prior to ARMv6, CP15 instructions are UNDEFINED when CP15 is not implemented. However, CP15 has become a de facto standard for processor ID, cache control, and memory management (MMU and MPU support) in implementations since ARMv4. This manual should be read in conjunction with the relevant implementation reference manual to determine the exact details of CP15 support in a particular part.
+
+This chapter describes the overall design of the System Control coprocessor and how its registers are accessed. Detailed information is given about some of its registers. Other registers are allocated to facilities described in detail in other chapters and are only summarized in this chapter.
+
+<h2 id="B3.2">B3.2 协处理器中的寄存器</h2>
+
+The System Control coprocessor can contain up to 16 primary registers, each of which is 32 bits long. Additional fields in the register access instructions are used to further refine the access, increasing the number of physical 32-bit registers in CP15. The 4-bit primary register number is used to identify registers in descriptions of the System Control coprocessor, because it is the primary factor determining the function of the register.
+
+CP15 registers can be read-only, write-only or read/write. The detailed descriptions of the registers specify:
+
+* the types of access that are allowed
+* the functionality invoked by each type of access
+* whether a primary register identifies more than one physical register, and if so, how they are distinguished
+* any other details that are relevant to the use of the register.
+
+<h3 id="B3.2.1">B3.2.1 操作协处理器的指令</h3>
+
+协处理器相关的指令是：
+
+* MCR
+
+    写ARM通用寄存器值到协处理器中。
+
+
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
 
 <h1 id="B4">B4 虚拟内存系统架构</h1>
