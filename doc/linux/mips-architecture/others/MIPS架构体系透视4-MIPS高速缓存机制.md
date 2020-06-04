@@ -1,158 +1,50 @@
 
-# 0 引言
+# 1 引言
 
-AMIPS CPU without a cache isn’t really a RISC. Perhaps that’s not fair; for
-special purposes you might be able to build a MIPS CPU with a small,
-tightly coupled memory that can be accessed in a fixed number of pipeline
-stages (preferably one). But MIPS CPUs have always had cache hardware built
-tightly into the pipeline.
+现代CPU中，为了提高CPU的执行效率，高速缓存必不可少。关于Cache工作原理可以参考我之前的文章[<Linux内核2-Cache基本原理>](https://tupelo-shen.github.io/2020/04/30/Linux%E5%86%85%E6%A0%B82-Cache%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86/)
 
-This chapter will describe the way MIPS caches work and what the software
-has to do to make caches useful and reliable. From reset, almost everything
-about the cache state is undefined, so bootstrap software must be careful
-to initialize the caches correctly before relying on them. You might also benefit
-from some hints and tips for use when sizing the caches (it would be bad
-software practice to assume you know how big the cache is). For the diagnostics
-programmer, we discuss how to test the cache memory and probe for particular
-entries.
+与ARM等架构相同，MIPS架构CPU也是采用多级cache。我们这里关心的是L1级缓存：I-cache和D-cache。通过这种哈弗结构，指令和数据读取可以同时进行。
 
-Some real-time applications writers may want to control exactly what will
-get cached at run time. We discuss how to do that, even though I am skeptical
-about the wisdom of using such tricks.
+# 2 Cache工作原理
 
-There’s also some evolution to contend with. In early 32-bit MIPS processors,
-cache management functions relied upon putting the cache into a special
-state and then using ordinary reads and writes whose side effects could initialize
-or invalidate cache locations. But we won’t dwell on that here; even CPUs
-that do not fully comply with MIPS32/64 generally use something close to the
-mechanism described in the following text.
+从概念上讲，Cache是一个关联性内存，数据存入其中，可以通过关键字进行查找。对于高速Cache而言，关键字就是完整的内存地址。因为想要查询高速Cache，就必须与每一个关键字进行比较，所以合理使用Cache非常重要。
 
-# 1 Caches and Cache Management
+下图是一个直接映射的Cache，这是MIPS架构早期使用的Cache原型。这种原型的好处就是简单直接好理解，也是后来Cache发展的垫脚石。
 
-The cache’s job is to keep a copy of memory data that has been recently read or
-written, so it can be returned to the CPU quickly. For L1 caches, the read must
-complete in a fixed period of time to keep the pipeline running.
-
-MIPS CPUs always have separate L1 caches for instructions and data
-(I-cache and D-cache, respectively) so that an instruction can be read and a
-load or store done simultaneously.
-
-Cached CPUs in old-established families (such as the x86) have to be compatible
-with code that was written for CPUs that didn’t have any caches. Modern
-x86 chips contain ingeniously designed hardware to make sure that software
-doesn’t have to know about the caches at all (if you’re building a machine to run
-MS-DOS, this is essential to provide backward compatibility).
-
-But because MIPS machines have always had caches, there’s no absolute
-requirement for the cache to be so clever. The caches must be transparent to
-application software, apart fromthe increased speed. But in a MIPS CPU,which
-has always had cache hardware, there is no attempt to make the caches invisible
-to system software or device drivers—cache hardware is installed to make the
-CPU go fast, not to help the system programmer. A UNIX-like operating system
-hides the cache from applications, of course, but while a more lightweight OS
-might hide the details of cache manipulation from you, you will still probably
-have to know when to invoke the appropriate subroutine.
-
-
-# 2 How Caches Work
-
-Conceptually, a cache is an associative memory, a chunk of storage where data
-is deposited and can be found again using an arbitrary data pattern as a key. In
-a cache, the key is the full memory address. Produce the same key back to an
-associative memory and you’ll get the same data back again. A real associative
-memory will accept a new item using an arbitrary key, at least until it’s full;
-however, since a presented key has to be compared with every stored key simultaneously,
-a genuine associative memory of any size is either hopelessly resource
-hungry, slow, or both.
-
-So howcanwe make a useful cache that is fast and efficient? Figure 4.1 shows
-the basic layout of the simplest kind of cache, the direct-mapped cache used in
-most MIPS CPUs up to the 1992 generation.
-
-The direct-mapped arrangement uses a simple chunk of high-speed memory
-(the cache store) indexed by enough low address bits to span its size. Each
-line inside the cache store contains one or more words of data and a cache tag
-field, which records the memory address where this data belongs.
-
-On a read, the cache line is accessed, and the tag field is compared with the
-higher addresses of the memory address; if the tag matches, we know we’ve got
-the right data and have “hit” in the cache.Where there’s more than one word in
-the line, the appropriate word will be selected based on the very lowest address
-bits.
-
-If the tag doesn’t match, we’ve missed and the data will be read from memory
-and copied into the cache. The data that was previously held in the cache
-is simply discarded and will need to be fetched from memory again if the CPU
-references it.
+它的工作方式就是，使用地址中的低位作为index，索引在Cache中的位置，也就是位于哪一行。当CPU发出某个地址后，使用地址中的高位与Cache中的tag位进行比较，如果相同，则称为"命中"；否则，"未命中"。命中，则将Cache中的数据拷贝到CPU寄存器中；如果没有命中，则重新从内存中读取数据，并将其加载到对应的Cache位置中。如果每行包含多个Word数据的话，则使用地址的最低几位进行区分。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_4_1.PNG">
 
-A direct-mapped cache like this one has the property that, for any given memory address, there is only one line in the cache store where that data can be kept.1 That might be good or bad; it’s good because such a simple structure will be fast and will allow us to run the whole CPU faster. But simplicity has its bad side too: If your program makes repeated reference to two data items that happen to share the same cache location (presumably because the low bits of their addresses happen to be close together), then the two data items will keep pushing each other out of the cache and efficiency will fall drastically.
+这样直接映射的Cache有优点也有缺点：优点是，一一直接映射，遍历时间肯定短，可以让CPU跑的更快。但同时也带来了缺点，假设你正在交替使用2个数据，而且这2个数据共享Cache中的同一个位置（它们地址中的低位刚好一样）。那么，这2个数据会不断地将对方从Cache中替换出来，效率将急剧下降。
 
-> In a fully associative memory, data associated with any given memory address (key) can be stored anywhere; a direct-mapped cache is as far from being content addressable as a cache store can be.
+> 关于全关联Cache和直接映射Cache的概念可以参考文章[Linux内核2-Cache基本原理](https://tupelo-shen.github.io/2020/04/30/Linux%E5%86%85%E6%A0%B82-Cache%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86/)
 
-A real associative memory wouldn’t suffer from this kind of thrashing, but it is too slow and expensive.
 
-A common compromise is to use a two-way set-associative cache—which is really just a matter of running two direct-mapped caches in parallel and looking up memory locations in both of them, as shown in Figure 4.2.
+如果是全关联高速缓存不会存在这种问题，但是遍历时间变长，而且设计复杂。
 
-Now we’ve got two chances of getting a hit on any address. Four-way setassociative caches (where there are effectively four direct-mapped subcaches) are also common in on-chip caches.
+折中的方案就是，使用一个2路关联Cache，效果相当于运行了两个直接映射的并行Cache。内存中的数据可以映射到这两路Cache中的任意一个上。如图4.2所示：
 
-In a multiway cache there’s more than one choice of the cache location to
-be used in fixing up a cache miss, and thus more than one acceptable choice
-of the cache line to be discarded. The ideal solution is probably to keep track
-of accesses to cache lines and pick the “least recently used” (“LRU”) line to be
-replaced, but maintaining strict LRU order means updating LRU bits in every
-cache line every time the cache is read. Moreover, keeping strict LRU information
-in a more-than-four-way set-associative cache becomes impractical. Real
-caches often use compromise algorithms like “least recently filled” to pick the
-line to discard.
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_4_2.PNG">
 
-There are penalties, however. Compared with a direct-mapped cache, a
-set-associative cache requires many more bus connections between the cache
-memory and controller. That means that caches too big to integrate onto a
-single chip are much easier to build direct mapped. More subtly, because the
-direct-mapped cache has only one possible candidate for the data you need, it’s
-possible to keep the CPU running ahead of the tag check (so long as the CPU
-does not do anything irrevocable based on the data). Simplicity and running
-ahead can translate to a faster clock rate.
+如图所示，对于一个地址，需要比较两次。四路组相关联的Cache在片上高速缓存中也比较常见（比如ARM架构）。
 
-Once the cache has been running for awhile it will be full, so capturing new
-memory data usually means discarding some previously cached data. If you
-know that the data in the cache is already safely in memory, you can just discard
-the cached copy; if the data in the cache is more up-to-date than memory, you
-need to write it back first.
+在多路相关联的Cache中，替换Cache中的哪个位置具有多路选择。理想的方法肯定是替换"最近最少使用"的缓存line，但是要维护严格个LRU原则，意味着每次读取Cache时，需要更新每个Cache line的LRU位。而且对于超过4路组相关联的Cache，维护严格的LRU信息变得不切实际。实际的缓存都是使用"最近最少填充"这样的折衷算法来选择要替换的缓存line。
 
-That brings us to how the cache handles writes.
+当然，这也是有代价的。相比直接映射的Cache，多路组相关联的Cache在缓存芯片和控制器间需要更多的总线进行连接。这意味太大的Cache无法集成到单个芯片中，这也是放弃直接映射Cache的因素之一。
 
-# 3 Write-Through Caches in Early MIPS CPUs
+当运行一段时间后，Cache肯定就会填满，再获取新的内存数据时，需要从Cache中替换数据出去。这时候就要考虑Cache和内存的一致性问题。如果Cache中的数据比内存中的新，就需要将这些数据写回到内存中。
 
-CPUs don’t just read data (as the above discussion seems to be assuming)—
-they write it too. Since a cache is intended to be a local copy of some data from
-main memory, one obvious way of handling the CPU’s writes is the use of what
-is called a write-through cache.
+这就带来一个问题：Cache如何处理写操作。
 
-In a write-through cache, the CPU’s data is always written to main memory;
-if a copy of that memory location is resident in the cache, the cached copy is
-updated too. If we always do this, then any data in the cache is known to be in
-memory too, so we can discard the contents of a cache line anytime without
-losing any data.
+# 3 早期MIPS架构CPU的write-though缓存
 
-We would slow the processor down drastically if we waited for the memory
-write-through to complete, but we can fix that. Writes (address and data
-together) destined for main memory can always be kept in a queue while the
-memory controller gets itself ready and completes the write. The place where
-writes are queued is organized as a first-in, first-out (FIFO) store and is called
-a write buffer.
+上面的讨论中，好像假定从内存中读取数据。但是CPU不只是读，还有写。write-though缓存就是不管三七二十一，数据总是写入内存中。如果数据需要在Cache中有一个备份，那么这个备份也要更新。这样做，我们不用管Cache和内存的数据是否一致。直接把Cache中替换出的数据丢弃即可。
 
-Early MIPS CPUs had a direct-mapped write-through cache and a write
-buffer. So long as the memory system can happily absorb writes at the average
-rate produced by a CPU, running a particular programthis way works very well.
-But CPU speeds have grown much faster than memory speeds, and somewhere
-around the time that the 32-bit MIPS generation was giving way to the
-64-bit R4000, MIPS speeds passed the point where a memory system could
-reasonably hope to absorb every write.
+如果写数据很多，我们等到所有的写操作完成，会降低CPU的执行速度。不过这个问题可以修正，通过使用一个称为write-buffer（写缓冲器）的FIFO方式的缓存区保存所有要写入内存的数据。然后由内存控制器读取数据，并完成写操作。
 
-# 4 Write-Back Caches in MIPS CPUs
+早期的MIPS处理器有一个直接映射的Cache和一个write-buffer。只要主存系统能够很好地消化这些以CPU平均速率产生的写操作即可。但是，CPU的发展速度太快了。很快，CPU的速度就超过了主内存系统可以合理消化CPU所有写操作的临界点了。
+
+# 4 MIPS CPU的回写高速缓存
 
 While early MIPS CPUs use simple write-through data caches, later CPUs are
 too fast for this approach—theywould swamp their memory systemswithwrites
@@ -174,46 +66,21 @@ the operating system.
 All except the very lowest-end modern MIPS CPUs have on-chip caches that
 are write-back and have line sizes of 16 or 32 bytes.
 
-The R4000 and some later CPUs found uses in large computer servers from
-Silicon Graphics and others. Their cache design choices are influenced by the
-needs of multiprocessor systems. There’s a short description of typical multiprocessor
-systems in section 15.3.
+The R4000 and some later CPUs found uses in large computer servers from Silicon Graphics and others. Their cache design choices are influenced by the needs of multiprocessor systems. There’s a short description of typical multiprocessor systems in section 15.3.
 
-# 5 Other Choices in Cache Design
+# 5 高速缓存设计中的一些其它考虑
 
-The 1980s and 1990s have seen much work and exploration of how to build
-caches. So there are yet more choices:
+The 1980s and 1990s have seen much work and exploration of how to build caches. So there are yet more choices:
 
 * Physically addressed/virtually addressed:
 
-While the CPU is running a
-grown-up OS, data and instruction addresses in your program (the
-program address or virtual address) are translated before appearing as
-physical addresses in the system memory.
+While the CPU is running a grown-up OS, data and instruction addresses in your program (the program address or virtual address) are translated before appearing as physical addresses in the system memory.
 
-A cache that works purely on physical addresses is easier to manage (we’ll
-explain why below), but raw program (virtual) addresses are available to
-start the cache lookup earlier, letting the system run that little bit faster.
-So what’s wrong with program addresses? They’re not unique; many
-different programs running in different address spaces on a CPU may
-share the same program address for different data. We could reinitialize
-the entire cache every time we switch contexts between different address
-spaces; that used to be done some years ago andmay be a reasonable solution
-for very small caches. But for big caches it’s ridiculously inefficient, and we’ll need to include a field identifying the address space in the cache tag to make sure we don’t mix them up.
+A cache that works purely on physical addresses is easier to manage (we’ll explain why below), but raw program (virtual) addresses are available to start the cache lookup earlier, letting the system run that little bit faster. So what’s wrong with program addresses? They’re not unique; many different programs running in different address spaces on a CPU may share the same program address for different data. We could reinitialize the entire cache every time we switch contexts between different address spaces; that used to be done some years ago andmay be a reasonable solution for very small caches. But for big caches it’s ridiculously inefficient, and we’ll need to include a field identifying the address space in the cache tag to make sure we don’t mix them up.
 
-Many MIPS CPUs use the program (virtual) address to provide a fast
-index for their L1 caches. But rather than using the program address
-plus an address space identifier to tag the cache line, they use the
-physical address. The physical address is unique to the cache line and
-is efficient because the scheme allows the CPU to translate program
-addresses to physical addresses at the same time as it is looking up
-the cache.
+Many MIPS CPUs use the program (virtual) address to provide a fast index for their L1 caches. But rather than using the program address plus an address space identifier to tag the cache line, they use the physical address. The physical address is unique to the cache line and is efficient because the scheme allows the CPU to translate program addresses to physical addresses at the same time as it is looking up the cache.
 
-There’s another, more subtle problem with program addresses, which
-the physical tag does not solve: The same physical location may be
-described by different addresses in different tasks. In turn, that might
-lead to the same memory location being cached in two different cache
-entries (because they were referred to by different virtual addresses
+There’s another, more subtle problem with program addresses, which the physical tag does not solve: The same physical location may be described by different addresses in different tasks. In turn, that might lead to the same memory location being cached in two different cache entries (because they were referred to by different virtual addresses
 that selected different cache indexes). Many MIPS CPUs do not have
 hardware to detect or avoid these cache aliases and leave them as
 a problem to be worked around by the OS’s memory manager; see
@@ -237,7 +104,7 @@ really execute the new instructions.)
 However, L2 caches are rarely divided up this way—it’s complex, more
 costly, and generally performs poorly.
 
-# 6 Managing Caches
+# 6 管理Cache
 
 I hope you recall from section 2.8 that a MIPS CPU has two fixed 512-MB windows onto physical memory, one cached (“kseg0”) and one uncached (“kseg1”). Typically, OS code runs in kseg0 and uses kseg1 to build uncached references. Physical addresses higher than 512MB are not accessible here: A 64-bit CPU will have direct access through another window, or you can set up the TLB (memory management/translation hardware) to map an address. Each TLB entry can be marked to make accesses either cached or uncached.
 
@@ -269,7 +136,7 @@ The first operation is called write-back.When the data of interest is present in
 
 The second is invalidate.When the data of interest is in the cache, the CPU marks it invalid so that any subsequent access will fetch fresh data from memory.
 
-# Why Not Manage Caches in Hardware?
+# 为什么不是硬件管理Cache？
 
 Caches managed with hardware are described as “coherent” (or, more informally, “snoopy.”) When another CPU or some DMA device accesses memory, the cache control logic is notified. With a CPU attached to a shared bus, this is pretty straightforward; the address bus contains most of the information you need. The cache control logic watches (snoops) the address bus even when the CPU is not using it and picks out relevant cycles. It does that by looking up its own cache to see whether it holds a copy of the location being accessed.
 
@@ -298,7 +165,7 @@ coherency got less scary after it was systematized by a group of engineers worki
 on the ambitious FutureBus standard in the mid-1980s. There’s a discussion
 of multiprocessor mechanisms in section 15.3.
 
-# 4.7 L2 and L3 Caches
+# L2和L3两级Cache
 
 In larger systems, there’s often a nested hierarchy of caches. A small and
 fast L1 or primary cache is close to the CPU. Accesses that miss in the
@@ -313,7 +180,7 @@ different constraints, particularly for power consumption and heat dissipation)
 are only just getting around to using L2 caches outside a few specialist
 high-end applications.
 
-# 4.8 Cache Configurations for MIPS CPUs
+# MIPS架构CPU的Cache配置
 
 We can now classify some landmark MIPS CPUs, ancient and modern, by
 their cache implementations and see how the cache hierarchy has evolved
@@ -361,7 +228,7 @@ interface to caches like that is going to be system specific and may
 be quite different from the CPU-implemented or CPU-controlled caches
 described in this chapter.
 
-# 4.9 Programming MIPS32/64 Caches
+# 对MIPS32/64高速缓存的编程
 
 The MIPS32/64 specifications define a tidy way of managing caches (following
 the lead of the R4000, which fixed the unseemly cache maintenance of the
@@ -407,7 +274,7 @@ the lines are invalid, they should not have bad check bits. Prefilling
 an I-cache would be tricky, but you can usually use a cache Fill
 instruction.
 
-## 4.9.1 The Cache Instruction
+## Cache相关指令
 
 The cache instruction has the general form of a MIPS load or store instruction
 (with the usual register plus 16-bit signed displacement address)—but
@@ -463,7 +330,7 @@ I-cache invalidate). If your CPU supports it, you should use synci in preference
 to the traditional alternative (a pair of cache instructions, to do D-cache
 write-back followed by an I-cache invalidate).
 
-## 4.9.2 Cache Initialization and Tag/Data Registers
+## Cache初始化和Tag/Data寄存器
 
 For diagnostic and maintenance purposes it’s good to be able to read and write
 the cache tags; MIPS32/64 defines a pair of 32-bit registers TagLo and TagHi6
@@ -499,7 +366,7 @@ tell you more about them; however, for all cache management and initialization,
 it suffices to know that an all-zero tag is always a legitimate code representing
 an invalid cache entry.
 
-## 4.9.3 CacheErr, ERR, and ErrorEPC Registers: Memory/Cache Error Handling
+## CacheErr、ERR和ErrorEPC寄存器：Memory/Cache错误处理
 
 The CPU’s caches forma vital part of the memory system, and high-availability
 or trustworthy systems find it worthwhile to use some extra bits to monitor the
@@ -580,7 +447,7 @@ The fields in the CacheErr register are implementation dependent, and
 you’ll need to consult your CPU manual. You may be able to get sample cache
 error management routines from your CPU supplier.
 
-## 4.9.4 Cache Sizing and Figuring Out Configuration
+#### 4 设置Cache大小和配置
 
 In MIPS32/64-compliant CPUs cache size, cache organization, and line size are
 reliably reported to you as part of the CP0 Config1-2 registers, described in
@@ -590,7 +457,7 @@ But for portability it makes sense to write or recycle initialization software,
 which works robustly across a large range of MIPS CPUs. The next section has
 some tried-and-tested solutions.
 
-## 4.9.5 Initialization Routines
+#### 5 初始化程序
 
 Here’s one good way to do it:
 
