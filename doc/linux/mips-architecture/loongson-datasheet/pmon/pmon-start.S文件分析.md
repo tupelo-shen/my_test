@@ -104,3 +104,201 @@ PMON源代码中的start.S文件一开始，就定义了一个`TTYDEBUG`宏，�
 
     hexchar:
         .ascii  "0123456789abcdef"
+
+# 2 代码执行流程
+
+#### 2.1 上电
+
+当整个板子上电后，CPU将从0xbfc00000地址处取指令执行。（这是硬件完成的，将该地址硬链接到flash上。）
+
+而我们知道，最终的二进制文件`gzrom.bin`中的开头部分就是`start.S`文件中的代码。为什么是这样呢？
+
+通过makefile我们就会知道到底是怎么回事了。
+
+1. 通过执行：
+
+        gcc -DSTARTADDR=${GZROMSTARTADDR} -DOUT_FORMAT=\"${OUT_FORMAT}\" -DOUT_ARCH=mips -Umips -E -P ld.script.S  > ld.script
+
+    我们可以知道，这里的链接文件是通过gcc的特性生成的。将ld.scripts.S编译生成ld.script。
+
+    链接脚本的内容如下所示：
+
+        OUTPUT_FORMAT("elf32-tradlittlemips", "elf32-tradbigmips",
+              "elf32-tradlittlemips")
+        OUTPUT_ARCH(mips)
+        ENTRY(_start)
+        SECTIONS
+        {
+            . = 0xffffffff8f900000;
+            .text :
+            {
+                _ftext = . ;
+                *(.text)
+                *(.rodata)
+                *(.rodata1)
+                *(.reginfo)
+                *(.init)
+                *(.stub)
+                *(.gnu.warning)
+            } =0
+            ......(此处省略)
+        }
+
+    我们可以知道，在内存中的起始地址定义为`0xffffffff8f900000`，如果是32位系统就是`0x8f900000`。
+
+2. 通过
+
+        ${LD} -T ld.script -e start -o gzrom ${START} zloader.o
+
+    将`${START} zloader.o`以ld.script脚本指定的形式链接成gzrom文件，入口地址位start的地址。
+
+3. 通过
+
+        ${CROSS_COMPILE}objcopy -O binary gzrom gzrom.bin
+
+    将elf格式的gzrom转换成bin格式的gzrom.bin文件。
+
+#### 2.2 _start入口：
+
+        /*
+         + 程序开始的地方：
+         + 1. 告诉编译器不要对后面的代码进行优化
+         + 2. 声明了3个全局标签
+         */
+        .set    noreorder
+        .globl  _start
+        .globl  start
+        .globl  __main
+
+        /* 程序入口：ld.script使用 */
+    _start:
+    start:
+        /* 定义堆栈stack，位于pmon程序代码之下的RAM地址中。大小为16k. */
+        .globl  stack
+        stack = start - 0x4000
+
+        /*set all spi cs to 1, default input*/
+        li      v0,0xbfff0225
+        li      v1,0xff
+        sb      v1,(v0)
+
+#### 2.3 初始化寄存器
+
+    /* 
+     * 初始化处理器的工作状态
+     * 1. 禁止中断和异常处理，保留boot异常
+     * 2. 设置BEV=1，也就是说异常的入口地址为0xBFC00000；
+     *    BEV=0，异常地址为0x80000000.
+     * 3. 初始化通用寄存器
+     * 4. 通过bal locate跳转到真正程序开始的地方
+     */
+    /* NOTE!! Not more that 16 instructions here!!! Right now it's FULL! */
+    mtc0    zero, COP_0_STATUS_REG  /* 禁止中断 */
+    mtc0    zero, COP_0_CAUSE_REG   /* 禁止异常处理 */
+    li      t0, SR_BOOT_EXC_VEC     /* Exception to Boostrap Location */
+                                    /* 设置状态寄存器的BEV标志位，这样是让CP0 */
+                                    /* 运行在没有TLB的模式，并且一旦发生异常，*/
+                                    /* 就进入ROM的0xbfc00000位置重启 */ 
+    mtc0    t0, COP_0_STATUS_REG    /* 将0x00400000写入SR寄存器中，BEV标志等于1*/
+                                    /* CPU使用kseg1内存区作为物理内存的映射 */
+
+    bal     initregs                /* 初始化通用寄存器 */
+    nop
+
+    .set    mips32
+    mfc0    t0, $16, 6      #Store fill
+    .set    mips3
+    li  t1, 0xfffffeff
+    and t0, t1, t0
+    .set    mips32
+    mtc0    t0, $16, 6      #Store fill
+    .set    mips3
+
+    /* spi speedup */
+    li      t0, 0xbfff0220
+    li      t1, 0x47
+    sb      t1, 0x4(t0)
+
+    bal     locate                  /* 获取当前要执行的地址 */
+    nop
+
+    /*
+     * 与0xa0000000进行or操作，也就是说，从ROM加载时，不会改变返回地址ra的值。
+     * 保证物理内存映射到kseg1地址空间
+     */
+    uncached:
+        or  ra, UNCACHED_MEMORY_ADDR/* 0xa0000000 */
+        j   ra
+        nop
+
+#### 2.4 设置异常向量表和重启
+
+        /*
+         *  Reboot vector usable from outside pmon.
+         */
+        .align  8
+    ext_map_and_reboot:
+        bal     CPU_TLBClear
+        nop
+
+        li      a0, 0xc0000000
+        li      a1, 0x40000000
+        bal     CPU_TLBInit
+        nop
+        la      v0, tgt_reboot
+        la      v1, start
+        subu    v0, v1
+        lui     v1, 0xffc0
+        addu    v0, v1
+        jr      v0
+        nop
+
+        /*
+         *  Exception vectors here for rom, before we are up and running. Catch
+         *  whatever comes up before we have a fully fledged exception handler.
+         */
+        .align  9           /* bfc00200 */
+        move    k0, ra      #save ra
+        la      a0, v200_msg
+        bal     stringserial
+        nop
+        b       exc_common
+
+        .align  7           /* bfc00280 */
+        move    k0, ra  #save ra
+        la      a0, v280_msg
+        bal     stringserial
+        nop
+        b       exc_common
+
+        /* Cache error */
+        .align  8           /* bfc00300 */
+        PRINTSTR("\r\nPANIC! Unexpected Cache Error exception! ")
+        mfc0    a0, COP_0_CACHE_ERR
+        bal     hexserial
+        nop
+        b       exc_common
+
+    /* General exception */
+        .align  7           /* bfc00380 */
+        move    k0, ra      #save ra
+        la  a0, v380_msg
+        bal stringserial
+        nop
+        b   exc_common
+        
+        .align  8           /* bfc00400 */
+        move    k0, ra      #save ra
+        la  a0, v400_msg
+        bal stringserial
+        nop
+
+    #if 1
+        b   exc_common
+        nop
+
+        /* Debug exception */
+        .align  7           /* bfc00480 */
+        #include "exc_ejtag.S"
+    #endif
+
