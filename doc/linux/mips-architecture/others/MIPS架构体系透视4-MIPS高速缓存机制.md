@@ -70,13 +70,15 @@ The R4000 and some later CPUs found uses in large computer servers from Silicon 
 
 # 5 高速缓存设计中的一些其它考虑
 
-The 1980s and 1990s have seen much work and exploration of how to build caches. So there are yet more choices:
+上世纪的80年代后期和90年代初期，研究人员开始研究如何构建Cache。下面我们看看，Cache的发展都经历了哪些历程：
 
-* Physically addressed/virtually addressed:
+* 关于物理寻址/虚拟寻址：
 
-While the CPU is running a grown-up OS, data and instruction addresses in your program (the program address or virtual address) are translated before appearing as physical addresses in the system memory.
+    我们知道，CPU正在运行OS时，应用程序的数据和指令地址都会被转换成物理地址，继而访问实际的物理内存。
 
-A cache that works purely on physical addresses is easier to manage (we’ll explain why below), but raw program (virtual) addresses are available to start the cache lookup earlier, letting the system run that little bit faster. So what’s wrong with program addresses? They’re not unique; many different programs running in different address spaces on a CPU may share the same program address for different data. We could reinitialize the entire cache every time we switch contexts between different address spaces; that used to be done some years ago andmay be a reasonable solution for very small caches. But for big caches it’s ridiculously inefficient, and we’ll need to include a field identifying the address space in the cache tag to make sure we don’t mix them up.
+    如果Cache单纯地工作在物理地址上，很容易管理（后面我们再介绍为什么）。但是，虚拟地址需要尽快的启动Cache遍历才能使系统运行的更快些。虚拟地址的问题在于，它们不是唯一的：运行在不同地址空间的应用程序可以共享某段物理内存而存储不同的数据。每当我们在不同地址空间进行上下文切换时，都需要重新初始化整个Cache。在过去的许多年，对于小容量的Cache，这都是常见的处理方式。但是，对于大容量的Cache，这不太高效，而且还要在Cache的tag中包含一个标识地址空间的标识符。 
+
+    对于L1级Cache，许多MIPS架构CPU使用虚拟地址作为快速索引，使用物理地址作为Cache中的tag，而不是使用虚拟地址+地址空间标识符作为cache行的tag标签。这样的设计，Cache行中的物理地址是唯一的，CPU在遍历Cache的同时也就完成了虚拟地址到物理地址的转换，
 
 Many MIPS CPUs use the program (virtual) address to provide a fast index for their L1 caches. But rather than using the program address plus an address space identifier to tag the cache line, they use the physical address. The physical address is unique to the cache line and is efficient because the scheme allows the CPU to translate program addresses to physical addresses at the same time as it is looking up the cache.
 
