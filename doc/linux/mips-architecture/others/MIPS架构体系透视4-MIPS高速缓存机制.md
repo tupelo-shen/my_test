@@ -46,27 +46,9 @@
 
 # 4 MIPS CPU的回写高速缓存
 
-While early MIPS CPUs use simple write-through data caches, later CPUs are
-too fast for this approach—theywould swamp their memory systemswithwrites
-and slow to a (relative) crawl.
+尽管早期的MIPS架构的CPU使用简单的透写Cache，但是，CPU的频率提升太快了，很快透写Cache就无法满足CPU写操作的需求，大大拖慢了系统的运行速速。
 
-The solution is to retain write data in the cache.Write data is stored only to
-the cache, and the cache line is marked to make sure we don’t forget to write it
-back to memory sometime later (a line that needs writing back is called dirty or
-modified).3
-
-There’s a subvariant here: If the addressed data is not currently in the cache,
-we can either write it to main memory and ignore the cache, or we can bring
-the data in specially just so we can write it—this is called write-allocate. Writeallocate
-is not always the best approach: Data that is being written for some I/O
-device to read (and that the CPU will not read or write again) is ideally kept out
-of the cache. But that only works if the programmers can be relied upon to tell
-the operating system.
-
-All except the very lowest-end modern MIPS CPUs have on-chip caches that
-are write-back and have line sizes of 16 or 32 bytes.
-
-The R4000 and some later CPUs found uses in large computer servers from Silicon Graphics and others. Their cache design choices are influenced by the needs of multiprocessor systems. There’s a short description of typical multiprocessor systems in section 15.3.
+解决方案就是把要写的数据保存到Cache中。且在对应的Cache行中标记dirty位。后面根据这个标志位再写回到相应的内存中。如果当前Cache中没有要写入地址对应的数据，我们可以直接把数据写到内存中，不用管高速缓存。
 
 # 5 高速缓存设计中的一些其它考虑
 
@@ -80,408 +62,296 @@ The R4000 and some later CPUs found uses in large computer servers from Silicon 
 
     对于L1级Cache，许多MIPS架构CPU使用虚拟地址作为快速索引，使用物理地址作为Cache中的tag，而不是使用虚拟地址+地址空间标识符作为cache行的tag标签。这样的设计，Cache行中的物理地址是唯一的，CPU在遍历Cache的同时也就完成了虚拟地址到物理地址的转换，
 
-Many MIPS CPUs use the program (virtual) address to provide a fast index for their L1 caches. But rather than using the program address plus an address space identifier to tag the cache line, they use the physical address. The physical address is unique to the cache line and is efficient because the scheme allows the CPU to translate program addresses to physical addresses at the same time as it is looking up the cache.
+    采用物理地址作为tag，还有一个微妙的问题：不同任务中的地址不同（虚拟地址不同）。因为使用虚拟地址作为Cache索引，所以相同的物理地址有可能在Cache中存在不同的项。这样的现象称为Cache重影（`Cache alias`）。许多MIPS架构的CPU硬件上没有这种检测机制，避免Cache重影，而是留待OS内存管理者去解决这个问题。
 
-There’s another, more subtle problem with program addresses, which the physical tag does not solve: The same physical location may be described by different addresses in different tasks. In turn, that might lead to the same memory location being cached in two different cache entries (because they were referred to by different virtual addresses
-that selected different cache indexes). Many MIPS CPUs do not have
-hardware to detect or avoid these cache aliases and leave them as
-a problem to be worked around by the OS’s memory manager; see
-section 4.12 for details.
+* 关于Cache行大小的选择：
 
-* Choice of line size: The line size is the number of words of data stored
-with each tag. Early MIPS caches had one word per tag, but it’s usually
-advantageous to store multiple words per tag, particularly when your
-memory system will support fast burst reads (most do). Modern MIPS
-caches tend to use four- or eight-word line sizes, but large L2 and L3
-caches may have bigger lines.
-When a cache miss occurs, the whole line must be filled from memory.
+    Cache行大小指的是一个tag标签对应的32位长度的数据个数。早期MIPS的缓存使用一个tag对应一个word的方式，但是，通常每个tag对应多个word数据更有利，尤其是内存管理系统支持burst读取方式时。现在MIPS架构CPU倾向于使用4个word大小或者8个word大小的Cache行。但是对于L2和L3级Cache来说，它们会使用更大的行。如果发生Cache丢失，整个行都会被填充。
 
-* Split/unified: MIPS L1 caches are always separated into an I- and a
-D-cache; the selection is done purely by function, in that instruction
-fetches look in the I-cache and data loads/stores in the D-cache. (This
-means, by the way, that if you try to execute code that the CPU just
-copied into memory, you must both write back those instructions out
-of the D-cache and invalidate the I-cache locations, to make sure you
-really execute the new instructions.)
-However, L2 caches are rarely divided up this way—it’s complex, more
-costly, and generally performs poorly.
+* 关于指令和数据Cache： 
+
+    MIPS架构L1级Cache总是分为I-Cache和D-Cache。这是因为指令和数据的性质决定的，指令是只读的，数据是可读写的，分开为两个Cache可以提高读写效率。但是，L2级缓存很少这样划分，毕竟硬件过于复杂且昂贵。
 
 # 6 管理Cache
 
-I hope you recall from section 2.8 that a MIPS CPU has two fixed 512-MB windows onto physical memory, one cached (“kseg0”) and one uncached (“kseg1”). Typically, OS code runs in kseg0 and uses kseg1 to build uncached references. Physical addresses higher than 512MB are not accessible here: A 64-bit CPU will have direct access through another window, or you can set up the TLB (memory management/translation hardware) to map an address. Each TLB entry can be marked to make accesses either cached or uncached.
+在之前的文章中，我们已经知道MIPS架构的CPU有两个固定大小的512MB的内存空间可以映射到物理内存上。其中，一个称为kseg0，另一个称为kseg1。通常，OS运行在kseg0上，而使用kseg1构建那些不需要经过Cache的物理内存访问。如果物理内存的实际空间大于512MB，其超出部分使用这两个内存空间是无法访问的。当然，你可以设置TLB（转换表）进行地址映射，每个TLB项都有标志表明是否经过Cache。
 
-The cache hardware,with the help of systemsoftware,must be able to ensure that any application gets the same data as it would have in an uncached system and that any direct memory access (DMA) I/O controller (getting data directly from memory) obtains the data that the program thinks it has written.
+要想在程序中使用Cache，必须经过正确的配置，保证有无Cache，对于物理内存的访问，尤其是DMA访问，都必须是正确的。
 
-We’ve said before that in PCs and some other integrated systems the assistance of system software is often not required; it’s worth spending the money, silicon area, and extra cycles to get the hardware to make the cache genuinely transparent. Such a hardware-managed cache is said to be coherent.
+X86架构和ARM架构，Cache的管理是硬件实现的，无需编程人员的干预Cache的一致性。不幸的是，MIPS架构因其设计理念不同，Cache还需要编程人员通过代码保证其一致性。
 
-The contents of the cache arrays of your CPU are typically random following power-up. Bootstrap software is responsible for initializing the caches; this can be quite an intricate process, and there’s some advice about it below. But once the system is up and running, there are only three circumstances in which the CPU must intervene:
+上电后，Cache的内容是随机的，必须进行初始化才能够使用。一般情况下，引导程序负责这部分初始化工作，这是一个非常复杂的配置过程。一旦CPU运行起来，只有三种情况需要CPU进行干预，如下所示：
 
-* Before DMA out of memory:
+* DMA设备从内存读取数据之前：
 
-    If a device is taking data out of memory, it’s vital that it gets the right data. If the data cache is write back and a program has recently written some data, some of the correct data may still be held in the D-cache but not yet be written back to main memory. The CPU can’t see this problem, of course; if it looks at the memory locations it will get the correct data back from its cache.
+    假设一个外设使用DMA方式从内存读取数据，这一步就非常重要了。如果D-Cache是write-back类型的，有程序在DMA访问之前修改了D-Cache中的内容，还没有写回到内存中；恰巧这些数据是DMA访问的数据。这种情况下，CPU无法知晓它应该从Cache上获取最新数据。
 
-    So before the DMA device starts reading data from memory, any data for that range of locations that is currently held in the D-cache must be written back to memory if necessary.
+    所以，在DMA设备启动从内存读取数据之前，如果所访问的数据在Cache中，必须写回到内存中，不论是不是被修改过。
 
-* DMA into memory:
+* DMA写数据到内存中：
 
-    If a device is loading data into memory, it’s important to invalidate any cache entries purporting to hold copies of the memory locations concerned; otherwise, the CPU reading these locations will obtain stale cached data. The cache entriesmust be invalidated before the CPU uses any data from the DMA input stream, but it’s quite common to invalidate them before starting the DMA.
+    如果DMA设备想要加载数据到内存中，失效Cache中相关数据是非常重要的。否则，CPU读到的就是过时的数据。必须在CPU使用DMA数据之前失效Cache项，但常见做法是DMA启动之前就失效Cache。
 
-* Writing instructions:
+* 指令写入：
 
-    When the CPU itself is storing instructions into memory for subsequent execution, you must first ensure that the instructions are written back to memory and then make sure that the corresponding I-cache locations are invalidated; the MIPS CPU has no connection between the D-cache and the I-cache.
+    当CPU写指令代码到内存中，然后再执行它们。所以，再运行之前，必须保证所有的指令都写回到内存中，并且保证失效对应的I-Cache项。MIPS架构CPU的D-Cache和I-Cache没有任何关系。
 
-    In the most modern MIPS CPUs the synci instruction does everything that is necessary to make the instructions you’ve just stored usable for execution—and it’s a user-privilege instruction.
+    在最新的CPU上，一个用户特权级的指令`synci`保证必要的同步，是你刚刚保存的指令可以运行。
 
-If your software is going to fix these problems, it needs to be able to do two distinct operations on a cache entry.
+现代CPU都在朝着硬件管理的方向发展，所以，这一部分仅供参考。
 
-The first operation is called write-back.When the data of interest is present in the cache and is dirty (marked as having been written by the CPU since it was last obtained from memory or written back to memory), then the CPU copies the data from the cache into main memory.
+# 7 L2和L3两级Cache
 
-The second is invalidate.When the data of interest is in the cache, the CPU marks it invalid so that any subsequent access will fetch fresh data from memory.
+L1级Cache一般小而快速，与CPU核紧密相关；L2级和L3级Cache在容量和访问速度上介于内存和L1级Cache之间。目前为止，一般就使用到L2级缓存。
 
-# 为什么不是硬件管理Cache？
+# 8 Loongson2k1000的Cache配置
 
-Caches managed with hardware are described as “coherent” (or, more informally, “snoopy.”) When another CPU or some DMA device accesses memory, the cache control logic is notified. With a CPU attached to a shared bus, this is pretty straightforward; the address bus contains most of the information you need. The cache control logic watches (snoops) the address bus even when the CPU is not using it and picks out relevant cycles. It does that by looking up its own cache to see whether it holds a copy of the location being accessed.
+lonngson2k1000的结构示意图如下所示：
 
-If someone is writing data that is inside the cache, the controller could pick up the data and update the cache line but is more likely to just invalidate its own, nowstale, copy. If someone is reading data for which updated information is held in the cache, the controller may be able to intervene on the bus, telling the memory controller that it has a more up-to-date version.
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_4_3.PNG">
 
-One major problem with doing this is that it works only within a system designed to operate that way. Not all systems have a single bus where all transactions appear, and bought-in I/O controllers are unlikely to conform to the right protocols.
+一级交叉开关连接两个CPU核（C0和C1）、两个二级Cache（S0和S1）以及IO子网络（Cache访问路径）。二级交叉开关连接两个二级Cache、内存控制器（MC）、启动模块（SPI或者LIO）以及IO子网络（Uncache访问路径）。IO子网络连接一级交叉开关，以减少处理器访问延迟。IO子网络中包括需要DMA的模块（PCIE、GMAC、SATA、USB、HDA/I2S、NAND、SDIO、DC、GPU、VPU、CAMERA 和加解密模块）和不需要DMA的模块，需要DMA的模块可以通过Cache或者Uncache方式访问内存。
 
-Also, that’s a lot of snooping going on. Most of the locations that CPUs work with are the CPU’s private areas; they will never be read or written by any other CPU or device. We’d like not to build hardware ingenuity into the cache, loading every cache location andbuscycle withcomplexitythat willonlysometimes be used. It’s easy to suppose that a hardware cache control mechanism must be faster than software, but that’s not necessarily so. A snoopy cache controller must look at the cache tags on every external cycle, which could shut the CPU out of its cache and slow it down; snoopy cache controllers usually fix this by keeping two copies of the cache tags (a private-to-CPU and public version). Software management can operate on blocks of cache locations in a single fast loop;hardwaremanagementwill interleave invalidations or write-backs with CPU accesses at I/O speed, and that usually implies more arbitration overhead.
+# 9 对MIPS32/64高速缓存的编程
 
-Historically, MIPS designers took the radical RISC position: MIPS CPUs either had no cache management hardware or, where designed for multiprocessors, they had everything.
+兼容MIPS32/64架构的CPU一般具有write-back功能的高速Cache。要想对Cache进行编程，硬件必须具有下面的操作可能：
 
-From a 21st-century perspective, the trade-off looks different. For most classes ofCPU,it looks more worthwhile to accept some hardware complexity to avoid  the system software bugs that occur when programmers miss a place where the cache needs attention. At the time of writing (2006), there’s a shift in progress toward implementing “invisible” caches with some level of hardware cache management on all but the smallest MIPS CPUs. If your MIPS CPU is fully coherent, you may not need this chapter at all (but very few do the whole job). And many MIPS cores that will be in production for years to come still don’t have coherent cache controllers, so the shift will take a long time to complete.
+* 失效某个Cache区域：
+    
+    将某个地址范围内的数据清除出Cache，这样下一次引用的时候就会从内存中重新读取数据。
 
-It’s tempting to use the more colorful and evocative word “flush” in this
-context, but it is ambiguously used to mean write-back, invalidate, or the combination
-of the two—so we’ll avoid it.
+    指令`cache HitInvalidate`形式和`load/store`指令一样，给出一个虚拟地址。将虚拟地址所引用的Cache行失效。在地址范围内每个一个Cache行大小的地址上重复该命令。
 
-There are some much more complicated issues involved when two or more
-processors share memory. Most shared-memory systems are too complex for
-one CPU to know which locations the other will read or write, so the software
-can’t figure out exactly which memory regions need to be invalidated or written
-back. Either any shared memory must always be accessed uncached (very slow
-unless the amount of interaction is very limited), or the caches must have special
-hardware that keeps the caches (and memory) coherent. Multi-CPU cache
-coherency got less scary after it was systematized by a group of engineers working
-on the ambitious FutureBus standard in the mid-1980s. There’s a discussion
-of multiprocessor mechanisms in section 15.3.
+* 回写某段内存： 
 
-# L2和L3两级Cache
+    将该地址范围内的已经被修改的Cache行写回到主内存中。`cache HitWritebackInvalidate`将虚拟地址引用的数据所在的Cache行写回到主内存中，并失效这个Cache行。
 
-In larger systems, there’s often a nested hierarchy of caches. A small and
-fast L1 or primary cache is close to the CPU. Accesses that miss in the
-L1 cache are looked up not directly in memory but in an L2 or secondary
-cache—typically several times bigger and several times slower than the L1
-(but still several times faster than the main memory). The number of levels
-of hierarchy that might be useful depends on how slow main memory is
-compared with the CPU’s fastest access; with CPU cycle times falling much
-faster than memory access times, 2006 desktop systems commonly have L3
-cache. 2006 embedded systems, trailing desktop speeds by several years (and
-different constraints, particularly for power consumption and heat dissipation)
-are only just getting around to using L2 caches outside a few specialist
-high-end applications.
+* 失效整个Cache： 
 
-# MIPS架构CPU的Cache配置
+    指令为`cache IndexInvalidate`。其虚拟地址作为索引参数，按照Cache行大小从0开始递增。
 
-We can now classify some landmark MIPS CPUs, ancient and modern, by
-their cache implementations and see how the cache hierarchy has evolved
-(Table 4.1).
+* 初始化Cache：
+    
+    设置tag通常涉及到对CP0 TagLo寄存器清零，以及对每一个Cache行执行`Cache IndexStoreTag`指令操作。数据校验位的预填充可以使用指令`cache Fill`。
 
-As clock speeds get higher, we see more variety in cache configurations as
-designers try to cope with a CPU that is running increasingly ahead of its memory
-system. To earn its keep, a cache must improve performance by supplying
-data significantly faster than the next outer memory and must usually succeed
-in supplying the data (hitting).
+#### 9.1 Cache指令
 
-CPUs that add a second level of cache reduce the miss penalty for the L1
-cache—which may then be able to be smaller or simpler. CPUs with on-chip
-L2 caches typically have smaller L1s,with dual 16-KB L1 caches a favored “sweet
-spot.” Until recently, most MIPS CPUs fitted the L1 cache access into one clock
-cycle. It seems reasonable that, as chip performance grows and clock rates
-increase, the size of memory that can be accessed in one clock period should
-be more or less constant. But in fact, on-chip memory speed is lagging behind
-logic. Modern CPU designs often lengthen the pipeline mainly to allow for a
-two-clock cache access.
+Cache指令的使用方式跟load/store指令类似，使用通用寄存器+16位有符号地址偏移的方式。但是添加了一个操作域（5位），用来决定操作那个Cache，如何查找line，以及对line做什么处理。你可以使用汇编直接编写相应的操作，最好还是使用宏定义之类的C方法，更为方便和易于阅读。
 
-Off-chip caches are often direct mapped because a set-associative cache
-needs much wider interfaces to carry multiple tags, so they can be matched
-in parallel.
-
-Amidst all this evolution, there have been two main generations of the software
-interface to a MIPS cache. There is one style founded by the R3000 and
-followed by most early 32-bit MIPS CPUs; there is another starting with the
-R4000 and used by all 64-bit CPUs to date. The R4000 style has now become a
-part of the MIPS32 standard too and is now commonplace—and that’s all we
-will describe.
-
-Most modern MIPS CPUs have L1 caches that are write-back, virtually
-indexed, physically tagged, and two- or four-way set-associative. Cache management
-is done using a special cache instruction.
-
-The first R4000 CPUs had on-chip L2 cache control, and QED’s RM7000
-(around 1998) introduced on-chip L2 cache, which is now commonplace in
-high-end designs. The cache instruction as defined by MIPS32/64 extends to
-L2 and L3 caches.
-
-> Some system implementations have L2 caches that are not controlled by
-hardware inside the MIPS CPU but built onto the memory bus. The software
-interface to caches like that is going to be system specific and may
-be quite different from the CPU-implemented or CPU-controlled caches
-described in this chapter.
-
-# 对MIPS32/64高速缓存的编程
-
-The MIPS32/64 specifications define a tidy way of managing caches (following
-the lead of the R4000, which fixed the unseemly cache maintenance of the
-earlier CPUs).
-
-MIPS32/64 CPUs often have much more sophisticated caches than early
-MIPS CPUs—write-back, andwith longer lines. Because it’s awrite-back cache,
-each line needs a status bit that marks it as dirty when it gets written by the
-CPU (and hence becomes different from the main memory copy of the data).
-To manage the caches, there are a number of primitive operations we’d really
-like. The actions we need to achieve are:
-
-* Invalidate range of locations: Removes any data from this address range
-from the cache, so that the next reference to it will acquire fresh data
-from memory.
-The instruction cache HitInvalidate has the form of a load/store
-instruction, providing a virtual address. It invalidates any single cache
-line containing the data referenced by that virtual address. Repeat the
-instruction at line-size-separated addresses across the range.
-
-* Write-back range of locations: Ensures that any CPU-written data in
-this range currently held in dirty cache lines is sent back to main
-memory.
-The instruction cache HitWritebackInvalidate writes back any
-single cache line containing the data referenced by that virtual address,
-and then makes it invalid as a bonus.
-
-* Invalidate entire cache: Discards all cached data. This is rarely required
-except at initialization, but is sometimes the last resort of operating system
-code that is not sure which cached data needs to be
-invalidated.
-The instruction cache IndexInvalidate is used here. Its address
-argument is interpreted only as an index into the memory array underlying
-the cache—successive lines are accessed at index values from 0
-upward, in cache-line-size increments.
-
-* Initialize caches:Whatever is required to get the caches usable from an
-unknown state. Setting up the cache control fields (the “tag”) usually
-involves zeroing the CP0 TagLo register and using a cache Index-
-StoreTag operation on each line-sized chunk of the cache. Caches with
-data check bits may also need to be prefilled with data—even though
-the lines are invalid, they should not have bad check bits. Prefilling
-an I-cache would be tricky, but you can usually use a cache Fill
-instruction.
-
-## Cache相关指令
-
-The cache instruction has the general form of a MIPS load or store instruction
-(with the usual register plus 16-bit signed displacement address)—but
-where the data register would have been encoded there’s a 5-bit operation
-field, which must encode the cache to be operated on, determine how to
-find the line, and figure out what to do with the line when you find it.
-You write a cache line in assembly as cache OP,addr, where OP is just
-a numeric value for the operation field.
-
-The best thing to do is to use the C preprocessor to define text “names”
-representing the numeric values for the operations. There are no standard
-names; I’ve arbitrarily used the names of C preprocessor definitions found in
-header files from the MIPS Technologies toolkit package.
-
-Of the 5-bit field, the upper 2 bits select which cache to work on:
-
+操作域中的高2位指定操作哪个Cache：
+    
     0 = L1 I-cache
     1 = L1 D-cache
     2 = L3 cache, if fitted
     3 = L2 cache, if fitted
 
-Before we list the individual commands, note that they come in three flavors,
-which differ in how they select the cache entry (the “cache line”) they will
-work on:
+将Cache相关命令可以分为3类：
 
-* Hit-type cache operation: Presents an address (just like a load/store),
-which is looked up in the cache. If this location is in the cache (if it
-“hits”), the cache operation is carried out on the enclosing line. If this
-location is not in the cache, nothing happens.
+* hit型操作：
 
-* Address-type cache operation: Presents an address of some memory data,
-which is processed just like a cached access. That is, if the line you
-addressed was not previously in cache, the data is fetched from memory
-before the cache operation.
+    给出一个地址，从Cache中查找，如果找到则执行操作；否则什么也不干。
 
-* Index-type cache operation: Uses as many low bits of the virtual address
-as are needed to select the byte within the cache line, then the cache
-line address inside one of the cache ways, and then the way.5 You have
-to know the size of your cache (discoverable from Config1-2, see
-section 3.3.7 for details) to know exactly where the field boundaries
-are, but your address is used something like this:
+* 寻址型操作：
 
-Once you’ve picked your cache and cache line, you have a choice of operations
-you can perform on it, as shown in Table 4.2. Three operations must be
-supported by a CPU to claim MIPS32/64 compatibility: that’s index invalidate,
-index store tag, and hit write-back invalidate. Other operations are optional—if
-you use them, check your CPU manual carefully.
+    如果寻址的数据不在Cache中，则从内存中加载对应的数据到Cache中。
 
-The synci instruction (new to the MIPS32 Release 2 update) provides a
-clean mechanism for ensuring that instructions you’ve just written are correctly
-presented for execution (it combines a D-cache write-back with an
-I-cache invalidate). If your CPU supports it, you should use synci in preference
-to the traditional alternative (a pair of cache instructions, to do D-cache
-write-back followed by an I-cache invalidate).
+* 索引型操作：
 
-## Cache初始化和Tag/Data寄存器
+    根据需要用虚拟地址的低位选出在Cache行中的一个字节，然后是Cache某路中的Cache行地址，然后就是第几路。具体格式如下，所示
 
-For diagnostic and maintenance purposes it’s good to be able to read and write
-the cache tags; MIPS32/64 defines a pair of 32-bit registers TagLo and TagHi6
-to stage data between the tag part of the cache and management software. TagHi
-is often not necessary: Until your physical address space is more than 36 bits,
-there is usually room for the whole tag in TagLo.
+    <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_4_4.PNG">
 
-The fields in the two registers reflect the tag field in the cache and are CPU
-dependent. Only one thing is guaranteed: An all-zero value in the tag register(s)
-corresponds to a legal, properly formed tag for a line that contains no valid data.
-The CPU implements a cache IndexStoreTag instruction, which copies the
-contents of the tag registers into the cache line. So by setting the registers to zero,
-and storing the tag value, you can start to initialize a cache from an unknown
-starting state.
+一旦选中了某行，CPU所能做的操作如下表4-2所示。但是，与MIPS32/64兼容的CPU必须实现基本的三个操作：索引型失效、`Index Store Tag`、和`Hit Writeback invalidate`。
 
-There are “store data” and “load data” cache operations defined by
-MIPS32/64, but they are optional and should only be used by code that is
-already known to be CPU-specific. You can always access the data by “hitting”
-on it.
+表4-2 Cache行上的可用操作
 
-A cache tag must hold all the address bits that are not implicitly known
-from the cache index (look back at Figure 4.1 if this does not seem
-obvious).
+| 取值 | 命令 | 功能 |
+| ---- | ---- | ---- |
+| 0    | Index invalidate | 失效行。如果Cache行被修改过，<br> 则将数据写回到内存。<br> 当初始化Cache的时候，<br>这是最好的方法。<br> 如果Cache被奇偶保护，<br>还需要填充正确的校验位。<br> 参见下面的Fill命令。|
+| 1    | Index Load Tag | 读取Cache行的Tag，<br>数据加载到TagLo/TagHi寄存器。<br> 几乎不用 |
+| 2    | Index Store Tag | 设置tag。<br> 初始化时必须<br>每行都执行该操作。|
+| 3    | Hit invalidate | 失效但不回写数据。<br> 有可能会丢失数据。 |
+| 4    | Hit Writeback <br> invalidate | 失效且回写数据。<br> 这是常用失效Cache方法。 |
+| 5    | Fill | 填充Cache行的数据位。<br> 奇偶保护时使用。 |
+| 6    | Hit writeback | 强制回写内存。|
+| 7    | Fetch and Lock | 正常的加载Cache操作。 |
 
-So the L1 cache tag field length is the difference between the number of
-bits of physical address supported and the number of bits used to index the L1
-cache—12 bits for a 16-K four-way set-associative cache. TagLo(PTagLo) has
-room for 24 bits, which would support up to a 36-bit physical address range for
-such a cache.
+#### 9.2 Cache初始化和Tag/Data寄存器
 
-The field TagLo(PState) contains the state bits. Your CPU manual will
-tell you more about them; however, for all cache management and initialization,
-it suffices to know that an all-zero tag is always a legitimate code representing
-an invalid cache entry.
+为了诊断和维护，最好能够读写Cache的Tag标签。为此，MIPS32/64定义了一对32位寄存器：`TagLo`和`TagHi`，使用它们对Cache的Tag部分进行管理。大部分时候TagHi寄存器不是必须的：除非你的物理内存地址空间超过36位；否则，只使用TagLo寄存器就足够了。
 
-## CacheErr、ERR和ErrorEPC寄存器：Memory/Cache错误处理
+> 有些寄存器可能使用不同的寄存器分别与I-Cache和D-Cache进行通信，比如ITagLo等。
 
-The CPU’s caches forma vital part of the memory system, and high-availability
-or trustworthy systems find it worthwhile to use some extra bits to monitor the
-integrity of the data stored there.
+这两个寄存器反映了Cache的Tag标签位，具体实现依赖于CPU的实现。唯一可以保证的事情是：如果寄存器中的值全为0，代表一个合法的数据Tag，表示相应的Cache行中不含有效数据。所以，这是一个初始化Cache的方法：设置寄存器的值为0，存储Tag值到Cache中，就可以使Cache从未知状态进入初始化状态。
 
-Data integrity checks should ideally be implemented end to end; check bits
-should be computed as soon as data is generated or introduced to the system,
-stored with the data, and checked just before it’s used. That way the check
-catches faults not just in the memory array but in the complex buses and gizmos
-that data passes through on its way to the CPU and back.
+MIPS32/64定义了store和load两种Cache操作，但它们是可选的，具体依赖于CPU实现。
 
-For this reason MIPS CPUs that may be used to implement high-reliability
-systems often choose to provide error checking in the caches. As in a main
-memory system, you can use either simple parity or an error-correcting code
-(ECC).
+Tag包含Cache索引之外的所有必须位。所以，L1级Cache的Tag长度等于物理地址位数减去L1级Cache索引的位数（对于一个16K大小的4路组相关联Cache来说，索引的位数是12位。）。TagLo（PTagLo）可以容纳24位，这样一个高速Cache最多可以支持36位。
 
-The components used to build memory systems tend to come in multiples
-of 8-bit widths these days, and memory modules that allow for checking
-provide 64 data and 8 check bits. So whatever else we use should follow
-that lead.
+TagLo（PState）包含状态位。
 
-Parity is simple to implement as an extra bit for each byte of memory.
-A parity error tells the system that data is unreliable and allows a
-somewhat-controlled shutdown instead of creeping random failure. A crucial
-role of parity is that it can be an enormous help during system development,
-because it unambiguously identifies problems as being due to memory data
-integrity.
+####9.3 CacheErr、ERR和ErrorEPC寄存器：Memory/Cache错误处理
 
-But a byte of complete garbage has a 50 percent chance of having correct
-parity, and random rubbish on the 64-bit bus and its parity bits will still escape
-detection 1 time in 256. Some systems want something better.
+CPU的Cache是内存系统的重要组成部分。对于高可靠性系统来说，监视Cache数据完整性是非常有必要的。
 
-An error-correcting code (ECC) is more complex to calculate, because it
-involves the whole 64-bit word with 8 check bits used together. It’s more
-thorough: a 1-bit error can be uniquely identified and corrected, and no
+数据完整性检查理想上来说，应该是end-to-end：数据产生或者进入系统时就一起计算校验位，一起存放；在数据使用之前，再次执行检查。这样的检查不仅能够发现存储器的错误而且能够发现复杂的总线错误，和数据与CPU的交互过程中产生的错误。
 
-2-bit error can escape detection. ECC is a powerful tool for weeding out
-random errors in very large memory arrays.
+基于这个原因，MIPS架构CPU通常在Cache中提供错误检查。如同主内存一样，既可以使用简单的奇偶校验，也可以是复杂的ECC错误纠错码。
 
-Because the ECC bits check the whole 64-bit word at once, ECC
-memories can’t perform a partial-word write by just selecting which part of
-the word to operate on but must always merge the new data and recompute
-the ECC. MIPS CPUs running uncached require their memory system to
-implement partial-word writes, making things complicated. Memory system
-hardware must transform partial-word writes into a read-merge-recalculatewrite
-sequence.
+MIPS架构的CPU内存系统是以8位宽度为最小处理单元，所以内存模块提供64位数据检查和8位校验位。也可以将数据校验简单理解为，系统每8个字节产生一个额外的位。
 
-For simpler systems, the choice is usually parity or nothing. It can be valuable
-to make parity optional, to get the diagnostic benefits during design development
-without paying the price in production.
+一个字节的错误数据有50%的概率产生正确的校验位，所以，在64位总线上的随机垃圾数据及其校验位每256次中将有一次逃脱检测。有些系统要求比这更高。
 
-Ideally, whichever check mechanism is implemented in the memory system
-will be carried inside the caches. In different CPUs, you may be able to use
-parity, a per-doubleword 8-bit ECC field, or no protection at all.
+ECC的计算更为复杂，因为它涉及整个64位数据和8位校验位。ECC是排除内存系统中随机错误的一个强大工具。
 
-If possible, the data check bits are usually carried straight from the system
-interface into the cache store: They need not be checked when the data
-arrives from memory and is loaded into the cache. The data is checked
-when it’s used, which ensures that any cache parity exception is delivered
-to the instruction that causes it, not just to one that happens to share the
-same cache line.
+理想情况下，存储系统采用什么样的校验机制，Cache也应该采用相同的机制。根据CPU的不同，可以采用奇偶位、纠错码ECC，或者什么都不做。
 
-A data check error on the system bus for an uncached fetch is handled by the
-same mechanism, which means it will be reported as a “cache parity error”—
-which can confuse you.
+如果发生错误，CPU产生特殊的错误陷阱。这时，如果Cache包含坏数据，异常向量位于非Cache的地址空间上（Cache发生了错误，还在上面运行是不是很愚蠢？）。如果系统使用ECC，硬件要么自己纠正错误，要么提供给软件足够多的信息去修复数据。
 
-Note that it’s possible for the system interface to mark incoming data as
-having no valid check bits. In this case, the CPU will generate check bits for its
-internal cache.
+CacheErr寄存器的域取决于具体实现，需要查阅CPU手册。
 
-If an error occurs, the CPU takes the special error trap. This vectors
-through a dedicated location in uncached space (if the cache contains bad
-data, it would be foolish to execute code from it). If a system uses ECC,
-the hardware will either correct the error or present enough information
-for the software to fix the data.
+####9.4 设置Cache大小和配置
 
-The fields in the CacheErr register are implementation dependent, and
-you’ll need to consult your CPU manual. You may be able to get sample cache
-error management routines from your CPU supplier.
+对于兼容MIPS32/64架构的CPU，Cache大小，Cache结构，行大小都可以通过协处理器0（CP0）的Config1-2寄存器获取。
 
-#### 4 设置Cache大小和配置
+#### 9.5 初始化程序
 
-In MIPS32/64-compliant CPUs cache size, cache organization, and line size are
-reliably reported to you as part of the CP0 Config1-2 registers, described in
-section 3.3.7.
+通用的初始化程序示例：
 
-But for portability it makes sense to write or recycle initialization software,
-which works robustly across a large range of MIPS CPUs. The next section has
-some tried-and-tested solutions.
+1. 开辟一些内存用来填充Cache，至于内存中存储什么数据没有关系。如果开启了奇偶校验或ECC功能，还需要填充正确的奇偶校验位。一个很好的技巧就是保留内存的低32K空间，用来填充Cache，直到完成Cache初始化。如果使用不经过Cache的数据填充，自然包含正确的校验位。
 
-#### 5 初始化程序
+    对于较大的L2级Cache，这个32K的空间可能不够，需要做一些其它的处理。
 
-Here’s one good way to do it:
+2. 将TagLo寄存器设为0，对Cache进行初始化。`cache IndexStoreTag`指令使用TagLo寄存器强制失效一个Cache行并清除Tag奇偶位。
 
-1. Set up some memory you can fill the cache from—it doesn’t matter what
-data you store in it, but it needs to have correct check bits if your system
-uses parity or ECC. A good trick is to reserve the bottom 32 K of system
-memory for this purpose, at least until after the cache has been initialized.
-If you fill it with data using uncached writes, it will contain correct
-parity.
-A buffer that size is not going to be big enough to initialize a large L2
-cache, and you may need to do something more complicated.
+3. 禁止中断
 
-2. Set TagLo to zero, which makes sure that the valid bit is unset and the
-tag parity is consistent (we’d set TagHi on a CPU that needed it).
-The TagLo register will be used by the cache IndexStoreTag cache
-instructions to forcibly invalidate a line and clear the tag parity.
+4. 先初始化I-Cache，然后是D-Cache。下面是I-Cache初始化的C代码部分。 
 
-3. Disable interrupts if they might otherwise happen.
+        for (addr = KSEG0; addr < KSEG0 + size; addr += lnsize)
+            /* 清除Tag并失效 */
+            Index_Store_Tag_I (addr);
+        for (addr = KSEG0; addr < KSEG0 + size; addr += lnsize)
+            /* 填充一次，数据校验是正确的 */
+            Fill_I (addr);
+        for (addr = KSEG0; addr < KSEG0 + size; addr += lnsize)
+            /* 再次失效，谨慎但并非严格必要 */
+            Index_Store_Tag_I (addr);
 
-4. Initialize the I-cache first, then the D-cache. Following is C code for
-I-cache initialization. (You have to believe in the functions or macros
-like Index Store Tag I(),which do low-level functions; they’re either
-trivial assembly code subroutines that run the appropriate machine
-instructions or—for the brave GNU C user—macros invoking a C asm
-statement.)
+5. D-Cache初始化代码。D-Cache侧没有fill等价的操作，所以只能使用Cache空间对其进行加载，完全依赖于正常的miss处理过程。
+
+        /* 清除所有的Tag */
+        for (addr = KSEG0; addr < KSEG0 + size; addr += lnsize)
+            Index_Store_Tag_D (addr);
+        /* 加载每行（使用Cached地址空间）*/
+        for (addr = KSEG0; addr < KSEG0 + size; addr += lnsize)
+            junk = *addr;
+        /* 清除所有Tag */
+        for (addr = KSEG0; addr < KSEG0 + size; addr += lnsize)
+            Index_Store_Tag_D (addr);
+
+#### 9.6 失效或回写Cache对应的存储区
+
+这一步时，注意访问的地址参数一定是合法的，比如一些I/O设备内存的地址或物理内存地址。
+
+几乎总是使用命中型操作来失效Cache或者回写内存。大于大块地址空间，也许使用索引型操作更快。这个需要自己选择。
+
+简单示例：
+
+    PI_cache_invalidate (void *buf, int nbytes)
+    {
+        char *s;
+        for (s = (char *)buf; s < buf+nbytes; s += lnsize)
+            Hit_Invalidate_I (s);
+    }
+
+只要buf是程序地址，就没有必要使用特殊地址。如果直接使用物理地址p来进行失效，只要p在物理空间的低512M空间内，加上常量0x80000000就对应kseg0地址空间：
+
+    PI_cache_invalidate (p + 0x80000000, nbytes);
+
+# 10 Cache效率问题
+
+（这一部分的内容主要是芯片设计者应该考虑的问题）
+
+据研究表明，CPU的性能很大程度上取决于其Cache的性能。尤其是嵌入式系统，需要在Cache和内存性能上节约。CPU大概有50%-65%的时间在等待Cache重填。
+
+而系统等待Cache重填的时间取决于两个因素：
+
+* 平均指令的Cache未命中率：
+
+    Cache未命中数除以执行的指令数。其实，每千条指令的Cache未命中数是一个更有用的度量标准。
+
+* Cache未命中/重填的开销：
+
+    内存系统重填Cache并重启CPU执行所花费的时间。
+
+我们为什么把Cache的未命中率定义为`平均指令的Cache未命中率`，而不是`平均CPU访问内存的未命中数`。那是因为Cache未命中率的影响因素有很多，有一些甚至无法预料。比如，x86架构CPU的寄存器个数比较少，同样的程序，基于x86架构编译就比MIPS架构编译多产生load和store操作（比如，函数传递较多参数时）。但是，x86编译器会将额外的load和store操作作用到堆栈上，代替使用寄存器。那么这一小段内存的使用率就会非常高，Cache的效率也就更高。所以，总体上来说，每千条指令的未命中数受影响的差别没那么大。
+
+下面我们列举一些提高系统运行的方法：
+
+* 降低Cache未命中数
+
+    - 增大Cache。但是代价高昂。64K大小的Cache可能比CPU其它所有部分（不包含FPU浮点单元）所占据的硅面积都大。
+    - 增加Cache的组关联度。但是4路组Cache之后，再增加对性能几乎影响不大。
+    - 再增加一级Cache。代价也很大。这也是目前都是两级Cache的原因。
+    - 通过软件降低Cache未命中数。小程序容易实现，规模化的程序很难实现。
+
+* 降低Cache重填的开销
+
+* 尽可能快的重启CPU执行
+
+* 不到万不得已不要停止CPU执行：
+
+* 多线程化CPU
+
+    Cache-miss延时对程序性能的不利影响可以被抑制但是无法避免。所以，更为有效的方法就是在CPU上运行多个线程，这样可以在彼此等待期间使用空闲的CPU资源。
+
+# 11 软件对Cache效率的影响
+
+在运行大量应用程序的复杂系统中，Cache性能是一个性能平衡的过程，不太好优化软件提高执行效率。但是对于单个应用程序的嵌入式系统中，可以通过一些特殊的处理提高其性能。在分析之前，我们先把Cache未命中数按照产生的原因进行分类：
+
+* 第一次访问 
+
+    必然都是cache-miss。
+
+* 替换 
+
+    不可避免，在程序的运行过程中，需要不断地从Cache中替换、重填数据。
+
+* 抖动
+
+    在四路组相关联的Cache中（更多路的情况在MIPS架构CPU中很少见），有四个位置可以保存特定内存位置上的数据。（对于直接映射Cache，仅有一个）。
+    
+    假设你的程序大量使用几段地址的代码，这些地址有一个特点就是它们的低位都非常接近，也就是使用相同的Cache行。那么如果这几段地址的个数大于Cache的组关联度时，它们之间就会频繁发生互相替换的情况，从而降低系统性能。（大多数研究表明，大于四路组关联的Cache，性能基本上不再提高）。
+
+通过上面的了解，解决Cache效率的可以分为下面几个方面：
+
+* 使程序更加精简
+
+    这应该是一个程序员的至高境界。但是很难做到。大部分时候也就是通过编译优化选项实现，但是过度优化往往会增大程序。
+
+* 使频繁调用的代码更加短小
+
+    一种方法是，分析代码在典型应用下的使用最频繁的函数，然后按照函数的执行时间递减顺序在内存中排列函数。这意味着频繁使用的函数不会相互争夺Cache的位置。
+
+* 强制一些重要常用的代码常驻Cache 
+
+    该方法怀疑中。
+
+总之一句话，软件要提高Cache的效率太难了，让硬件去实现吧。
+
+# 12 Cache重影
+
+这个问题是怎么产生的呢？这是因为，对于MIPS架构的CPU的L1级缓存来说，通常使用虚拟地址作为索引，物理地址作为Tag标签。这样可以提高性能：如果我们使用物理地址作为索引，只有等通过TLB转换成实际的物理地址后，我们才能遍历Cache。但是这导致了Cache重影。
+
+大部分CPU转换地址的单元是4K大小。这意味虚拟地址的低12位无需转换。只要你的Cache不超过4KB，虚拟地址的索引和物理地址的索引是相同的，这是OK的。其实，只要是Cache的跨度单元不超过4KB就没问题。在组相关联的Cache中，每个索引访问几个内存点（一路对应一个内存点）。所以，即使是16kB大小的Cache，虚拟地址的索引也是与物理地址的索引相同的，不会发生Cache重影。
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_4_5.PNG">
+
+但是设想一下，如果Cache的索引范围达到8K的情形（32k四路组相关联的Cache就是这样）。你可能会从两个不同的虚拟地址访问同一个物理页：例如虚拟地址可能是连着的两页-地址分别从0和4K处开始。这样，如果程序访问地址0处的数据，就会加载该数据到某个Cache索引为0的位置。如果此时再从另一个地址4K处访问同一个物理内存上的数据，再次从内存中取出数据加载到Cache索引为4K的位置。现在，对于同一数据在Cache中存在两个备份，彼此之间无法知晓。这就是Cache重影。如果仅仅是只读还好。但是，如果正在写的数据重影就很可能导致灾难性的后果。
+
+MIPS架构的L2级Cache总是使用物理地址索引和Tag，所以不会存在Cache重影。
+
+总结来说，重影的出现是L1级Cache在设计之初就引入的一个潜在问题。但是，如果使用了L2级Cache，就不会出现问题。如果没有使用L2级Cache，则只要保证虚拟地址到物理地址的映射间隔是64K的整数倍既可以。
+
+
