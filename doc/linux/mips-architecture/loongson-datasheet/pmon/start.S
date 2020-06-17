@@ -1252,36 +1252,37 @@ END(CPU_TLBClear)
 
 /*
  *  Set up the TLB. Normally called from start.S.
+ *  Where, start_address = 0xa0000000, and size = 0x40000000(1G)
  */
 LEAF(CPU_TLBInit)
-    li      a3, 0           # First TLB index.
+    li      a3, 0                   # First TLB index.
 
     li      a2, PG_SIZE_16M
     MTC0    a2, COP_0_TLB_PG_MASK   # All pages are 16Mb.
 
 1:
     and     a2, a0, PG_SVPN
-    MTC0    a2, COP_0_TLB_HI    # Set up entry high.
+    MTC0    a2, COP_0_TLB_HI        # Set up entry high.
 
     move    a2, a0
     srl     a2, a0, PG_SHIFT 
-    and     a2, a2, PG_FRAME
-    ori     a2, PG_IOPAGE
-    MTC0    a2, COP_0_TLB_LO0   # Set up entry low0.
+    and     a2, a2, PG_FRAME        
+    ori     a2, PG_IOPAGE           # get attributes
+    MTC0    a2, COP_0_TLB_LO0       # Set up entry low0.
     addu    a2, (0x01000000 >> PG_SHIFT)
-    MTC0    a2, COP_0_TLB_LO1   # Set up entry low1.
+    MTC0    a2, COP_0_TLB_LO1       # Set up entry low1.
 
-    mtc0    a3, COP_0_TLB_INDEX # Set the index.
+    mtc0    a3, COP_0_TLB_INDEX     # Set the index.
     addiu   a3, 1
-    li      a2, 0x02000000
+    li      a2, 0x02000000          # step = 32MB
     subu    a1, a2
     nop
-    tlbwi               # Write the TLB
+    tlbwi                           # Write the TLB
 
     bgtz    a1, 1b
-    addu    a0, a2          # Step address 32Mb.
+    addu    a0, a2                  # Step address 32Mb.
 
-    jr  ra
+    jr      ra
     nop
 END(CPU_TLBInit)
 

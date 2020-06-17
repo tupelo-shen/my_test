@@ -41,8 +41,8 @@ TLB是把程序地址或者虚拟地址转换成物理地址的硬件电路。�
 6. Context：在协处理器0中的编号为`4`。
 7. XContext：在协处理器0中的编号为`20`。
 
-    6-7两项描述的寄存器是辅助寄存器，用来加速TLB重填陷进的处理过程。
-    These are convenience registers, provided to speed up the processing of  TLB refill traps. The high-order bits are read/write; the low-order bits are taken from the VPN of the address that couldn’t be translated. The register fields are laid out so that, if you use the favored arrangement of memory-held copies of memory translation records, then following a TLB refill trap Context will contain a pointer to the page table record needed to map the offending address. See section 6.2.4. XContext does the same job for traps from processes using more than 32 bits of effective address space; a straightforward extension of the Context layout to larger spaces would be unworkable because of the size of the resulting data structures. Some 64-bit CPU software is happy with 32-bit virtual address spaces; but for when that’s not enough, 64-bit CPUs are equipped with “mode bits” SR(UX), SR(KX), which can be set to invoke an alternative TLB refill handler; in turn that handler can use XContext to support a huge but manageable page table format.
+    6-7两项描述的寄存器是辅助寄存器，用来加速TLB重填异常处理程序的处理过程。高位可读写，低位取自未能命中的地址中的VPN。
+    通俗的说，就是标记内存映射表在内存中的位置和映射关系的。具体看后面的介绍。
 
 ####2.1 TLB关键域描述1
 
@@ -79,7 +79,19 @@ TLB是把程序地址或者虚拟地址转换成物理地址的硬件电路。�
 
 4. PageMask：
 
-    寄存器允许设置TLB域来映射更大的页。
+    寄存器允许设置TLB域来映射更大的页。具体可以允许的页大小如下表所示：
+
+    | 24-21 | 20-17 | 16-13 | 页大小 |
+    | ----  | ----  | ----  | ----   |
+    | 0000  | 0000  | 0000  | 4KB    |
+    | 0000  | 0000  | 0011  | 16KB   |
+    | 0000  | 0000  | 1111  | 64KB   |
+    | 0000  | 0011  | 1111  | 256KB  |
+    | 0000  | 1111  | 1111  | 1MB    |
+    | 0011  | 1111  | 1111  | 4MB    |
+    | 1111  | 1111  | 1111  | 16MB   |
+
+    如果你的CPU支持1KB大小的页，在PageMask底部还要有两个额外的位，对它的设置，遵循同样的模式。
 
 ####2.2 TLB关键域描述2-EntryLo0-1
 
@@ -93,9 +105,11 @@ TLB是把程序地址或者虚拟地址转换成物理地址的硬件电路。�
 
 2. C
 
-    A 3-bit field originally defined for cache-coherent multiprocessor systems to set the “cache algorithm” (or “cache coherency attribute”— some manuals call this field CCA). An OS will typically know that some pages will not need to have changes tracked automatically through multiple caches—pages known to be used only by one CPU, or known to be read-only, don’t need so much care. It can make the system more efficient to turn off the cache snooping and interaction for accesses to these pages, and this field is used by the OS to note that the page is, for example, cacheable but doesn’t need coherency management (“cacheable noncoherent”).
+    包含3位，最初是为多处理器系统的Cache一致性设计的，设置一致性属性，有些手册称之为`CCA`。OS往往知道哪些内存页不需要在多个Cache之间实现一致性，比如，只有一个CPU核使用的内存页，再比如只读的内存页，它们可以经过Cache访问，但是不需要考虑一致性。所以，关闭Cache的snooping和交互可以让系统更有效率。
+    
+    但有时候，嵌入式系统也会使用该域，用来选择Cache的工作方式，比如标记某个具体的页为`write-though`式管理，也就是说，访问标记为这种管理方式的页，所有的写操作都同时直接写入主内存和Cache中。
 
-    But the field has also been used in CPUs aimed at embedded applications, when it selects how the cache works—for example, marking some particular page to be managed “write-through” (that is, all writes made there are sent straight to main memory as well as to any cached copy). The only universally supported values of this field denote “uncached” (2) and “cacheable noncoherent” (3).
+    常用的值为：2，不用Cache（uncached）；3，可用Cache，但是不要一致性检查（Cacheable noncoherent）。
 
 3. D（脏位）
 
@@ -135,16 +149,13 @@ TLB是把程序地址或者虚拟地址转换成物理地址的硬件电路。�
 
 当给出的虚拟地址不在TLB表中时，CPU发生异常，未能转换的虚拟地址已经在BadVAddr寄存器中了。虚拟地址中对应VPN域的位也会被写入到EntryHi（VPN2）中，从而为`未命中`的地址建立新的TLB项。
 
-When the CPU takes an exception because a translation isn’t in the TLB, the virtual address whose translation wasn’t available is already in BadVAddr. The page-resolution address is also reflected in EntryHi(VPN2), which is thereby preset to exactly the value needed to create a new entry to translate the missed address.
-
-为了进一步加速这种异常的处理过程，Context或XContext寄存器用来
-But to further speed the processing of this exception, the Context or XContext register repackages the page-resolution address in a format that can act as a ready-made pointer to a memory-based page table.
+为了进一步加速这种异常的处理过程，Context或XContext寄存器用来记录保存在内存中的页表指针。通过它，可以快速查找定义的虚拟内存映射表。
 
 MIPS32架构的CPU只有Context寄存器，可以帮助填充32位的虚拟地址。MIPS64架构的CPU增加了XContext寄存器，用来扩展虚拟地址空间（达到40位。如图6-4所示：
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_6_4.PNG">
 
-Note that XContext is the only register in which the MIPS64 definition does not exactly define field boundaries: the XContext(BadVPN2) field grows on CPUs supporting virtual address regions bigger than 240 bits and pushes the R and PTEBase fields left (the latter is squashed to fit). Section 6.2.1, which describes Figure 6.2, explains how to find out how many bits are used in your CPU. The fields are:
+XContext寄存器是MIPS64架构唯一没有精确定义各个域边界的寄存器：XContext(BadVPN2)域在支持超过40位虚拟地址空间的CPU上自动向上增长，并且将R和PTEBase域向左推移（要想保证放得下，必须自动缩小后者）。各个域的具体参考如下：
 
 1. Context(PTEBase): 
 
@@ -152,19 +163,17 @@ Note that XContext is the only register in which the MIPS64 definition does not 
 
 2. Context(BadVPN2)/XContext(BadVPN2): 
 
-    Following a TLB-related exception, this holds the page address, which is just the high-order bits of BadVAddr. Why the “2” in the name? Recall that in the MIPS32/MIPS64 TLB, each entry maps an adjacent pair of virtual-address pages onto two independent physical pages.
+    跟随在TLB未命中异常之后，这个域被自动填入BadVAddr寄存器中的高位值，也就是VPN域。这儿的数字2，表示连续的虚拟地址页对应独立的两个物理内存页。
 
-    The BadVPN2 value starts at bit 4, so as to precalculate a pointer into a table of 16-byte entries whose base address is in PTEBase. If the OS maintains this table so that the entry implicitly accessed by a particular virtual page address contains exactly the right EntryLo0-1 data to create a TLB entry translating that page, then you minimize the work a TLB miss exception handler has to carry out; you can see that in section 6.5. If you’re only translating 32-bit addresses and don’t need too many bits of software-only state in the page table, you could get by with an eight-byte page-table entry. This turns out to be one of the reasons why Linux doesn’t use the Context registers in the prescribed manner. The XContext(BadVPN2) field may be larger than is shown in Figure 6.4 if your CPU can handle more than 240 bits of user virtual address space.When that happens, the R and PTEBase fields are pushed along to make space.
+    BadVPN2的值从第4位开始，是因为PTEBase表中的项都是16字节大小的表项。如果，我们地址是32位，且不需要那么多的软件状态标志位，则页表的项可以使用8字节。这就是Linux没有按照约定使用Context寄存器的原因。
 
 3. XContext(PTEBase): 
 
-    The page table base for 64-bit address regions must be aligned so that all the bits below those specified by XContext (PTEBase) are zero: That’s 8 GB aligned. That sounds intolerable, but there is a suitable large, mapped, kernel-only-accessible region (“xkseg”) in the basic MIPS64 memory map.
+    物理内存比较大时用的页表基址寄存器。如果页表非常大，可以存储在巨大内核使用的地址空间内（xkseg区域）。
 
 4. XContext(R): 
 
-    TLB misses can come from any mapped region of the CPU’s memory map, not just from user space. All regions lie within one overarching 64-bit space, but are much smaller than is required to pack it full (you might like to refer to Figure 2.2 in section 2.8). Usable 64-bit virtual addresses are divided into four “xk. . . ” segments within which you can use a 62-bit in-segment address.
-
-    So as to save space in XContext, the miss address as shown here is kept as a separate 40-bit in-region page address (BadVPN2) and a 2-bit mappedregion selector XContext(R), defined as follows:
+    标志TLB未命中发生的地址空间。具体的值可以参考如下：
 
     | R值 | 区域名 | 描述 |
     | --- | ------ | ---- |
@@ -173,7 +182,7 @@ Note that XContext is the only register in which the MIPS64 definition does not 
     |  2  |        | 对应未映射的地址段，未使用 |
     |  3  | xkseg  | 内核态映射空间（包含老kseg2）|
 
-Note that not all operating systems use Context/XContext as originally envisaged—notably, Linux doesn’t.We’ll discuss why later.
+> 再次提醒： Linux并不这样使用Context/XContext寄存器。
 
 # 3 TLB/MMU指令
 
@@ -193,8 +202,6 @@ Note that not all operating systems use Context/XContext as originally envisaged
 
     遍历TLB表。搜索TLB表，查看是否有与EntryHi寄存器中的VPN和ASID相匹配的项。如果有，把对应项的索引写入到Index寄存器中；如果没有，则设置Index寄存器的bit31，这个值看上去是一个负值，更好判断。
 
-程序应该保证只能一个TLB项匹配，否则会发生可怕的错误。
-
 需要注意的是，tlbp不会从TLB中读取数据，必须在后面执行指令tlbr读取数据。
 
 在大部分的CPU中，TLB地址转换都被纳入流水线的操作流程中，以便提高效率。这是，TLB的这些指令操作不能完全适配标准的管道流水线。所以，在使用了上面这些指令后，立马使用相关虚拟地址的指令可能会产生危险，这个问题我们之前的文章分析过。为了避免这个问题，通常在kseg0非转换区域进行TLB的维护工作。
@@ -205,7 +212,7 @@ TLB表的设置过程是：将想要的值写入到EntryHi和EntryLo寄存器中
 
 处理TLB重填异常的时候，硬件自动将虚拟地址的VPN和ASID域写入到EntryHi寄存器中。
 
-一定要小心不要创建两个相同的虚拟地址映射关系。如果TLB包含重复的项，尝试转换这个地址的时候，潜在的会破坏CPU芯片。一些CPU为了在这种情况保护自身，会关闭TLB硬件单元，并设置相应的SR（TS）标志位。此时，TLB只能复位才能工作。
+一定注意，不要创建两个相同的虚拟地址映射关系。如果TLB包含重复的项，尝试转换这个地址的时候，会潜在地破坏CPU芯片。一些CPU为了在这种情况保护自身，会关闭TLB硬件单元，并设置相应的SR（TS）标志位。此时，TLB只能复位才能工作。
 
 系统软件一般不会读取TLB表项。但是，如果确实需要读取它们，则使用tlbp遍历匹配到需要的虚拟地址对应的TLB项，把对应的索引值写入到Index寄存器。然后使用tlbr指令读取TLB项相应的值到EntryHi和EntryLo0-1寄存器中。使用过程中，不要忘记保存和恢复EntryHi寄存器，因为ASID域非常重要。
 
@@ -235,7 +242,6 @@ ASID设计的目的就是将内存区域进行安全划分，保证不同进程�
 
 # 5 对硬件友好的页表和重填机制
 
-There’s a particular translation mechanism that the MIPS architects undoubtedly had in mind for user addresses in a UNIX-like OS. It relies upon building a page table in memory for each address space. The page table consists of a linear array of entries, indexed by the VPN, whose format is matched to the bitfields of the EntryLo register. The paired TLBs need 2 × 64-bit entries, 16 bytes per entry.
 类Unix的OS为MIPS架构提供了一种特殊的地址转换机制。把所有的地址空间划分为一个线性数组，使用VPN索引，与EntryLo寄存器的位域匹配。这样成对的TLB项需要16个字节保存，2*64位。
 
 这种处理方式减少了重填异常处理程序的负荷，但是带来了其它问题。因为每8K的用户空间地址占用一个16字节的表项，整个2GB的用户空间就占用4MB大小的页表，这是一个相当大的内存空间。我们知道，用户空间的地址一般是在底部填充代码和数据，顶部是堆栈（向下增长），这样中间有一个巨大的空隙。MIPS架构借鉴了DEC的VAX体系结构的启发，把页表存入内核态的虚拟地址空间（kseg2或xkseg）。这样的话，
@@ -244,30 +250,21 @@ There’s a particular translation mechanism that the MIPS architects undoubtedl
 
     中间不用的空闲不需要为其提供物理内存分配。
     
-* 
-That minimizes the load on the critical refill exception handler but opens up other problems. Since each 8 KB of user address space takes 16 bytes of table space, the entire 2 GB of user space needs a 4-MB table, which is an embarrassingly large chunk of data.4 Of course, most user address spaces are only filled at the bottom (with code and data) and at the top (with a downward growing stack) with a huge gap in between. The solution MIPS adopted is inspired by DEC’s VAX architecture, and is to locate the page table itself in virtual memory in a kernel-mapped (kseg2 or xkseg) region. This neatly solves two problems at once:
+* 这种使用线性数组映射所有用户虚拟地址的方法，提供了一种在进程切换时，不需要遍历所有虚拟地址空间就可以切换虚拟地址空间的简单机制。进程切换时，改变ASID值，kseg2地址空间内指向页表的指针自动就会重映射到正确的页表上。是不是很巧妙？？？
 
-* It saves physical memory: 
+MIPS架构通过Context寄存器（64架构使用扩展寄存器XContext）支持这种线性页表。
 
-    Since the unused gap in the middle of the page table will never be referenced, no physical memory need actually be allocated for those entries.
+如果页表是以4M为边界，使用页表的起始地址的高位填充Context寄存器中的PTEBase域，然后，跟随在重填异常之后，Context寄存器就会自动包含`重填`需要的页表中的项的地址。
 
-* It provides an easy mechanism for remapping a new user page table when changing context, without having to find enough virtual addresses in the OS to map all the page tables at once. Instead, you have a different kernel memory map for each different address space, and when you change the ASID value, the kseg2 pointer to the page table is now automatically remapped onto the correct page table. It’s nearly magic.
+但是，这种方案有一个问题，就是TLB重填异常处理程序本身可能产生TLB重填异常，因为kseg2中存储的映射页表并不在TLB中。但是，硬件对这个问题进行了修复。如果嵌套TLB异常发生，此时，CPU已经处于异常模式了。在MIPS架构的CPU中，异常模式中的TLB重填被定位到通用异常入口点，在那里进行检查并处理。
 
-The MIPS architecture supports this kind of linear page table in the form of the Context register (or XContext for extended addressing in 64-bit CPUs).
+更多介绍请继续往下看。
 
-If you make your page table start at a 4-MB boundary (since it is in virtual memory, any gap created won’t use up physical memory space) and set up the Context PTEBase field with the high-order bits of the page table starting the address, then, following a user refill exception, the Context register will contain the address of the entry you need for the refill with no further calculation needed.
+#### 5.1 TLB未命中处理程序
 
-So far so good: But this scheme seems to lead to a fatal vicious circle, where a TLB refill exception handler may itself get a TLB refill exception, because the kseg2 mapping for the page table isn’t in the TLB. But we can fix that, too.
+`TLB未命中`异常发生时，如果状态寄存器SR中的EXL标志位没有被置位，总是会跳转到CPU特定的入口点，开始执行。
 
-If a nested TLB refill exception happens, it happens with the CPU already in exception mode. In MIPS CPUs, a TLB refill from exception mode is directed to the general exception entry point, where it will be detected and can be handled specially.
-
-Moreover, an exception from exception mode behaves strangely: It does not change the restart location EPC, sowhen the “inner” exception returns, it returns straight to the nonexception TLB miss point. It’s rather as if the hardware started processing one exception, then changed its mind and processed another: but the second exception is no longer nested, it has usurped the first one.We’ll see how that works when we look at an example.
-
-#### 5.1 TLB未命中处理
-
-A TLB miss exception always uses a dedicated entry point unless the CPU is already handling an exception—that is, unless SR(EXL) is set.
-
-Here is the code for a TLB miss handler for a MIPS32 CPU (or a MIPS64 CPU handling translations for a 32-bit address space):
+下面是一个MIPS32架构的CPU或者MIPS64架构的CPU被当作32位的CPU，处理TLB未命中的处理程序。
 
         .set    noreorder
         .set    noat
@@ -283,56 +280,43 @@ Here is the code for a TLB miss handler for a MIPS32 CPU (or a MIPS64 CPU handli
         .set at
         .set reorder
 
-Following is a line-by-line analysis of the code:
+分析：
 
 * (1)行
 
-    The k0-1 general-purpose registers are conventionally reserved for the use of low-level exception handlers; we can just go ahead and use them.
+    通常情况下，k0和k1通用寄存器是为底层异常处理程序保留的寄存器。所以，可以直接使用这两个寄存器。
 
 * (2-5)行
 
-    There are a pair of physical-side (EntryLo) descriptions in each TLB entry (you might like to glance back at the TLB entry diagram, Figure 6.1). The layout of the MIPS32/64 Context register shown in Figure 6.4 reserves 16 bytes for each paired entry (eight bytes of space for each physical page), even though MIPS32’s EntryLo0-1 are 32-bit registers. This is for compatibility with the 64-bit page table and to provide some spare fields in the page table to keep software-only information.
+    把Context执行的页表映射关系写入到EntryLo0和EntryLo1寄存器中，Context的内容发生异常时自动加载。如图6-4所示，MIPS32/64架构的Context寄存器为成对的物理地址映射保留了16字节的空间（每个物理页的映射需要8字节），尽管MIPS32的EntryLo0和EntryLo1只是32位寄存器。这是为了和64位架构兼容而进行的设计。
 
-    Interleaving the lw/mtc0 sequences herewill save time: FewMIPSCPUs can keep going without pause if you use loaded data in the very next instruction.
+    在这儿，为什么交错执行lw/mtc0指令序列？这是为了效率。我们之前已经多次说过load指令会有一个延时槽，这儿是对延时槽的最大化利用。
 
-    These loads are vulnerable to a nested TLB miss if the kseg2 address’s translation is not in the page table.We’ll talk about that later.
+    如果kseg2区间的地址转换不在页表中，发生嵌套异常怎么办？后面再讲解。
 
 * (6)行
 
-    It’s no good writing the entry with tlbwr until it will get the right data from EntryLo1. The MIPS32 architecture does not guarantee this will be ready for the immediately following instruction, but it does guarantee that the sequence will be safe if the instructions are separated by an ehb (execution hazard barrier) instruction—see section 3.4 for more information about hazard barriers.
+    执行遇险屏障（其它架构比如ARM和x86，一般称为内存屏障指令）。如果直接调用tlbwr指令，因为MIPS32架构无法保证此时EntryLo1寄存器的内容已经准备好被使用。所以，加上一条执行遇险屏障，保证数据的安全使用。
 
 * (7)
 
-    This is random replacement of a translation pair as discussed.
+    随机替换，将EntryLo0和EntryLo1寄存器的内容写入到TLB项中。
 
 * (8)
 
-    MIPS32 (and all MIPS CPUs later than MIPS I) have the eret instruction, which returns from the exception to the address in EPC and unsets SR(EXL).
+    异常返回指令。从异常返回到EPC寄存器中的地址位置并且清除SR(EXL)标志位。
 
-So what happens when you get another TLB miss? The miss from exception
-level invokes not the special high-speed handler but the general-purpose
-exception entry point. We’re already in exception mode, so we don’t alter the
-exception return register EPC.
+如果在TLB重填异常处理程序中，访问页表的地址时发生miss情况怎么办？（页表的地址位于kseg2空间中，并不在页表中保存）。前面我们提到过，这种情况返回到通用异常处理程序入口点。Cause寄存器和地址异常相关的寄存器（BadAddr，EntryHi，甚至Context和Xcontext）都会被定位到访问页表时的TLB未命中异常相关的信息上。但是EPC寄存器的值仍然指向最初造成TLB未命中的指令处。
 
-The Cause register and the address-exception registers (BadVAddr,
-EntryHi, and even Context and XContext) will relate to the TLB miss
-on the page table address in kseg2. But EPC still points back at the instruction
-that caused the original TLB miss.
-
-The exception handler will fix up the kseg2 page table miss (so long as this
-was a legal address) and the general exception handler will return into the user
-program. Of course, we haven’t done anything about the translation for the
-user address that originally caused the user-space TLB miss, so it will immediately
-miss again. But the second time around, the page table translation will be
-available and the user miss handler will complete successfully. Neat.
+这样的话，通用异常程序修复kseg2中的页表未命中问题（也就是将页表的地址合法化），然后，就返回到用户程序。因为我们没有修复任何与第一次地址miss相关的信息，所以，此时用户程序会再次发生地址miss。但是，页表的地址miss问题已经修复，不会再产生二次嵌套地址异常。这时候，TLB异常处理程序就会执行上面的代码，加载页表中的页表映射关系到TLB中。
 
 #### 5.2 XTLB未命中处理
 
-MIPS64 CPUs have two special entry points. One—shared with MIPS32 CPUs—is used to handle translations for processes using only 32 bits of address space; an additional entry point is provided for programs marked as using the bigger address spaces available with 64-bit pointers.
+MIPS64架构的CPU有2个特殊的入口点。其中一个，和MIPS32架构CPU共享，用来处理32位地址空间的转换；另一个入口点为64位架构提供，供其寻址更大的地址空间。
 
-The status register has three fields, SR(UX), SR(SX), and SR(KX), that select which exception handler to use based on the CPU privilege level at the time of the failed translation.
+状态寄存器中的3个标志位：UX、SX、和KX，它们负责在转换失败时，根据CPU的特权等级选择要使用的异常处理程序。
 
-With the appropriate status bit set (SR(UX) for user mode), a TLB miss exception uses a different vector, wherewe should have a routine thatwill reload translations for a huge address space. The handler code (of an XTLB miss handler for a CPU with 64-bit address space) looks much like the 32-bit version, except for the 64-bit-wide registers and the use of the XContext register in place of Context:
+当相关的状态位（用户模式的SR(UX)标志位）被置位时，TLB未命中异常使用一个不同的向量，那应该是一个加载巨大地址空间转换表的例程。处理程序的代码和32版本的差不多，除了使用64位宽的寄存器和用XContext寄存器代替Context之外。
 
         .set    noreorder
         .set    noat
@@ -348,49 +332,46 @@ With the appropriate status bit set (SR(UX) for user mode), a TLB miss exception
         .set    at
         .set    reorder
 
-Note, though, that the resulting page table structure in kernel virtual memory is far bigger and will undoubtedly be in the giant xkseg region.
+需要主要的是，此时的页表结构比较庞大，需要保存在巨大的xkseg地址空间中。
 
-I should remind you again that this system is not compulsory, and in fact is not used by the MIPS version of Linux (which is overwhelmingly the most popular translated-address OS for MIPS applications). It’s a rather deeply ingrained design choice in the Linux kernel that the kernel’s own code and data are not remapped by a context switch, but exactly that is required for the kseg2/xkseg page table trick described here. See section 14.4.8 for how it’s done.
-
+上面的方式不是完全必须的，基于MIPS架构的Linux版本就没有使用这种方式。Linux内核多级页表管理虚拟内存的方式，我们会专门写一篇文章介绍。
 
 # 6 MIPS架构中TLB的使用场景
 
-If you’re using a full-scale OS like Linux, then it will use the TLB behind your back, and you’ll rarely notice. With a less ambitious OS or runtime system, you may wonder whether it’s useful. But, because the MIPS TLB provides a general purpose  address translation service, there are a number of ways you might take advantage of it.
+如果你要运行的系统是全功能的操作系统，比如说Linux，对TLB的使用不需要你的关注。但是，对于实时OS，你可能想知道TLB是否有用。因为MIPS架构的TLB提供了一种通用目的地址转换服务，你可以根据应用灵活运用它。
 
-The TLB mechanism permits you to translate addresses (at page granularity) from any mapped address to any physical address and therefore to relocate regions of program space to any location in your machine’s address map. There’s no need to support a TLB refill exception or a separate memory-held page table if your mapping requirements are modest enough that you can accommodate all the translations you need in the TLB.
+TLB机制，允许在page的粒度上，转换任何虚拟地址到物理地址。如果在TLB表中的映射可以容纳所需的所有转换，那么就不需要支持TLB重填异常或单独在内存中保存一个页表。
 
-The TLB also allows you to define some address as temporarily or permanently unavailable, so that accesses to those locations will cause an exception that can be used to run some operating system service routine. By using user-privilege programs you can give some software access only to those addresses you want it to have, and by using address space IDs in the translation entries, you can efficiently manage multiple mutually inaccessible user programs. You can write-protect some parts of memory.
+TLB也允许你定义一些地址是临时的，或者永久不可用的，从而对这些位置的访问导致一个异常来运行操作系统的某些服务例程。通过使用ASID，可以在用户空间实现多任务间的地址空间安全。你还可以对内存进行写保护。
 
-The applications for this are endless, but here’s a list to indicate the range:
+应用可能有许多，下面举几个代表性的例子：
 
-* Accessing inconvenient physical address ranges: 
+* 访问不方便的物理地址空间： 
 
-    Hardware registers for a MIPS system are most conveniently located in the physical address range 0–512 MB, where you can access them with a corresponding pointer from the kseg1 region. But where the hardware can’t stay within this desirable area, you can map an arbitrary page of higher physical memory into a convenient mapped area, such as kseg2. The TLB flags for this translation should be set to ensure uncached access, but then the program can be written exactly as though the address was in the convenient place.
+    正常情况下，MIPS架构的硬件寄存器位于物理地址范围0~512MB时比较方便，可以通过kseg1地址空间内的某个指针对其进行访问。但是，有时候硬件无法在这个区域，可以把高物理内存的空间映射到一个方便的地址空间，比如kseg2。与此相关的TLB转换标志必须保证不经过Cache访问这个区域。
 
-* Memory resources for an exception routine: 
+* 异常处理程序的内存访问： 
 
-    Suppose you’d like to run an exception handler without using the reserved k0/k1 registers to save context. If so, you’d have trouble, because a MIPS CPU normally has nowhere to save any registers without overwriting at least one of these. You can do loads or stores using the zero register as a base address, but with a positive offset these addresses are located in the first 32 KB of kuseg, and with a negative offset they are located in the last 32 KB of kseg2. Without the TLB, these go nowhere. With the TLB, you could map one or more pages in this region into read/write memory and then use zero-based stores to save context and rescue your exception handler.
+    默认情况下，保留k0和k1寄存器给异常处理程序，用来进行上下文的保存。但是，如果你不想使用k0和k1呢？这就会带来麻烦，因为MIPS架构的CPU，除了32个通用寄存器之外，没有任何地方可以用来保存。
 
-* Extendable stacks and heaps in a non-VM system: 
+    所以，这种情况下，你可以使用TLB映射一个或多个物理页作为读写内存，使用zero寄存器作为基址寄存器，如果是正的偏移量，就访问kuseg区域的前32KB，如果是负的偏移量，就访问kseg2的后32KB。如果不使用TLB，这就无法实现。
 
-    Even when you don’t have a disk and have no intention of supporting full demand paging, it can still be useful to grow an application’s stack and heap on demand while monitoring its growth. In this case you’ll need the TLB to map the stack/heap addresses, and you’ll use TLB miss events to decide whether to allocate more memory or whether the application is out of control.
+* 在没有虚拟内存的系统中，用来实现可扩展的堆和栈： 
 
-* Emulating hardware: 
+    即使在没有虚拟内存的系统中，扩展堆栈并监视其使用情况也是很有用的。在这种情况下，需要使用TLB映射堆和栈的地址，使用TLB-miss事件决定是否分配更多内存或者判断应用程序是否失去控制。
 
-    If you have hardware that is sometimes present and sometimes not, then accessing registers through a mapped region can connect directly to the hardware in properly equipped systems and invoke a software handler on others.
+* 仿真硬件： 
 
-The main idea is that the TLB, with all the ingenuity of a specification that fits so well into a big OS, is a useful, straightforward general resource for programmers.
+    如果某个硬件有时候存在，有时候不存在。通过将寄存器映射到某个区域上，访问这个地址就可以直接访问硬件，如果硬件不存在，调用软件处理程序。
 
+TLB核心的思想就是，通过转换适配，将其变为一个通用的资源，使得硬件开发人员更简单。
 
-# 简单操作系统中的内存管理
+# 7 实时操作系统中的内存管理思想
 
-An OS designed for use off the desktop is generally called a real-time OS (RTOS), hijacking a term that once meant something about real time.6 The UNIX-like system outlined in the first part of this chapter has all the elements you’re likely to find in a smaller OS, but many RTOSs are much simpler. 
+前面的讨论我们主要针对的是非实时操作系统，比如类Unix-OS操作系统。但是，对于嵌入式OS来说，大部分情况下要简单的多。比如说风河公司的VxWorks等，基本上都是运行在单个地址空间，且提供多线程的能力。彼此之间，没有任务间的保护，所有的功能都被实现在一个大的应用程序中。
 
-Some OS products you might meet up with are VxWorks from Wind River Systems, Thread/X from Express Logic, and Nucleus from Mentor (following their acquisition of Accelerated Technology). All provide multiple threads running in a single address space. There is no task-to-task protection—software running on these is assumed to be a single tightly integrated application. In many cases the OS run time is really quite small, and much of the supplier’s effort is devoted to providing developers with build, debug, and profiling tools.
+对于多种多样的嵌入式系统，是否使用复杂的操作系统（比如说，Linux），目前没有一个统一的标准。如果使用，你可以获得更丰富的编程环境，任务间的保护，更加简洁的接口等。但是同时，也失去了CPU一些执行效率，且需要更大的物理内存；还要牺牲一些实时性。所以，对于机顶盒，DVD播放器和网络路由器等使用Linux比较合适，而像其它一些可靠性、实时性要求比较高的一些场合需要使用实时操作系统，甚至是裸机程序。
 
-The jury is still out on whether it’s worth using a more sophisticated OS such as Linux for many different kinds of embedded systems. You get a richer programming environment, task-to-task protection that can be very valuable when integrating a system, and probably cleaner interfaces. Is that worth devoting extra memory andCPUpower to, and losing a degree of control over timing, for the benefits of the cleverer system? Builders of TV set-top boxes, DVD players, and domestic network routers have found Linux worthwhile: Other systems (not necessarily of very different complexity) are still habitually using simpler systems.
+当然了，Linux是开源的，这本身就是一种优势。你可以修改源代码，实现自己一些特定的功能。
 
-And of course Linux is open source. Sometimes it’s just good that there are no license fees; perhaps, more importantly, if your system doesn’t work because of an OS bug, open source means you can fix it yourself or commission any of a number of experts to fix it for you—right away. It’s paradoxical, but the more successful a commercial OS becomes, the harder it is to find someone to fix it on a reasonable schedule.
-
-But for now, as a developer, you may be faced with almost anything. When you’re trying to understand a new memory management system, the first thing is to figure out the memory maps, both the virtual map presented to application software and the physical map of the system. It’s the simple-minded virtual address map that makes UNIX memory management relatively straightforward to describe. But operating systems targeted at embedded applications do not usually have their roots in hardware with memory management, and the process memory map often has the fossils of unmapped memory maps hidden inside it. The use of a pencil, paper, and patience will sort it out.
-
+但是，对于我们开发者来说，可能会面对各种情况。所以，深入硬件实现机制，在此基础之上，灵活运用各种硬件，选择或实现合适的软件是非常重要的。尤其是面对一个新的内存管理系统。需要做的第一件事情就是，搞明白内存映射，包括软件视角的虚拟地址映射和硬件视角的物理地址映射。正是因为选择了相对简单的虚拟地址映射方式，才使得Unix系统内存管理系统相对描述起来简单。但是，嵌入式系统情况非常复杂，有的根本就没有MMU，有的某些地址不需要映射（比如kseg0和kseg1）。这就需要具体问题具体分析了。
