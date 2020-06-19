@@ -3,33 +3,32 @@
 * [5.1 精确异常](#5.1)
     - [5.1.1 非精确异常-历史上的MIPS架构CPU的乘法器](#5.1.1)
 * [5.2 异常发生的时机](#5.2)
-* [5.3 异常向量：异常处理开始的地方](#5.3)
-* [5.4 异常处理：基本过程](#5.4)
-* [5.5 从异常返回](#5.5)
-* [5.6 嵌套异常](#5.6)
-* [5.7 异常处理例程](#5.7)
-* [5.8 中断](#5.8)
-    - [5.8.1 MIPS架构CPU上的中断资源](#5.8.1)
-    - [5.8.2 在软件中实现中断优先级](#5.8.2)
-    - [5.8.3 原子性以及对SR的原子修改](#5.8.3)
-    - [5.8.4 使能中断状态下的临界区：MIPS式的信号量](#5.8.4)
-    - [5.8.5 MIPS32/64架构CPU的中断向量化和EIC中断](#5.8.5)
-    - [5.8.6 影子寄存器](#5.8.6)
-* [5.9 启动](#5.9)
-    - [5.9.1 检测识别CPU](#5.9.1)
-    - [5.9.2 引导步骤](#5.9.2)
-    - [5.9.3 启动应用程序](#5.9.3)
-* [5.10 指令仿真](#5.10)
+* [5.3 异常向量表：异常处理开始的地方](#5.3)
+* [5.4 异常处理的基本过程](#5.4)
+* [5.5 嵌套异常](#5.5)
+* [5.6 异常处理例程](#5.6)
+* [5.7 中断](#5.7)
+    - [5.7.1 MIPS架构CPU上的中断资源](#5.7.1)
+    - [5.7.2 在软件中实现中断优先级](#5.7.2)
+    - [5.7.3 原子性以及对SR的原子修改](#5.7.3)
+    - [5.7.4 使能中断状态下的临界区：MIPS式的信号量](#5.7.4)
+    - [5.7.5 MIPS32/64架构CPU的中断向量化和EIC中断](#5.7.5)
+    - [5.7.6 影子寄存器](#5.7.6)
+* [5.8 启动](#5.8)
+    - [5.8.1 检测识别CPU](#5.8.1)
+    - [5.8.2 引导步骤](#5.8.2)
+    - [5.8.3 启动应用程序](#5.8.3)
+* [5.9 指令仿真](#5.9)
 
 ---
 
-MIPS架构中，中断、异常、系统调用以及其它可以中断程序正常执行流的event统称为`异常（exception）`，统一由异常处理机制进行处理。
+MIPS架构中，中断、异常、系统调用以及其它可以中断程序正常执行流的事件统称为`异常（exception）`，统一由异常处理机制进行处理。
 
 > <font color="blue">
-> 异常和中断概念在不同架构上的含义的区别：
+> 异常和中断概念在不同架构上的含义区别：
 > 
-> 1. MIPS架构将所有可以中断程序执行流的`event`称为异常；
-> 2. X86架构将所有可以中断程序执行流的`event`称为中断，我们日常所见的狭义上的中断，也就是外部中断，称之为`异步中断`；而狭义上的异常称为`同步中断`；
+> 1. MIPS架构将所有可以中断程序执行流的事件称为异常；
+> 2. X86架构将所有可以中断程序执行流的事件称为中断，我们日常所见的狭义上的中断，也就是外部中断，称之为`异步中断`；而狭义上的异常称为`同步中断`；
 > 3. ARM架构将这两个概念合起来使用-`异常中断`类似于MIPS架构的`异常`概念。
 > 
 > 在阅读相关书籍的时候，请注意区分这些概念。
@@ -44,25 +43,25 @@ MIPS架构所涉及的event，都有哪些呢？
 
     Interrupts are the only exception conditions that arise from something independent of the CPU’s normal instruction stream. Since you can’t avoid interrupts just by being careful, there have to be software mechanisms to inhibit the effect of interrupts when necessary.
 
-* Memory translation exceptions:
+* 内存转换异常
 
     These happen when an address needs to be translated, but no valid translation is available to the hardware or perhaps on a write to a write-protected page.
 
     The OS must decide whether such an exception is an error or not. If the exception is a symptom of an application program stepping outside its permitted address space, it will be fixed by terminating the application to protect the rest of the system. The more common benign memory translation exceptions can be used to initiate operating system functions as complex as a complete demand-paged virtual memory system or as simple as extending the space available for a stack.
 
-* Other unusual program conditions for the kernel to fix: 
+* 其它需要内核修复的非常情况 
 
     Notable among these are conditions resulting fromfloating-point instructions, where the hardware is unable to cope with some difficult and rare combination of operation and operands and is seeking the services of a software emulator. This category is fuzzy, since different kernels have different ideas about what they’re willing to fix. An unaligned load may be an error on one system and something to be handled in software on another.
 
-* Program or hardware-detected errors:
+* 程序或硬件检测到的错误
 
     This includes nonexistent instructions, instructions that are illegal at user-privilege level, coprocessor instructions executed with the appropriate SR flag disabled, integer overflow, address alignment errors, and accesses outside kuseg in user mode.
 
-* Data integrity problems:
+* 数据完整性问题
 
     Many MIPS CPUs continually check data on the bus or data coming from the cache for a per-byte parity or for wordwide error-correcting code. Cache or parity errors generate an exception in CPUs that support data checking.
 
-* System calls and traps:
+* 系统调用和陷阱
 
     These are instructions whose whole purpose is to generate recognizable exceptions; they are used to build software facilities in a secure way (system calls, conditional traps planted by careful code, and breakpoints).
 
@@ -78,34 +77,31 @@ At the end of the chapter, we’ll look at a couple of related subjects: how to 
 
 <h2 id="5.1">5.1 精确异常</h2>
 
-You will see the phrase precise exceptions used in the MIPS documentation. It is a useful feature, but to understand why, you need to meet its alternative.
+在MIPS架构的文档中，我们经常看到一个术语"精确异常"，英文称之为`precise exception`。那到底什么是精确异常，什么是非精确异常呢？
 
-In a CPU tuned for the best performance by pipelining (or by more complicated tricks for overlapping instruction execution), the architecture’s sequential model of execution is an illusion maintained by clever hardware. Unless the hardware is designed cleverly, exceptions can cause this illusion to unravel.
+在通过流水线获取最佳性能的CPU中，体系结构的顺序执行模型其实是硬件巧妙维护的假象。如果硬件设计不够完美，异常就可能导致该假象暴露。
 
-When an exception suspends its thread of execution, a pipelined CPU has several instructions in different phases of completion. Since we want to be able to return fromthe exception and carry onwithout disruption to the interrupted flow of execution, each instruction in the pipeline must be either completed or made as though we never saw it.2 Moreover, we need to be able to remember which instruction falls in each of those categories.
+当异常中断正在执行的线程时，CPU的流水线中肯定还有几条处于不同阶段尚未完成的指令。如果我们想要从异常返回时，继续不受破坏地执行被打断的程序执行流，那么流水线中的每条指令都必须要执行完，从异常返回时，仿佛什么都没有发生才行。
 
-A CPU architecture features precise exceptions when it prescribes a solution to this problem that makes life as easy as possible for the software. In a preciseexception CPU, on any exception we are pointed at one instruction (the exception victim). All instructions preceding the exception victim in execution sequence are complete; but it’s as if the exception victim and any successors were never started.3 When exceptions are precise, the software that handles exceptions can ignore all the timing effects of the CPU’s implementation.
+一个CPU体系结构具备精确异常的特性，必须满足任何异常发生时，都必须确定的指向某条指令，这条指令就是产生异常的指令。而在该指令之前的指令必须都执行完，异常指令和后续指令好像都没有发生。所以，当说异常是精确异常时，处理异常的软件就可以忽略CPU实现的时序影响。
 
-The MIPS architecture comes close to prescribing that all exceptions are precise. Here are the ingredients:
+MIPS架构的异常基本上都是精确异常。 Here are the ingredients:
 
-* Unambiguous proof of guilt:
+* 明确的罪证
 
-    After any exception, the CPU control register EPC points to the correct place to restart execution after the exception is dealt with. In most cases, it points to the exception victim, but if the victim was in a branch delay slot, EPC points to the preceding branch instruction: Returning to the branch instruction will re-execute the victim instruction, but returning to the victim would cause the branch to be ignored. When the victim is in a branch delay slot, the cause register bit Cause(BD) is set.
+    异常处理完成后，CPU的EPC寄存器指向重新执行的正确地址。大部分情况下，指向异常指令所在的地址。但是，如果异常发生在分支延时槽上的指令时，EPC寄存器指向前面的分支指令：如果指向异常指令，分支指令会被忽略；而指向分支指令，可以重新执行异常。当异常发生在分支延时槽时，Cause寄存器的BD标志位会被设置。
 
-    It may seem obvious that it should be easy to find the victim, but on some heavily pipelined CPUs it may not be possible.
+* 异常尽量出现在指令序列中，而不是流水线的某个阶段
 
-* Exceptions appear in instruction sequence:
+    异常可能会发生在流水线的各个阶段，这带来了一个潜在的危险。比如，一个load指令直到流水线的地址转换完成阶段才会发生异常，通常这已经晚了。如果下一条指令在取指时发生地址异常（刚好在流水线的开始阶段），此时，第二条指令的异常首先发生，这与我们的构想不一致。
 
-    This would be obvious for a nonpipelined CPU, but exceptions can arise at several different stages of execution, creating a potential hazard. For example, if a load instruction suffers an address exception, this won’t happen until a pipeline stage where the address translation would have been complete—and that’s usually late. If the next instruction hits an address problem on an instruction fetch (right at the start of the pipeline), the exception event affecting the second-in-sequence instruction will actually happen first. To avoid this problem, an exception that is detected early is not acted on immediately; the event is just noted and passed along the pipeline. In most CPU designs, one particular pipeline stage is designated as the place you detect exceptions. If an older instruction’s late-detected event reaches this finish line while our exception note is making its way down the pipeline, the exception note just gets discarded. In the case above, the instruction-fetch address problem is forgotten—it will likely happen again when we finish handling the victim instruction’s problem and re-execute the victim and subsequent instructions.
+    为了避免这个问题，异常检测到后不是立即执行，这个事件只是被记录并沿着流水线向下传递。在大多数的CPU设计中，都会标记一个特殊的流水线阶段作为检测异常的地方。如果较久指令后面才检测到的异常到达这个检测点，异常记录就会被立即抛弃。这保证了永远执行最新的异常。对于上面的问题，第二条指令带来的取指问题就会被忽略。反正当我们继续执行时，它还会发生。
 
-* Subsequent instructions nullified:
+* 后续指令无效
 
-    Because of the pipelining, instructions lying in sequence after the victim at EPC have been started. But you are guaranteed that no effects produced by these instructions will be visible in the registers or CPU state, and no effect at all will occur that will prevent execution, properly restarted at EPC, from continuing just as if the exception had not happened.
+    因为流水线的原因，当异常发生时，异常指令后面的指令已经开始执行了。但是硬件保证这些指令产生的效果不会影响寄存器和CPU的状态，从而保证这些指令好像没有执行一样。
 
-    The MIPS implementation of precise exceptions is quite costly, because it limits the scope for pipelining. That’s particularly painful in the FPU, because floating-point operations often take many pipeline stages to run. The instruction following a MIPS FP instruction can’t be allowed to commit state (or reach its own exception-determination point) until the hardware can be sure that the FP instruction won’t produce an exception.
-
-
-5.1.1 Nonprecise Exceptions—The Multiplier in Historic MIPS CPUs
+MIPS实现精确异常的代价高昂，因为它限制了流水线的作用范围。尤其是FPU硬件单元。我们前面讲过，浮点指令不能遵守MIPS架构的5级流水线，需要更多级的流水线才能完成。所以，浮点单元一般都有自己独立的流水线。这种现状导致跟在MIPS浮点指令后的指令必须在确认浮点指令不会产生异常后才能提交自己的状态。
 
 <h3 id="5.1.1">5.1.1 非精确异常-历史上的MIPS架构CPU的乘法器</h3>
 
@@ -130,20 +126,19 @@ Since exceptions are precise, the programmer’s view of when an exception happe
 
 On an interrupt in a typical MIPS CPU, the last instruction to be completed before interrupt processing starts will be the one that has just finished its MEM stage when the interrupt is detected. The exception victim will be the one that has just finished its ALU stage. However, take care: MIPS architects don’t make promises about exact interrupt latencies, and signals may be resynchronized through one or more clock stages before reaching the CPU core.
 
-5.3 Exception Vectors:Where Exception Handling Starts
 <h2 id="5.3">5.3 异常向量表：异常处理开始的地方</h2>
 
-Most CISC processors have hardware (or concealed microcode) that analyzes an exception, dispatching the CPU to different entry points according to what kind of exception happened. When even interrupts are handled at different entry points according to the interrupt input signal(s) activated, that’s called vectored interrupts. Historically, MIPS CPUs did very little of this. If that seems a serious omission, consider the following.
+我们知道，CPU使用硬件或者软件分析异常，然后根据类型将CPU派发到不同的入口点。这个过程就是中断响应。如果通过硬件，直接根据中断输入信号就能在不同的入口点处理中断，称为向量化中断。比如，常见的ARM架构的Cortex-M系列基本上就是采用向量化中断的方式。历史上，MIPS架构CPU很少使用向量化中断的方式，主要是基于一下几个方面的考虑。
 
-First, vectored interrupts are not as useful in practice as we might hope. In most operating systems, interrupt handlers share code (for saving registers and such like), and it is common for CISC microcode to spend time dispatching to different interrupt entry points, where OS software loads a code number and spends a little more time jumping back to a common handler.
+* 首先，向量化中断在实践中并没有我们想象的那么有用。大部分操作系统中，中断处理程序共享代码（为了节约寄存器之类的目的），因此，常见的作法就是硬件或者微代码将CPU派发到不同的入口点，在这儿，OS再跳转到共同处理程序，根据中断编号进行处理。
 
-Second, it’s difficult to envisionmuch exception analysis being done by pure hardware rather than microcode; on a RISC CPU, ordinary code is fast enough to be used in preference.
+* 其次，由硬件所做的异常分析，相比软件而言非常有限。而且现在的CPU来说，代码的执行速度也足够快。
 
-Here and elsewhere, you should bear in mind just howfastCPUs of the RISC generation are compared with their peripherals. A useful interrupt routine is going to have to read/write some external registers, and on an early 21st-century CPU, that external bus cycle is likely to take 50–200 internal clock cycles. It’s easy to write interrupt dispatch code on a MIPS CPU that will be faster than a single peripheral access, so this is unlikely to be a performance bottleneck. That’s probably emphasized by the fact that a vectored interrupt option in the 2003 revision of MIPS32 has found little use yet.
+总结来说，高端CPU的时钟频率肯定远远快于外设，所以写一个中断通用处理程序完全可以满足性能要求。所以，自从在MIPS32架构上添加了向量化中断之后，几乎没有人使用。
 
-However, even in MIPS not all exceptions were ever equal, and differences have grown as the architecture has developed. So we can make some distinctions:
+但是，MIPS架构上，并不是所有的异常都是平等的，他们之间也是有优先级区分的，总结如下：
 
-* TLB refill of user-privilege address:
+* 用户态地址的TLB重填异常
 
     There is one particularly frequent exception in a protected OS, related to the address translation system (see Chapter 6). The TLB hardware only holds a modest number of address translations, and in a heavily used system running a virtual memory OS, it’s common for the application program to run on to an address whose translation is not recorded in the TLB—an event called a TLB miss (because the TLB is used as a software-managed cache).
 
@@ -151,45 +146,47 @@ However, even in MIPS not all exceptions were ever equal, and differences have g
 
     As part of this, common classes of TLB refill are given an entry point different from all other exceptions, so that the finely tuned refill code doesn’t have to waste time figuring out what kind of exception has happened.
 
-* TLB refill for 64-bit address spaces:
+* 64位地址空间的TLB重填异常
 
     Memory translation for tasks wanting to take advantage of the larger programaddress space available on 64-bit CPUs uses a slightly different register layout and a different TLB refill routine; MIPS calls this an XTLB refill (“X” for extended, I guess). Again, a desire to keep this very efficient makes a separate entry point useful.
 
-* Uncached alternative entry points:
+* 初始化时的中断向量入口点（不使用Cache访问）
 
     For good performance on exceptions, the interrupt entry point must be in cached memory, but this is highly undesirable during system bootstrap; from reset or power-up, the caches are unusable until initialized. If you want a robust and self-diagnosing start-up sequence, you have to use uncached read-only memory entry points for exceptions detected in early bootstrap. In MIPS CPUs there is no uncached “mode”—there are uncached program memory regions instead—so there’s a mode bit SR(BEV) that reallocates the exception entry points into the uncached, start-up-safe kseg1 region.
 
-* Parity/ECC error: 
+* 奇偶/ECC错误异常 
 
     MIPS32 CPUs may detect a data error (usually in data arriving from main memory, but often not noticed until it’s used from cache) and take a trap. It would be silly to vector through a cached location to handle a cache error, so regardless of the state of SR(BEV) the cache error exception entry point is in uncached space.
 
-* Reset:
+* 复位
 
     For many purposes, it makes sense to see reset as another exception, particularly when many CPUs use the same entry point for cold reset (where the CPU is completely reconfigured; indistinguishable from power-up) and warm reset (where the software is completely reinitialized). In fact, nonmaskable interrupt (NMI) turns out to be a slightly weaker version of warm reset, differing only in that it waits for the current instruction and any pending load/store to finish before taking effect.
 
-* Interrupt:
+* 中断
 
     As an option in MIPS32 (and some earlier CPUs from IDT and PMC-Sierra), you can set the CPU to dispatch interrupt exceptions to a separate entry point. This is convenient, though little used: Perhaps software authors can’t bring themselves to special-case their OS for a feature that is not universally available.
 
     Further, in some of these CPUs you can enable vectored interrupt operation—multiple entry points to be used by different interrupts. This is a more substantial change; as explained elsewhere in this chapter, the MIPS tradition was that interrupts were only prioritized in software. But if you have two active interrupts and have to choose an interrupt entry point, the hardware must decide which has the higher priority. This change is therefore significantly more disruptive to software, since the software loses control over interrupt priority; your OS maintainer and hardware engineers will have to liaise closely.
 
-All exception entry points lie in untranslated regions of the MIPS memory map, in kseg1 for uncached entry points and in kseg0 for cached ones. The uncached entry points used when SR(BEV) is set are fixed, but when SR(BEV) is clear, the EBase register can be programmed to shift all the entry points—together—to some other block. It’s particularly useful to be able to move the interrupt base when your CPU is part of a multiprocessor system sharing the kseg0 memory but wants to have separate exception entry points from the other CPUs in the system.
+为了效率，所有异常入口点都位于不需要地址映射的内存区域，不经过Cache的kseg1空间，经过cache的kseg0空间。当SR（BEV）等于1时，异常入口地址位于kseg1，且是固定的；当SR(BEV=0)时，就可以对EBase寄存器进行编程来平移所有入口点，比如说，kseg0的某个区域。当使用多处理器系统时，想使各个CPU的异常入口点不同时，这个功能就很用了。
 
 In these areas the nominal 32-bit addresses given in Table 5.1 extend to a 64-bit memory map by sign extension: The program address 0x8000.0000 in the 32-bit view is the same as 0xFFFF.FFFF.8000.0000 in the 64-bit view.
 
 Table 5.1 describes the entry points with just 32-bit addresses—you need to accept that BASE stands for the exception base address programmed by the EBase register.
 
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_5_1.PNG">
+
 Presumably the default 128-byte (0x80) gap between the original exception vectors occurs because the original MIPS architects felt that 32 instructions would be enough to code the basic exception routine, saving a branch instruction without wasting too much memory! Modern programmers are rarely so frugal.
 
-Here’s what a MIPS CPU does when it decides to take an exception:
+下面是发生异常时，MIPS架构CPU处理的过程：
 
-1. It sets up EPC to point to the restart location.
+1. 设置EPC寄存器指向重新开始的地址；
 
-2. It sets SR(EXL),which forces the CPU into kernel (high-privilege) mode and disables interrupts.
+2. 设置SR(EXL)标志位，强迫CPU进入内核态并禁止中断；
 
-3. Cause is set up so that software can see the reason for the exception. On address exceptions, BadVAddr is also set. Memory management system exceptions set up some of the MMU registers too; more details are given in Chapter 6.
+3. 设置Cause寄存器，软件可以读取它获知异常原因。地址转换异常时，还要设置BadVaddr寄存器。内存管理系统异常还要设置一些MMU相关寄存器；
 
-4. The CPU then starts fetching instructions from the exception entry point, and everything else is up to software.
+4. 然后CPU开始从异常入口点取指令，之后就取决于软件如何处理了。
 
 Very short exception routines can run entirely with SR(EXL) set (in exception mode, as we’ll sometimes say) and need never touch the rest of SR. For more conventional exception handlers, which save state and pass control over to more complex software, exception level provides a cover under which system software can save essential state—including the old SR value—in safety.
 
@@ -197,41 +194,35 @@ With a couple of tweaks this mechanism can allow a minimal nested exception with
 
 <h2 id="5.4">5.4 异常处理：基本过程</h2>
 
-Any MIPS exception handler routine has to go through the same stages:
+MIPS异常处理程序的基本步骤：
 
-* Bootstrapping:
+1. 保存被中断程序的状态：
 
-    On entry to the exception handler, very little of the state of the interrupted program has been saved, so the first job is to make yourself enough room to do whatever it is you want without overwriting something vital to the software that has just been interrupted. Almost inevitably, this is done by using the k0 and k1 registers (which are conventionally reserved for the use of low-level exception handling code) to reference a piece of memory that can be used for other register saves.
+    在异常处理程序的入口点，需要保存少量的被中断程序的状态。所以，第一步工作就是为保存这些状态提供必要的空间。MIPS架构习惯上保留k0和k1寄存器，用它们指向某段内存，用来保存某些需要保存的寄存器。
 
-* Dispatching different exceptions:
+2. 派发异常：
 
-    Consult Cause(ExcCode), whose possible values are listed inTable 3.2. It tells youwhy the exception happened, and allows an OS to define separate functions for the different causes.
+    查询Cause寄存器的ExcCode域，获取异常码。通过异常码，允许OS定义不同的函数处理不同的异常。
 
-* Constructing the exception processing environment:
+3. 构建异常处理程序的运行环境：
 
-    Complex exceptionhandling routines will probably be written in a high-level language, and you will want to be able to use standard library routines. You will have to provide a piece of stack memory that isn’t being used by any other piece of software and save the values of any CPU registers that might be both important to the interrupted program and that called subroutines are allowed to change.
+    复杂的异常处理例程一般使用高级语言（比如，C语言）实现。所以，需要建立一段堆栈空间，保存被中断程序可能使用的任何寄存器，从而允许被调用的C异常处理例程可以修改这些寄存器。
 
-    Some operating systems may do this before dispatching different exceptions.
+    某些操作系统可能在派发异常之前进行这一步的处理。
 
-* Processing the exception:
+4. 执行异常处理（一般使用C语言实现）：
 
-    You can do whatever you like now.
+    做你想做的任何事情。
 
-* Preparing to return:
+5. 准备返回工作：
 
-    The high-level function is usually called as a subroutine and therefore returns into the low-level dispatch code. Here, saved registers are restored, and the CPU is returned to its safe (kernel mode, exceptions off) state by changing SR back to its postexception value.
+    需要从C代码返回到派发异常的通用代码中。在这儿，恢复被保存的寄存器，另外，通过修改SR寄存器到刚发生异常时的值，CPU也从异常模式返回到内核态。
 
-* Returning from an exception:
+6. 从异常返回：
 
-    The end-of-exception processing is another area where the CPU has changed, and its description follows in section 5.5.
+    从异常状态返回时，有可能从内核态向低级别的运行态进行切换。为了系统安全的原因，这步工作必须是一个原子操作。基于这个目的，MIPS架构的CPU提供了一条指令，`eret`，完成从异常的返回：它清除SR(EXL)标志位，返回到EPC寄存器保存的地址处开始执行。
 
-<h2 id="5.5">5.5 从异常返回</h2>
-
-The return of control to the exception victim and the change (if required) back from kernel to a lower-privilege level must be done at the same time (“atomically,” in the jargon of computer science). It would be a security hole if you ran even one instruction of application code at kernel-privilege level; on the other hand, the attempt to run a kernel instruction with user privileges would lead to a fatal exception.
-
-MIPS CPUs have an instruction, `eret`, that does the whole job; it both clears the SR(EXL) bit and returns control to the address stored in EPC.6
-
-<h2 id="5.6">5.6 嵌套异常</h2>
+<h2 id="5.5">5.5 嵌套异常</h2>
 
 In many cases, you will want to permit (or will not be able to avoid) further exceptions occurring within your exception processing routine; these are called nested exceptions.
 
@@ -243,24 +234,24 @@ Stack resources are consumed by each exception, so arbitrarily deep nesting of e
 
 You can avoid all exceptions; interrupts can be individually masked by software to conform to your priority rules, masked all at once with the SR(IE) bit, or implicitly masked (for later CPUs) by the exception-level bit. Other kinds of exceptions can be avoided by appropriate software discipline. For example, privilege violations can’t happen in kernel mode (used by most exception processing software), and programs can avoid the possibility of addressing errors and TLB misses. It’s essential to do so when processing higher-priority exceptions.
 
-<h2 id="5.7">5.7 异常处理例程</h2>
+<h2 id="5.6">5.6 异常处理例程</h2>
 
 The following MIPS32 code fragment is as simple as an exception routine can be. It does nothing except increment a counter on each exception:
 
         .set noreorder
         .set noat
     xcptgen:
-        la      k0, xcptcount       # get address of counter
-        lw      k1, 0(k0)           # load counter
-        addu    k1, 1               # increment counter
-        sw      k1, 0(k0)           # store counter
-        eret                        # return to program
+        la      k0, xcptcount       # 得到计数器的地址
+        lw      k1, 0(k0)           # 加载计数器
+        addu    k1, 1               # 增加计数值
+        sw      k1, 0(k0)           # 存储计数器
+        eret                        # 返回到程序
         .set at
         .set reorder
 
 This doesn’t look very useful: Whichever condition caused the exception will still probably be active on its return, so it might just go round and round. And the counter xcptcount had better be in kseg0 so that you can’t get a TLB Miss exception when you read or write it.
 
-<h2 id="5.8">5.8 中断</h2>
+<h2 id="5.7">5.7 中断</h2>
 
 The MIPS exception mechanism is general purpose, but democratically speaking there are two exception types that happen far more often than all the rest put together. One is the TLB miss when an application running under a memory-mapped OS like UNIX steps outside the (limited) boundaries of the on-chip translation table; we mentioned that before and will come back to it in Chapter 6. The other popular exceptions are interrupts, occurring when a device outside the CPU wants attention. Since we’re dealing with an outside world that won’t wait for us, interrupt service time is often critical.
 
@@ -270,7 +261,7 @@ Embedded-system MIPS users are going to be most concerned about interrupts, whic
 * Implementing interrupt priority: All interrupts are equal to MIPS CPUs, but in your system you probably want to attend to some of them before the others.
 * Critical regions, disabling interrupts, and semaphores: It’s often necessary to prevent an interrupt from occurring during critical operations, but there are particular difficulties about doing so on MIPS CPUs. We look at solutions.
 
-<h3 id="5.8.1">5.8.1 MIPS架构CPU上的中断资源</h3>
+<h3 id="5.7.1">5.7.1 MIPS架构CPU上的中断资源</h3>
 
 MIPS CPUs have a set of eight independent7 interrupt bits in their Cause register. On most CPUs you’ll find five or six of these are signals from external logic into the CPU, while two of them are purely software accessible. The on-chip counter/timer (made of the Count and Compare registers, described in section 3.3.5) will be wired to one of them; it’s sometimes possible to share the counter/timer interrupt with an external device, but rarely a good idea to do so.
 
@@ -315,7 +306,7 @@ In all cases, set the global interrupt enable bit SR(IE) to allow higherpriority
 
 When making changes to SR, you need to be careful about changes whose effect is delayed due to the operation of the pipeline—“CP0 hazards.” See section 3.4 for more details and how to program around the hazards.
 
-<h3 id="5.8.2">5.8.2 在软件中实现中断优先级</h3>
+<h3 id="5.7.2">5.7.2 在软件中实现中断优先级</h3>
 
 The MIPS CPU(until you use the new vectored interrupt facilities) has a simple minded approach to interrupt priority; all interrupts are equal.
 
@@ -359,7 +350,7 @@ It turns out that we can only get away with the code fragment above—some versi
 
 Where this assumption breaks down, we need the following discussion.
 
-<h3 id="5.8.3">5.8.3 原子性以及对SR的原子修改</h3>
+<h3 id="5.7.3">5.7.3 原子性以及对SR的原子修改</h3>
 
 In systemswith more than one thread of control—including a single application with interrupt handlers—you will quite often find yourself doing something during which you don’t want to be caught halfway. In more formal language, you may want a set of changes to be made atomically, so that some cooperating task or interrupt routine in the system will see either none of them made or all of them, but never anything in between.10 The code implementing the atomic change is sometimes called a critical region.
 
@@ -379,7 +370,7 @@ A system call sounds pretty heavyweight, but it actually doesn’t need to take 
 
 The third solution—which all substantial systems should use for at least some critical regions—is to use the load-linked and store-conditional instructions to build critical regions without disabling interrupts at all, as described below. Unlike anything described above, that mechanism extends correctly to multiprocessor or hardware-multithreading systems.
 
-<h3 id="5.8.4">5.8.4 使能中断状态下的临界区：MIPS式的信号量</h3>
+<h3 id="5.7.4">5.7.4 使能中断状态下的临界区：MIPS式的信号量</h3>
 
 A semaphore12 is a coding convention to implement critical regions (though extended semaphores can do more tricks than that). The semaphore is a shared memory location used by concurrently running processes to arrange that some resource is only accessed by one of them at once.
 
@@ -418,7 +409,7 @@ Here’s wait() for the binary semaphore sem:
 
 ll/sc was invented for multiprocessors, but even in a uniprocessor system, this kind of operation can be valuable, because it does not involve shutting out interrupts. It avoids the interrupt-disabling problem described above and contributes to a coordinated effort to reduce worst-case interrupt latency, very desirable in embedded systems.
 
-<h3 id="5.8.5">5.8.5 MIPS32/64架构CPU的中断向量化和EIC中断</h3>
+<h3 id="5.7.5">5.7.5 MIPS32/64架构CPU的中断向量化和EIC中断</h3>
 
 Release 2 of the MIPS32 specification—first seen in the 4KE and 24K family CPU cores from MIPS Technologies—adds two new features that can make interrupt handling more efficient. The savings are modest and probably wouldn’t be important in a substantial OS, but MIPS CPUs are also used in very low level embedded environments where these kinds of improvements are very welcome. Those features are vectored interrupts and a way of providing a large number of distinguishable interrupts to the CPU, called EIC mode.
 
@@ -428,7 +419,7 @@ Embedded systems often have a very large number of interrupt events to signal, f
 
 Vectored interrupts (whether with traditional or EIC signaling) are likely to be most helpful in circumstances where one or two interrupt events in your system are particularly frequent or time-critical. The small number of cycles saved are likely to be lost in fitting into the interrupt-handling discipline of a more sophisticated OS, so don’t be surprised to find that your favorite OS does not use these features.
 
-<h3 id="5.8.6">5.8.6 影子寄存器</h3>
+<h3 id="5.7.6">5.7.6 影子寄存器</h3>
 
 Even with interrupt vectors, an interrupt routine is burdened with the need to avoid trashing the register values of the code it interrupted, and must load addresses for itself before it can do any useful work.
 
@@ -438,7 +429,7 @@ An interrupt handler using a shadow register set has no need to save the interru
 
 An interrupt handler using vectored interrupts and a shadow register set can be unburdened by housekeeping and can run phenomenally fast. But again, that advantage can be lost by the discipline of an OS (in particular because the OS is likely to disable all interrupts for periods of time that far exceed our superfast interrupt handler’s run time). Some applications that would benefit from shadow registers might get the same kind of benefit more cleanly by using a multithreading CPU, but that’s a much bigger story—see Appendix A.
 
-<h2 id="5.9">5.9 启动</h2>
+<h2 id="5.8">5.8 启动</h2>
 
 In terms of its software-visible effect on the CPU, reset is almost the same as an exception, though one from which we’re not going to return. In the original MIPS architecture, this is mostly a matter of economy of implementation effort and documentation, but later CPUs have offered several different levels of reset, from a cold reset through to a nonmaskable interrupt. In MIPS, reset and exception conditions shade imperceptibly into each other.
 
@@ -478,8 +469,8 @@ The traditional start-up sequence is as follows:
 
 6. Now you can initialize the caches and run in comfort. Some systems can run code from ROM cached and some can’t; on most MIPS CPUs, a memory supplying the cache must be able to provide 4/8-word bursts, and your ROM subsystem may or may not oblige.
 
-5.9.1 Probing and Recognizing Your CPU
-<h3 id="5.9.1">5.9.1 检测识别CPU</h3>
+5.8.1 Probing and Recognizing Your CPU
+<h3 id="5.8.1">5.8.1 检测识别CPU</h3>
 
 You can identify your CPU implementation number and a manufacturerdefined revision level from the PRId(Imp) and PRId(Rev) fields. However, it’s best to rely on this information as little as possible; if you rely on PRId, you guarantee that you’ll have to change your program for any future CPU, even though there are no new features that cause trouble for your program.
 
@@ -503,7 +494,7 @@ Since we’ve recommended that you probe for individual features, here are some 
 
 Some maintenance engineer will bless you one day if you make the CPU ID, clock rate, and cache sizes available, perhaps as part of a sign-on message.
 
-<h3 id="5.9.2">5.9.2 引导步骤</h3>
+<h3 id="5.8.2">5.8.2 引导步骤</h3>
 
 Start-up code suffers from the clash of two opposing but desirable goals. On the one hand, it’s robust to make minimal assumptions about the integrity of the hardware and to attempt to check each subsystem before using it (think of climbing a ladder and trying to check each rung before putting your weight on it). On the other hand, it’s desirable to minimize the amount of tricky assembly code. Bootstrap sequences are almost never performance sensitive, so an early change to a high-level language is desirable. But high-level language code tends to require more subsystems to be operational.
 
@@ -511,7 +502,7 @@ After you have dealt with the MIPS-specific hurdles (like setting up SR so that 
 
 Sometimes diagnostic suites include bizarre things like the code in the original PC BIOS, which tests each 8086 instruction in turn. This seems to me like chaining your bicycle to itself to foil thieves. If any subsystem is implemented inside the same chip as the CPU, you don’t lose much by trusting it.
 
-<h3 id="5.9.3">5.9.3 启动应用程序</h3>
+<h3 id="5.8.3">5.8.3 启动应用程序</h3>
 
 To be able to start a C application (presumably with its instructions coming safely from ROM) you need writable memory, for three reasons.
 
@@ -525,7 +516,7 @@ Last, C programs use a different segment of memory for all static and extern dat
 
 If your program is built carefully, that’s enough. However, it can get more complicated: Take care that your MIPS program is not built to use the global pointer register gp to speed access to nonstack variables, or you’ll need to do more initialization.
 
-<h2 id="5.10">5.10 指令仿真</h2>
+<h2 id="5.9">5.9 指令仿真</h2>
 
 Sometimes an exception is used to invoke a software handler that will stand in for the exception victim instruction, as when you are using software to implement a floating-point operation on a CPU that doesn’t support FP in hardware. Debuggers and other system tools may sometimes want to do this too.
 
