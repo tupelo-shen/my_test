@@ -342,49 +342,53 @@ MIPS架构常见的内存布局如图9-1所示。汇编程序中，使用下面�
         ...
 
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_9_1.PNG">
 
 图9-1 程序的各个目标代码段和内存布局
 
 * `.lit4`和`.lit8`段：浮点常数数据段
 
-    主要是传递给li.s或li.d宏指令的参数。有些汇编器和链接器会组合相同的常数以节省空间。如果使能了`-G n`编译选项，也有可能使用gp相对寻址，将`.lit4`和`.lit8`浮点常数段存放到全局的`小数据`那个特殊的数据段中。
+    主要是传递给li.s或li.d宏指令的参数。有些汇编器和链接器会合并相同的常数以节省空间。如果使能了`-G n`编译选项，也有可能使用gp相对寻址，将`.lit4`和`.lit8`浮点常数段存放到全局的`小数据`那个特殊的数据段中。
     
 * `.bss`、`.comm`和`.lcomm`数据段
     
-    未初始化数据段。用来存储C代码中所有的静态和全局未初始化的数据。FORTRAN语言常常成为common data，这也是.comm的由来。
+    未初始化数据段。用来存储C代码中所有的静态和全局未初始化的数据。对于FORTRAN程序来说，使用`.comm`关键字。
+
+    必须按照字节指定数据的大小。程序在链接阶段按照最大空间获取内存。如果定义为已初始化的变量，就会使用定义的值和内存大小。
+
+    未初始化和初始化是针对程序编写阶段的一个概念。实际上，C语言中，静态变量或全局变量如果没有被显式初始化，那么，在程序的启动之前，应该将其设为0。这部分工作是由操作系统或者启动代码完成的。
 
 * `.sdata`、小数据段和`.sbss`
 
-These sections are used as alternatives to the .data and .bss sections above by toolchains that want to separate out smaller data objects. Toolchains for MIPS processors do this because the resulting small-object section is compact enough to allow an efficient access mechanism that relies on maintaining a data pointer in a reserved register gp, as described in section 9.4.1.
+    这几个段需要工具链的支持。如果工具链在编译代码的时候，想要使用特地保留的寄存器`gp`，指向小巧紧凑的一个小的数据对象，以便实现对数据的高效访问。就需要这几个段代替常规的`.data`和`.bss`段。
 
-Note that the .sbss is not a legal directive; the toolchain allocates a data item to the .sbss section if the item is declared with .comm or .lcomm and is of size smaller than the -G threshold value fed to the assembly program.
+    注意，`.sbss`并不是一个合法的伪指令。如果数据项使用`.comm`或`.lcomm`进行声明，而且占用空间小于传递给汇编程序的-G值，工具链就把数据分配到`.sbss`段。
 
-The implicit-constant sections .lit4 and .lit8 may be included in the small data region, according to the threshold setting.
+    隐含的`.lit4`和`.lit8`段也会被包含进小数据段，取决于-G阈值的设定。
 
-When gp-relative addressing is used, gp will be initialized to point somewhere close to the midpoint of the “small data” region.
+    如果使用gp相对寻址方法，gp就会被使用小数据段的中间地址进行初始化。
 
-* .section
+* `.section`
 
+    指定段区，提供一些特殊的控制标志（一般与具体的代码或者工具链相关联），需要参考工具链手册。
 
-Start an arbitrarily named section and supply control flags (which are object code specific and probably toolkit specific). See your toolkit manuals, and always use the specific section name directives for the common sections.
+<h3 id="9.5.1">9.5.1 实际的内存布局</h3>
 
+上图所示的内存布局一般适用于存储在ROM上，且是一个裸机程序的时候。对于使用操作系统的场合，内存布局比较复杂，需要考虑引导程序的分布、操作系统代码的存储、搬运等等。这又是一个比较深入的话题了。我们会在讨论uboot或者pmon等引导程序的时候，再深入研究。
 
-9.5.1 Practical Program Layout, Including Stack and Heap
+在实际的应用中，只读的代码数据区一般远离读写内存区。
 
-The programlayout illustrated in Figure 9.1 is suitable in most practical systems in which the code is stored in ROMand runs on a bare CPU (that is, without the services of any intermediate software such as an operating system). The readonly sections are likely to be located in an area of memory remote from the read/write sections.
+另外，堆栈是系统地址空间非常重要的区域。但是，汇编器一般无法像`.text`或`.data`区域那样，控制堆栈。通常，需要运行的程序对堆栈进行初始化。`stack`使用寄存器`sp`设置为可用内存的顶部（一般以8字节为边界）。`heap`一般使用一个全局指针变量进行访问，这个全局变量由malloc()函数等调用。通常被初始化为`end`符号表示的值，其是由连接器根据所有声明的变量计算出的一个最高地址。
 
-The stack and heap are significant as areas of the system’s address space, but it’s important to understand that they’re not known to the assembler or linker in the same way as, for example, the .text or .data sections. Typically, the stack and the heap are initialized and maintained by the runtime system. The stack is defined by setting the sp register to the top of available memory (aligned to an eight-byte boundary). The heap is defined by a global pointer variable used by functions such as malloc() functions; it’s often initialized to the end symbol, which the linker has calculated as the highest location used by declared variables.
+* 符号说明
 
-* Special Symbols
+上图的右边还有一些特殊的符号，如下表所示。这是由链接器自动生成的一些符号，用来程序方便查找起始和结束位置的。是类Unix系统流传下来的习惯。当然，也有一些是MIPS架构特有的。这个需要查看具体的编译工具链。下表中标记着`√`的符号，一般都是有的。
 
-Figure 9.1 also shows a number of special symbols that are automatically defined by the linker to allow programs to discover the start and end of their various sections. They are descended from conventions that grew up in UNIX-like OSs, and some are peculiar to the MIPS environment. Your toolkit might or might not define all of them; those marked with a √ in the following list are pretty certain to be there:
-
-| Symbol  | Standard? | Value |
+| 符号    | 标准?     | 意义 |
 | ------- | --------- | ----- |
-| ftext   |           | Start of text (code) segment |
-| etext   | √         | End of text (code) segment |
-| fdata   |           | Start of initialized data segment |
-| edata   | √         | End of initialized data segment |
-| fbss    |           | Start of uninitialized data segment |
-| end     | √         | End of uninitialized data segment |
+| ftext   |           | 代码段开始 |
+| etext   | √         | 代码段结束 |
+| fdata   |           | 初始化数据段的开始 |
+| edata   | √         | 初始化数据段的结束 |
+| fbss    |           | 非初始化数据段的开始 |
+| end     | √         | 非初始化数据段的结束 |
