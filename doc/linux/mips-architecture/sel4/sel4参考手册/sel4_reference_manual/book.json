@@ -1,0 +1,10 @@
+{
+	"title": "seL4 reference manual",
+	"language": "zh-hans",
+	"root": "./",
+	"pdf": {
+		"pageNumbers": true,
+		"fontSize": 16
+	}
+}
+
