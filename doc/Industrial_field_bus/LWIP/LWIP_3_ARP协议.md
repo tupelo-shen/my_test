@@ -67,7 +67,7 @@ state是个枚举类型，它描述该缓存表项的状态，LwIP中定义一�
     ————etharp.c—————————————————————————
     enum etharp_state {
         ETHARP_STATE_EMPTY = 0,           // empty 状态
-        ETHARP_STATE_PENDING,             // pending 状态
+        ETHARP_STATE_PENDING,             //pending状态
         ETHARP_STATE_STABLE               // stable 状态
     };
     ————————————————————————————————
@@ -75,7 +75,7 @@ state是个枚举类型，它描述该缓存表项的状态，LwIP中定义一�
 编译器为ARP表预先定义了ARP_TABLE_SIZE（通常为 10）个表项空间，因此ARP缓存表内部最多只能存放ARP_TABLE_SIZE条IP地址与MAC 地址配对信息。
 
     ————etharp.c——————————————————————
-    static struct etharp_entry arp_table[ARP_TABLE_SIZE];   // 定义 ARP 缓存表
+    static struct etharp_entry arp_table[ARP_TABLE_SIZE];   // 定义ARP缓存表
     ——————————————————————————————————
 
 1. `ETHARP_STATE_EMPTY`状态（empty）
@@ -108,7 +108,7 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
             arp_table[i].ctime++;                       // 先将表项 ctime 值加 1
             
             // 如果表项是 stable 状态，且生存值大于 ARP_MAXAGE，
-            // 或者是 pending 状态且其生存值大于 ARP_MAXPENDING，则删除表项
+            // 或者是pending状态且其生存值大于 ARP_MAXPENDING，则删除表项
             if ( ((arp_table[i].state == ETHARP_STATE_STABLE) && //stable 状态
                     (arp_table[i].ctime >= ARP_MAXAGE))
                         ||        // 或者
@@ -189,29 +189,29 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
         PACK_STRUCT_FIELD(u16_t proto);               // 协议类型（2 字节）
         PACK_STRUCT_FIELD(u16_t _hwlen_protolen);     // 硬件+协议地址长度（2 字节）
         PACK_STRUCT_FIELD(u16_t opcode);              // 操作字段 op（2 字节）
-        PACK_STRUCT_FIELD(struct eth_addr shwaddr);   // 发送方 MAC 地址（6 字节）
-        PACK_STRUCT_FIELD(struct ip_addr2 sipaddr);   // 发送方 IP 地址（4 字节）
-        PACK_STRUCT_FIELD(struct eth_addr dhwaddr);   // 接收方 MAC 地址（6 字节）
-        PACK_STRUCT_FIELD(struct ip_addr2 dipaddr);   // 接收方 IP 地址（4 字节）
+        PACK_STRUCT_FIELD(struct eth_addr shwaddr);   // 发送方MAC地址（6 字节）
+        PACK_STRUCT_FIELD(struct ip_addr2 sipaddr);   // 发送方IP地址（4 字节）
+        PACK_STRUCT_FIELD(struct eth_addr dhwaddr);   // 接收方MAC地址（6 字节）
+        PACK_STRUCT_FIELD(struct ip_addr2 dipaddr);   // 接收方IP地址（4 字节）
     } PACK_STRUCT_STRUCT;
     PACK_STRUCT_END
 
     #define SIZEOF_ETHARP_HDR 28 //宏，ARP 数据包长度
-    // 宏，包含 ARP 数据包的以太网帧长度
+    // 宏，包含ARP数据包的以太网帧长度
     #define SIZEOF_ETHARP_PACKET (SIZEOF_ETH_HDR + SIZEOF_ETHARP_HDR)
     #define ARP_TMR_INTERVAL    5000       // 定义ARP定时器周期为5秒，不同帧类型的宏定义
     #define ETHTYPE_ARP         0x0806
     #define ETHTYPE_IP          0x0800
     
-    // ARP 数据包中 OP 字段取值宏定义
-    #define ARP_REQUEST         1           // ARP 请求
-    #define ARP_REPLY           2           // ARP 应答
+    //ARP数据包中 OP 字段取值宏定义
+    #define ARP_REQUEST         1           //ARP请求
+    #define ARP_REPLY           2           //ARP应答
     ————————————————————————————
 
 发送ARP请求数据包的函数叫etharp_request，看名字就晓得了。这个函数很简单，它是通过调用etharp_raw函数来实现的，调用后者时，需要为它提供ARP数据包中各个字段的值，后者直接将各个字段的值填写到在一个ARP包中发送（该函数并不知道发送的是ARP请求还是ARP响应，它只管组装并发送，所以称之为raw）
 
     ————etharp.c——————————————————
-    //函数功能：根据各个参数字段组织一个 ARP 数据包并发送
+    //函数功能：根据各个参数字段组织一个ARP数据包并发送
     //注：ARP 数据包中其他字段使用预定义值，例如硬件地址长度为 6，协议地址长度为 4
     err_t etharp_raw(struct netif           *netif,         /* 发送ARP包的网络接口结构 */
                     const struct eth_addr   *ethsrc_addr,   /* 以太网帧首部中的以太网源地址值 */ 
@@ -238,20 +238,20 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
         ethhdr = p­>payload;                // ethhdr指向以太网帧首部区域
         hdr = (struct etharp_hdr *)((u8_t*)ethhdr + SIZEOF_ETH_HDR);// hdr指向ARP首部
         hdr­>opcode = htons(opcode);        // 填写ARP包的OP字段，注意大小端转换
-        k = ETHARP_HWADDR_LEN;              // 循环填写数据包中各个 MAC 地址字段
+        k = ETHARP_HWADDR_LEN;              // 循环填写数据包中各个MAC地址字段
         while(k > 0)     {
             k--­­;
-            hdr­>shwaddr.addr[k] = hwsrc_addr­>addr[k];     // ARP 头部的发送方 MAC 地址
-            hdr­>dhwaddr.addr[k] = hwdst_addr­>addr[k];     // ARP 头部的接收方 MAC 地址
+            hdr­>shwaddr.addr[k] = hwsrc_addr­>addr[k];     //ARP头部的发送方MAC地址
+            hdr­>dhwaddr.addr[k] = hwdst_addr­>addr[k];     //ARP头部的接收方MAC地址
             ethhdr­>dest.addr[k] = ethdst_addr­>addr[k];    // 以太网帧首部中的以太网目的地址
             ethhdr­>src.addr[k] = ethsrc_addr­>addr[k];     // 以太网帧首部中的以太网源地址
         }
-        hdr­>sipaddr = *(struct ip_addr2 *)ipsrc_addr;      // 填写 ARP 头部的发送方 IP 地址
-        hdr­>dipaddr = *(struct ip_addr2 *)ipdst_addr;      // 填写 ARP 头部的接收方 IP 地址
+        hdr­>sipaddr = *(struct ip_addr2 *)ipsrc_addr;      // 填写ARP头部的发送方IP地址
+        hdr­>dipaddr = *(struct ip_addr2 *)ipdst_addr;      // 填写ARP头部的接收方IP地址
         
         // 下面填充一些固定字段的值
-        hdr­>hwtype = htons(HWTYPE_ETHERNET);               // ARP 头部的硬件类型为 1，即以太网
-        hdr­>proto = htons(ETHTYPE_IP);                     // ARP 头部的协议类型为 0x0800
+        hdr­>hwtype = htons(HWTYPE_ETHERNET);               //ARP头部的硬件类型为 1，即以太网
+        hdr­>proto = htons(ETHTYPE_IP);                     //ARP头部的协议类型为 0x0800
         
         // 设置两个长度字段
         hdr­>_hwlen_protolen = htons((ETHARP_HWADDR_LEN << 8) | sizeof(struct ip_addr));
@@ -323,18 +323,20 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
     }
     ——————————————————————————————————————
 
-首先，若这个请求的 IP 地址与本机地址不匹配，那么就不需要返回 ARP 应答，但由于该 ARP 请求包中包含了发送请求的主机的 IP 地址 和 MAC 地址，可以将这个地址对加入到 ARP 缓存表中，以便后续使用；其次，如果 ARP 请求与本机 IP 地址匹配，此时，除了进行上述的记录源主机的 IP 地址和 MAC 地址外，还需要给源主机返回一个 ARP 应答。整个过程清楚后，就可以来看具体的代码实现了。 
+#### 3.2 ARP数据包处理
+
+首先，若这个请求的IP地址与本机地址不匹配，那么就不需要返回ARP应答，但由于该ARP请求包中包含了发送请求的主机的IP地址和MAC地址，可以将这个地址对加入到ARP缓存表中，以便后续使用；其次，如果ARP请求与本机IP地址匹配。此时，除了进行上述的记录源主机的IP地址和MAC地址外，还需要给源主机返回一个ARP应答。整个过程清楚后，就可以来看具体的代码实现了。 
 
     ————etharp.c————————————————————
     // 函数功能：处理ARP数据包，更新ARP缓存表，对ARP请求进行应答
     // 参数ethaddr：网络接口的MAC地址
     void etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
     {
-        struct etharp_hdr   *hdr;       // 指向ARP数据包头部的变量
-        struct eth_hdr      *ethhdr;    // 指向以太网帧头部的变量
-        struct ip_addr      sipaddr, dipaddr; //暂存ARP包中的源IP地址和目的IP地址
+        struct etharp_hdr   *hdr;               // 指向ARP数据包头部的变量
+        struct eth_hdr      *ethhdr;            // 指向以太网帧头部的变量
+        struct ip_addr      sipaddr, dipaddr;   //暂存ARP包中的源IP地址和目的IP地址
         u8_t                i;
-        u8_t                for_us;     // 用于指示该ARP包是否是发给本机的
+        u8_t                for_us;             // 用于指示该ARP包是否是发给本机的
         
         /*
          * 接下来判断ARP包是否是放在一个pbuf中的，由于整个ARP包都使用结构etharp_hdr
@@ -347,7 +349,8 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
         }
         
         ethhdr = p­>payload;                    // ethhdr指向以太网帧首部
-        hdr = (struct etharp_hdr *)((u8_t*)ethhdr + SIZEOF_ETH_HDR); // hdr指向ARP包首部
+        hdr = (struct etharp_hdr *)((u8_t*)ethhdr + SIZEOF_ETH_HDR); 
+                                                // hdr指向ARP包首部
 
         /*
          * 这里需要判断ARP包的合法性，丢弃掉那些类型、长度不合法的ARP包
@@ -415,15 +418,15 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
                         hdr­>shwaddr.addr[i] = ethaddr­>addr[i];        // ARP头部的发送端MAC地址
                         ethhdr­>src.addr[i]  = ethaddr­>addr[i];        // 以太网帧头部的源MAC地址
                     }
-                    //对于 ARP 包中的其他字段的值（硬件类型、协议类型、长度字段等）
+                    //对于ARP包中的其他字段的值（硬件类型、协议类型、长度字段等）
                     //保持它们的值不变，因为在前面已经测试过了它们的有效性
-                    netif­>linkoutput(netif, p); //直接发送 ARP 应答包
-                } else if (netif­>ip_addr.addr == 0)                 {//ARP 请求数据包不是给我们的， 不做任何处理
+                    netif­>linkoutput(netif, p);                        // 直接发送ARP应答包
+                } else if (netif­>ip_addr.addr == 0) {                  // ARP请求数据包不是给我们的，不做任何处理
                     } //这里只打印一些调试信息，笔者已将它们去掉
                 else                 {
                     }
                 break;
-        　case ARP_REPLY: //如果是 ARP 应答，我们已经在最开始更新了 ARP 表
+        　case ARP_REPLY: //如果是ARP应答，我们已经在最开始更新了ARP表
             break; //这里神马都不用做了
         　default:
             break;
@@ -432,8 +435,166 @@ ctime为每个表项的计数器，周期性的去调用一个etharp_tmr函数�
     }
     ————————————————————————————————————
 
+#### 3.3 ARP攻击
 
+#### 3.4 ARP缓存表更新
 
 # 4 ARP层数据包输出
 
+#### 4.1 ARP数据处理流程图
 
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/Industrial_field_bus/LWIP/images/LWIP_3_3.png">
+
+#### 4.2 广播包与多播包的发送
+
+etharp_output 函数被IP层的数据包发送函数ip_output调用，它首先根据目的 IP地址的类型为数据包选择不同的处理方式：当目的IP地址为广播或者多播地址时，etharp_output可以直接根据这个目的地址构造出相应的特殊MAC地址，同时把MAC地址作为参数，和数据包一起交给etharp_send_ip发送；当目的IP地址为单播地址时，需要调用etharp_query函数在 ARP表中查找与目的IP地址对应的MAC地址，若找到，则函数etharp_send_ip被调用，以发送数据包；若找不到，则函数etharp_request被调用它会发送一个关于目的IP地址的ARP请求包，出现这种情况时，我们还需要将IP包挂接的相应表项的缓冲队列中，直到对应的ARP应答返回时，该数据包才会被发送出去。 
+
+    ————etharp.c——————————————
+    //函数功能：发送一个IP数据包 pbuf 到目的地址 ipaddr 处，该函数被IP层调用
+    //参数 netif：指向发送数据包的网络接口结构
+    //参数 q：指向IP数据包 pbuf 的指针
+    //参数 ipaddr：指向目的IP地址
+    err_t etharp_output(struct netif *netif, struct pbuf *q, struct ip_addr *ipaddr)
+    {
+    　　struct eth_addr *dest, mcastaddr;
+    　　if (pbuf_header(q, sizeof(struct eth_hdr)) != 0) {//调整 pbuf 的 payload 指针，使其指向
+    　　return ERR_BUF; //以太网帧头部，失败则返回
+    　　}
+    　　dest = NULL;
+    　　if (ip_addr_isbroadcast(ipaddr, netif)) 　　{//如果是广播IP地址
+    　　　　dest = (struct eth_addr *)&ethbroadcast; //dest 指向广播 MAC 地址
+    　　} else if (ip_addr_ismulticast(ipaddr)) 　　{//如果是多播IP地址
+    　　　　mcastaddr.addr[0] = 0x01; //则构造多播 MAC 地址
+    　　　　mcastaddr.addr[1] = 0x00;
+    　　　　mcastaddr.addr[2] = 0x5e;
+    　　　　mcastaddr.addr[3] = ip4_addr2(ipaddr) & 0x7f;
+    　　　　mcastaddr.addr[4] = ip4_addr3(ipaddr);
+    　　　　mcastaddr.addr[5] = ip4_addr4(ipaddr);
+    　　　　dest = &mcastaddr; // dest 指向多播 MAC 地址
+    　　} else { //如果为单播IP地址
+    　　　　//判断目的IP地址是否为本地的子网上，若不在，则修改 ipaddr
+    　　　　if (!ip_addr_netcmp(ipaddr, &(netif­>ip_addr), &(netif­>netmask))) 　　　　{
+    　　　　　　if (netif­>gw.addr != 0) 　　　　　　{ //需要将数据包发送到网关处，由网关转发
+    　　　　　　　　ipaddr = &(netif­>gw); //更改变量 ipaddr，数据包发往网关处
+    　　　　　　} else 　　　　　　{ //如果网关未配置，返回错误
+    　　　　　　　　return ERR_RTE;
+    　　　　　　}
+    　　　　}
+    　　　　//对于单播包，调用 etharp_query 查询其 MAC 地址并发送数据包
+    　　　　return etharp_query(netif, ipaddr, q);
+    　　}
+    　　//对于多播和广播包，由于得到了它们的目的 MAC 地址，所以可以直接发送
+    　　return etharp_send_ip(netif, q, (struct eth_addr*)(netif­>hwaddr), dest);
+    }
+    ————————————————————————————————
+
+广播包：调用函数ip_addr_isbroadcast判断目的IP地址是否为广播地址，如果是广播包，则目的MAC地址不需要查询arp表，由于广播MAC地址的48位均为 1，即目的MAC六个字节值为ff­ff­ff­ff­ff­ff。
+
+多播包：判断目的IP地址是不是D类IP地址，如果是，则MAC地址可以直接计算得出，即将MAC地址01­00­5E­00­00­00的低23位设置为IP 地址的低23位。对于以上的两种数据包，etharp_output直接调用函数etharp_send_ip将数据包发送出去。
+
+单播包：要比较目的IP和本地IP地址，看是否是局域网内的，若不是局域网内的，则将目的IP地址设置为默认网关的地址，然后再统一调用etharp_query函数查找目的MAC地址，最后将数据包发送出去。
+
+    ————etharp_send_ip————————————————————
+    //函数功能：填写以太网帧头部，发送以太网帧
+    //参数 p：指向以太网帧的 pbuf
+    //参数 src：指向源 MAC 地址
+    //参数 dst：指向目的 MAC 地址
+    static err_t
+    etharp_send_ip(struct netif *netif, struct pbuf *p, struct eth_addr *src, struct eth_addr *dst)
+    {
+    　　struct eth_hdr *ethhdr = p­>payload; //指向以太网帧头部
+    　　u8_t k;
+    　　k = ETHARP_HWADDR_LEN;
+    　　while(k > 0)　　{
+    　　　　k--­­;
+    　　　　ethhdr­>dest.addr[k] = dst­>addr[k]; //填写目的 MAC 字段
+    　　　　ethhdr­>src.addr[k] = src­>addr[k]; //填写源 MAC 字段
+    　　}
+    　　ethhdr­>type = htons(ETHTYPE_IP); //填写帧类型字段
+    　　return netif­>linkoutput(netif, p); //调用网卡数据包发送函数
+    }
+    ————————————————————————————————————
+
+这个函数尤其简单，直接根据传入的参数填写以太网帧首部的三个字段，然后调用注册的底层数据包发送函数将数据包发送出去。
+
+#### 4.3 单播包的发送
+
+如果给定的IP地址不在ARP表中，则一个新的ARP表项会被创建，此时该表项处于pending状态，同时一个关于该IP地址的ARP请求会被广播出去，再同时要发送的IP数据包会被挂接在该表项的数据缓冲指针上；如果IP地址在ARP表中有相应的表项存在，但该表项处于pending 状态，则操作与前者相同，即发送一个ARP请求和挂接数据包；如果IP地址在ARP表中有相应的表项存在，且表项处于stable状态，此时再来判断给定的数据包是否为空，不为空则直接将该数据包发送出去，为空则向该IP地址发送一个ARP请求。 
+
+    //函数功能：查找单播IP地址对应的 MAC 地址，并发送数据包
+    //参数 ipaddr：指向目的IP地址
+    //参数 q：指向以太网数据帧的 pbuf
+    err_t etharp_query(struct netif *netif, struct ip_addr *ipaddr, struct pbuf *q)
+    {
+    　　struct eth_addr * srcaddr = (struct eth_addr *)netif->hwaddr;
+    　　err_t result = ERR_MEM;
+    　　s8_t i;
+    　　//调用函数 find_entry 查找或创建一个ARP表项
+    　　i = find_entry(ipaddr, ETHARP_TRY_HARD);
+    　　if (i < 0) 
+    　　{ //若查找失败，则 i 小于 0，直接返回
+    　　　　return (err_t)i;
+    　　}
+    　　//如果表项的状态为 empty，说明表项是刚创建的，且其中已经记录了IP地址
+    　　if (arp_table[i].state == ETHARP_STATE_EMPTY) 
+    　　{ //将表项的状态改为 pending
+    　　　　arp_table[i].state = ETHARP_STATE_PENDING;
+    　　}
+    　　if ((arp_table[i].state == ETHARP_STATE_PENDING) || (q == NULL)) 
+    　　{//数据包为空，或
+    　　　　result = etharp_request(netif, ipaddr); //表项为pending态，则发送ARP请求包
+    　　}
+    　　if (q != NULL) 
+    　　{//数据包不为空，则进行数据包的发送或者将数据包挂接在缓冲队列上
+    　　　　if (arp_table[i].state == ETHARP_STATE_STABLE) {//ARP 表稳定，则直接发送数据包
+    　　　　　　result = etharp_send_ip(netif, q, srcaddr, &(arp_table[i].ethaddr));
+    　　　　} else if (arp_table[i].state == ETHARP_STATE_PENDING) {//否则，挂接数据包
+        　　　　struct pbuf *p;
+        　　　　int copy_needed = 0;//是否需要重新拷贝整个数据包，数据包全由 PBUF_ROM
+        　　　　p = q; //类型的 pbuf 组成时，才不需要拷贝
+        　　　　while (p) { //判断是否需要拷贝整个数据包
+        　　　　　　if(p->type != PBUF_ROM) {
+        　　　　　　　　copy_needed = 1;
+        　　　　　　　　break;
+        　　　　　　}
+        　　　　　　p = p->next;
+        　　　　}
+        　　　　if(copy_needed) { //如果需要拷贝，则申请内存堆空间
+        　　　　　　p = pbuf_alloc(PBUF_RAW, p->tot_len, PBUF_RAM);//申请一个 pbuf 空间
+        　　　　　　if(p != NULL) {申请成功，则执行拷贝操作
+        　　　　　　if (pbuf_copy(p, q) != ERR_OK) {//拷贝失败，则释放申请的空间
+        　　　　　　　　pbuf_free(p);
+        　　　　　　　　p = NULL;
+        　　　　　　}
+        　　　　}
+        　　　　} else { //如果不需要拷贝
+        　　　　　　p = q; //设置 p
+        　　　　　　pbuf_ref(p); //增加 pbuf 的 ref 值
+        　　　　}
+        　　　　//到这里，p 指向了我们需要挂接的数据包，下面执行挂接操作
+        　　　　if (p != NULL) {
+        　　　　　　struct etharp_q_entry *new_entry; //为数据包申请一个 etharp_q_entry 结构
+        　　　　　　new_entry = memp_malloc(MEMP_ARP_QUEUE); //在内存池 POOL 中
+        　　　　　　if (new_entry != NULL) 
+        　　　　　　{ //申请成功，则进行挂接操作
+        　　　　　　　　new_entry->next = 0; //设置 etharp_q_entry 结构的指针
+        　　　　　　　　new_entry->p = p;
+        　　　　　　　　if(arp_table[i].q != NULL) { //若缓冲队列不为空
+        　　　　　　　　　　struct etharp_q_entry *r;
+        　　　　　　　　　　r = arp_table[i].q;
+            　　　　　　　　while (r->next != NULL) {//则找到最后一个缓冲包结构
+            　　　　　　　　　　r = r->next;
+            　　　　　　　　}
+            　　　　　　　　r->next = new_entry; //将新的数据包挂接在队列尾部
+            　　　　　　} else { //缓冲队列为空
+            　　　　　　　　arp_table[i].q = new_entry; //直接挂接在缓冲队列首部
+            　　　　　　}
+            　　　　　　result = ERR_OK;
+        　　　　　　} else { //etharp_q_entry 结构申请失败，则
+        　　　　　　　　pbuf_free(p); //释放数据包空间
+        　　　　　　}
+        　　　　 // if (p != NULL)
+    　　　　　}//else if
+    　　}// if (q != NULL)
+    　　return result; //返回函数操作结果
+    }
