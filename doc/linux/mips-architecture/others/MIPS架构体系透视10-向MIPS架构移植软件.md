@@ -41,43 +41,13 @@ this issue thoroughly. It’s caught out many experienced developers
 before you, and it will catch out some more. Read about it in
 section 10.2.
 
-2. Data layout and alignment in memory: Your program may make
-unportable assumptions about the memory layout of data declared in
-C. It’s almost always unportable to use C struct declarations to map
-input files or data received through a communication link, for example.
-Danger can lurk in a program that employs multiple views of private
-data with differently typed pointers or unions.
-However, data layout goes together with a description of other conventions
-(for register use, argument passing, and stack handling) and you’ll
-find that in the next chapter: If you need to take a peek ahead, it’s in
-section 11.1.
+2. Data layout and alignment in memory: Your program may make unportable assumptions about the memory layout of data declared in C. It’s almost always unportable to use C struct declarations to map input files or data received through a communication link, for example. Danger can lurk in a program that employs multiple views of private data with differently typed pointers or unions. However, data layout goes together with a description of other conventions (for register use, argument passing, and stack handling) and you’ll find that in the next chapter: If you need to take a peek ahead, it’s in section 11.1.
 
-3. Need for explicit cache management: You may find that code you’d like to
-reuse was developed for a microprocessor that didn’t implement caches
-at all, or one that used a CPU with caches that are “invisible” to software
-(almost all side effects of caching in PC-compatible processors are
-hidden by clever hardware, for instance). But most MIPS CPUs keep
-their hardware simple by letting some side effects remain visible and
-making software responsible for cache management; we’ll describe what
-this means in section 10.3.
+3. Need for explicit cache management: You may find that code you’d like to reuse was developed for a microprocessor that didn’t implement caches at all, or one that used a CPU with caches that are “invisible” to software (almost all side effects of caching in PC-compatible processors are hidden by clever hardware, for instance). But most MIPS CPUs keep their hardware simple by letting some side effects remain visible and making software responsible for cache management; we’ll describe what this means in section 10.3.
 
-4. Memory access ordering and reordering: In many modern embedded or
-consumer systems, data moving around the system may pass through a
-chain of subsystems as it moves from its source to its final destination.
-Those subsystems may themselves encapsulate a lot of complicated
-hardware, and may present you with unexpected problems. For example,
-pieces of information passed between the CPU and I/O devices
-may be forced to wait in queues, incurring variable amounts of delay;
-or they may be separated into several independent traffic streams, so
-the order in which they arrive at their respective destinations can’t
-be guaranteed to match the order in which they were originally sent.
-Typical problems and solutions are discussed in section 10.4.
+4. Memory access ordering and reordering: In many modern embedded or consumer systems, data moving around the system may pass through a chain of subsystems as it moves from its source to its final destination. Those subsystems may themselves encapsulate a lot of complicated hardware, and may present you with unexpected problems. For example, pieces of information passed between the CPU and I/O devices may be forced to wait in queues, incurring variable amounts of delay; or they may be separated into several independent traffic streams, so the order in which they arrive at their respective destinations can’t be guaranteed to match the order in which they were originally sent. Typical problems and solutions are discussed in section 10.4.
 
-5. Writing it in C: This is not so much a problem as an opportunity. But
-there are things you can do in C (and probably should do in preference
-to writing assembly code) that are fairly MIPS-specific. This section talks
-about inline assembly, using memory-mapped registers, and a ragbag of
-possible pitfalls using MIPS.
+5. Writing it in C: This is not so much a problem as an opportunity. But there are things you can do in C (and probably should do in preference to writing assembly code) that are fairly MIPS-specific. This section talks about inline assembly, using memory-mapped registers, and a ragbag of possible pitfalls using MIPS.
 
 # 2 Endianness:Words, Bytes, and Bit Order
 
@@ -221,12 +191,7 @@ and hardware problems separately.
 
 # 2.2 Software and Endianness
 
-Here’s a software-oriented definition of endianness: A CPU/compiler system
-where the lowest addressed byte of amultibyte integer holds the least significant
-bits is called little-endian; a system where the lowest addressed byte of a multibyte
-integer holds the most significant bits is called big-endian. You can very
-easily find out which sort of CPU you have by running a piece of deliberately
-nonportable code:
+Here’s a software-oriented definition of endianness: A CPU/compiler system where the lowest addressed byte of amultibyte integer holds the least significant bits is called little-endian; a system where the lowest addressed byte of a multibyte integer holds the most significant bits is called big-endian. You can very easily find out which sort of CPU you have by running a piece of deliberately nonportable code:
 
     #include<stdio.h>
     main ()
@@ -249,265 +214,104 @@ nonportable code:
         }
     }
 
-Strictly speaking, software endianness is an attribute of the compiler
-toolchain, which could always—if it worked hard enough—produce the effect
-of either endianness. But on a byte-addressable CPU like MIPS with native
-32-bit arithmetic it would be unreasonably inefficient to buck the hardware;
-thus we talk of the endianness of the CPU.
+Strictly speaking, software endianness is an attribute of the compiler toolchain, which could always—if it worked hard enough—produce the effect of either endianness. But on a byte-addressable CPU like MIPS with native 32-bit arithmetic it would be unreasonably inefficient to buck the hardware; thus we talk of the endianness of the CPU.
 
-Of course, the question of byte layout within the address space applies to
-other data types besides integers; it affects any item that occupies more than
-a single byte, such as floating-point data types, text strings, and even the 32-
-bit op-codes that represent machine instructions. For some of these noninteger
-data types, the idea of arithmetic significance applies only in a limited way, and
-for others it has no meaning at all.
+Of course, the question of byte layout within the address space applies to other data types besides integers; it affects any item that occupies more than a single byte, such as floating-point data types, text strings, and even the 32-bit op-codes that represent machine instructions. For some of these noninteger data types, the idea of arithmetic significance applies only in a limited way, and for others it has no meaning at all.
 
-When a language deals in software-constructed data types bigger than
-the hardware can manage, then their endianness is purely an issue of software
-convention—they can be constructed with either endianness. I hope
-that modern compiler writers appreciate that it’s a good idea to be consistent
-with the hardware’s own convention.
+When a language deals in software-constructed data types bigger than the hardware can manage, then their endianness is purely an issue of software convention—they can be constructed with either endianness. I hope that modern compiler writers appreciate that it’s a good idea to be consistent with the hardware’s own convention.
 
 ## Endianness and Program Portability
 
-So long as binary data items are never imported into an application from elsewhere,
-and so long as you avoid accessing the same piece of data under two
-different integer types (as we deliberately did above), your CPU’s endianness
-is invisible (and your code is portable). Modern C compilers will try to watch
-out for you: If you do this by accident, you’ll probably get a compiler error or
-warning.
+So long as binary data items are never imported into an application from elsewhere, and so long as you avoid accessing the same piece of data under two different integer types (as we deliberately did above), your CPU’s endianness is invisible (and your code is portable). Modern C compilers will try to watch out for you: If you do this by accident, you’ll probably get a compiler error or warning.
 
-You may not be able to live within those limitations, however; you may
-have to deal with foreign data delivered into your system from elsewhere, or
-with memory-mapped hardware registers. For either of these, you need to know
-exactly how your compiler accesses memory.
+You may not be able to live within those limitations, however; you may have to deal with foreign data delivered into your system from elsewhere, or with memory-mapped hardware registers. For either of these, you need to know exactly how your compiler accesses memory.
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_4.PNG">
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_5.PNG">
 
-This all seems fairly harmless, but experience shows that of all data-mapping
-problems, endianness is uniquely confusing. I think this is because it is difficult
-even to describe the problem without taking a side. The origin of the two
-alternatives lies in two different ways of drawing the pictures and describing the
-data; both are natural in different contexts.
+This all seems fairly harmless, but experience shows that of all data-mapping problems, endianness is uniquely confusing. I think this is because it is difficult even to describe the problem without taking a side. The origin of the two alternatives lies in two different ways of drawing the pictures and describing the data; both are natural in different contexts.
 
-Aswe sawabove, big-endians typically drawtheir pictures organized around
-words. So that gives us a big-endian picture of the data structure we used in
-Figure 10.4. It would look a lot prettier with the IBM convention of labeling the
-MS bit as bit 0, but that’s no longer done.
+Aswe sawabove, big-endians typically drawtheir pictures organized around words. So that gives us a big-endian picture of the data structure we used in Figure 10.4. It would look a lot prettier with the IBM convention of labeling the MS bit as bit 0, but that’s no longer done.
 
-But little-endians are likely to emphasize a software-oriented, abstract
-view of computer memory as an array of bytes. So the same data structure
-looks like Figure 10.5. Little-endians don’t think of computer data as primarily
-numeric, so they tend to put all the low numbers (bits, bytes, or whatever) on
-the left.
+But little-endians are likely to emphasize a software-oriented, abstract view of computer memory as an array of bytes. So the same data structure looks like Figure 10.5. Little-endians don’t think of computer data as primarily numeric, so they tend to put all the low numbers (bits, bytes, or whatever) on the left.
 
-It’s very difficult to achieve a real grasp of endianness without drawing
-pictures, but many people find themselves struggling to set aside the conventions
-they’re used to; for example, if you’re used to numbering the bits from
-right to left, it can take a real effort of will to number them from left to right
-(a picture of a little-endian structure as drawn by someone with big-endian
-habits can look very illogical). This is the essence of the subject’s capacity to confuse:
-It’s difficult even to think about an unfamiliar convention without getting
-caught up in the ones you know.
+It’s very difficult to achieve a real grasp of endianness without drawing pictures, but many people find themselves struggling to set aside the conventions they’re used to; for example, if you’re used to numbering the bits from right to left, it can take a real effort of will to number them from left to right (a picture of a little-endian structure as drawn by someone with big-endian habits can look very illogical). This is the essence of the subject’s capacity to confuse: It’s difficult even to think about an unfamiliar convention without getting caught up in the ones you know.
 
 #### 2.3 硬件和大小端
 
-We saw previously that a CPU’s native endianness only shows up when it offers
-direct support both for word-length numbers and a finer-resolution, byte-sized
-memory system. Similarly, your hardware system acquires a recognizable
-endianness when a byte-addressed system is wired up with buses that are multiple
-bytes wide.
+We saw previously that a CPU’s native endianness only shows up when it offers direct support both for word-length numbers and a finer-resolution, byte-sized memory system. Similarly, your hardware system acquires a recognizable endianness when a byte-addressed system is wired up with buses that are multiple bytes wide.
 
-When you transfer multibyte data across the bus, each byte of that data has
-its own individual address. If the lowest-address byte in the data travels on the
-eight bus lines (“byte lane”) with the lowest bit numbers, the bus is little-endian.
-But if the lowest-address byte in the data travels on the byte lanewith the highest
-bit numbers, the bus is big-endian.
+When you transfer multibyte data across the bus, each byte of that data has its own individual address. If the lowest-address byte in the data travels on the eight bus lines (“byte lane”) with the lowest bit numbers, the bus is little-endian. But if the lowest-address byte in the data travels on the byte lanewith the highest bit numbers, the bus is big-endian.
 
-There’s no necessary connection between the “native” endianness of a CPU
-and the endianness of its system interface considered as a bus. However, I don’t
-know of any CPUs where the software and interface endianness are different, so
-we can talk about “the endianness of a CPU” and mean both internal organization
-and system interface.
+There’s no necessary connection between the “native” endianness of a CPU and the endianness of its system interface considered as a bus. However, I don’t know of any CPUs where the software and interface endianness are different, so we can talk about “the endianness of a CPU” and mean both internal organization and system interface.
 
-Byte-addressable CPUs announce themselves as either big- or little-endian
-every time they transfer data. Intel and DEC CPUs are little-endian; Motorola
-680x0 and IBM CPUs are big-endian. MIPS CPUs can be either, as configured
-from power-up; most other RISCs have followed the MIPS lead and chosen to
-make endianness configurable—a boon when updating an existing system with
-a new CPU.
+Byte-addressable CPUs announce themselves as either big- or little-endian every time they transfer data. Intel and DEC CPUs are little-endian; Motorola 680x0 and IBM CPUs are big-endian. MIPS CPUs can be either, as configured from power-up; most other RISCs have followed the MIPS lead and chosen to make endianness configurable—a boon when updating an existing system with a new CPU.
 
-Hardware engineers can hardly be blamed for connecting up different buses
-by matching up the bit numbers. But trouble strikes when your system includes
-buses, CPUs, or peripherals whose endianness doesn’t match. In this case the
-choice is not a happy one; the system designer must choose the lesser of two
-evils:
+Hardware engineers can hardly be blamed for connecting up different buses by matching up the bit numbers. But trouble strikes when your system includes buses, CPUs, or peripherals whose endianness doesn’t match. In this case the choice is not a happy one; the system designer must choose the lesser of two evils:
 
-* Bit number consistent/byte sequence scrambled: Most obviously, the
-designer can wire up the two buses according to their bit numbers, which
-will have the effect of preserving bit numbering within aligned “words.”
-But since the relationship between bit numbers and bytes-within-words
-is different on the two buses, the two sides will see the sequence of bytes
-in memory differently.
-Any data that is not of bus-width size and bus-width aligned will get
-mangled when transferred between the connected buses, with bytes
-swapped within each bus-width-sized unit. This looks and feels worse
-than the software problem. With wrong-endianness data in software,
-you have no problem finding data type boundaries; it’s just that the data
-doesn’t make sense. With this hardware problem the boundaries are
-scrambled too (unless the data are, by chance, aligned on bus-width
-“word” boundaries).
-There’s a catch here. If the data being passed across the interface is always
-aligned word-length integers, then bit-number-consistent wiring will
-conceal the endianness difference, avoiding the need for software
-conversion of integers. But hardware engineers very rarely know exactly
-which data will be passed across an interface over the lifetime of a system,
-so be cautious.
+* Bit number consistent/byte sequence scrambled: Most obviously, the designer can wire up the two buses according to their bit numbers, which will have the effect of preserving bit numbering within aligned “words.” But since the relationship between bit numbers and bytes-within-words is different on the two buses, the two sides will see the sequence of bytes in memory differently. 
 
-* Byte address consistent/integers scrambled: The designer can decide to preserve
-byte addressing by connecting byte lanes that correspond to the
-same byte-within-word address, even though the bit-numbering of the
-data lines in the byte lane doesn’t match at all. Then at least the whole
-system can agree on the data seen as an array of bytes.
+    Any data that is not of bus-width size and bus-width aligned will get mangled when transferred between the connected buses, with bytes swapped within each bus-width-sized unit. This looks and feels worse than the software problem. With wrong-endianness data in software, you have no problem finding data type boundaries; it’s just that the data doesn’t make sense. With this hardware problem the boundaries are scrambled too (unless the data are, by chance, aligned on bus-width “word” boundaries).
 
-However, there are presumably going to be componentswith mismatched
-software endianness in the system. So your consistent byte addressing
-is guaranteed to expose their disagreement about the representation of
-multibyte integers. And—in particular—even a bus-width-aligned integer
-(the “natural” unit of transfer)will appear byte-swapped whenmoved
-to the other endianness.
+    There’s a catch here. If the data being passed across the interface is always aligned word-length integers, then bit-number-consistent wiring will conceal the endianness difference, avoiding the need for software conversion of integers. But hardware engineers very rarely know exactly which data will be passed across an interface over the lifetime of a system, so be cautious.
 
-For most purposes, byte address scrambling is much more harmful, and
-we’d recommend “byte address consistent” wiring. When dealing with data
-representation and transfer problems, programmers will usually fall back on
-C’s basic model of memory as an array of bytes, with other data types built up
-from that. When your assumptions about memory order don’t work out, it’s
-very hard to see what’s going on.
+* Byte address consistent/integers scrambled: The designer can decide to preserve byte addressing by connecting byte lanes that correspond to the same byte-within-word address, even though the bit-numbering of the data lines in the byte lane doesn’t match at all. Then at least the whole system can agree on the data seen as an array of bytes.
 
-Unfortunately, a bit number consistent/byte address scrambled connection
-looks much more natural on a schematic; it can be very hard to persuade hardware
-engineers to do the right thing.
+However, there are presumably going to be componentswith mismatched software endianness in the system. So your consistent byte addressing is guaranteed to expose their disagreement about the representation of multibyte integers. And—in particular—even a bus-width-aligned integer (the “natural” unit of transfer)will appear byte-swapped whenmoved to the other endianness.
 
-Not every connection in a system matters. Suppose we have a 32-bit-wide
-memory system bolted directly to a CPU. The CPU’s system interface may
-not include a byte-within-word address—the address bus does not specify
-address bits 1 and 0. Instead, many CPUs have four “byte enables,” which
-show that data is being transferred on particular byte lanes. The memory
-array is wired to the whole bus, and on a write the byte enables tell the
-memory array which of four possible byte locations within the word will
-actually get written. Internally, the CPU associates each of the byte lanes with
-a byte-within-word address, but that has no effect on the operation of the
-memory system. Effectively, the memory/CPU combination acts together and
-inherits the endianness of the CPU; where byte-within-word 0 actually goes in
-memory doesn’t matter, so long as the CPU can read it back again.
+For most purposes, byte address scrambling is much more harmful, and we’d recommend “byte address consistent” wiring. When dealing with data representation and transfer problems, programmers will usually fall back on C’s basic model of memory as an array of bytes, with other data types built up from that. When your assumptions about memory order don’t work out, it’s very hard to see what’s going on.
 
-It’s very important not to be seduced by this helpful characteristic of a
-RAM memory into believing that there’s no intrinsic endianness in a simple
-CPU/RAM system. You can spot the endianness of any transfer on a wide bus.
-Here’s a sample list of conditions in which you can’t just ignore the CPU’s
-endianness when building a memory system:
+Unfortunately, a bit number consistent/byte address scrambled connection looks much more natural on a schematic; it can be very hard to persuade hardware engineers to do the right thing.
 
-* If your system uses firmware that’s preprogrammed into ROMmemory,
-the hardware address and byte lane connection assignments within
-the system need to match those assumed in the way the ROM was
-programmed, and the data contained in the ROM needs to match the
-CPU’s configured endianness. In effect, the contents of the ROM are
-being delivered into your system from somewhere outside it. If the code
-is to be executed directly from the ROM, it’s especially important to
-get the endianness right, because it’s impossible for the CPU to apply
-any corrective software byte-swapping to the op-codes as it fetches
-them.
+Not every connection in a system matters. Suppose we have a 32-bit-wide memory system bolted directly to a CPU. The CPU’s system interface may not include a byte-within-word address—the address bus does not specify address bits 1 and 0. Instead, many CPUs have four “byte enables,” which show that data is being transferred on particular byte lanes. The memory array is wired to the whole bus, and on a write the byte enables tell the memory array which of four possible byte locations within the word will actually get written. Internally, the CPU associates each of the byte lanes with a byte-within-word address, but that has no effect on the operation of the memory system. Effectively, the memory/CPU combination acts together and inherits the endianness of the CPU; where byte-within-word 0 actually goes in memory doesn’t matter, so long as the CPU can read it back again.
 
-* When a DMA device gets to transfer data directly into memory, then its
-notions of ordering will matter.
+It’s very important not to be seduced by this helpful characteristic of a RAM memory into believing that there’s no intrinsic endianness in a simple CPU/RAM system. You can spot the endianness of any transfer on a wide bus. Here’s a sample list of conditions in which you can’t just ignore the CPU’s endianness when building a memory system:
 
-* When aCPUinterface does not in fact use byte enables, but instead issues
-byte-within-word addresses with a byte-width code (quite common for
-MIPS CPUs), then at least the hardware that decodes the CPU’s read
-and write requests must know which endianness the CPU is using. This
-can be particularly tricky if the CPU allows endianness to be softwareconfigured.
+* If your system uses firmware that’s preprogrammed into ROMmemory, the hardware address and byte lane connection assignments within the system need to match those assumed in the way the ROM was programmed, and the data contained in the ROM needs to match the CPU’s configured endianness. In effect, the contents of the ROM are being delivered into your system from somewhere outside it. If the code is to be executed directly from the ROM, it’s especially important to get the endianness right, because it’s impossible for the CPU to apply any corrective software byte-swapping to the op-codes as it fetches them.
 
-The next section is for you to tell your hardware engineer about how to
-set up a byte address consistent system—and even how to make that system
-configurable with the CPU, if some of your users might set up the MIPS CPU
-both ways.
+* When a DMA device gets to transfer data directly into memory, then its notions of ordering will matter.
+
+* When aCPUinterface does not in fact use byte enables, but instead issues byte-within-word addresses with a byte-width code (quite common for MIPS CPUs), then at least the hardware that decodes the CPU’s read and write requests must know which endianness the CPU is using. This can be particularly tricky if the CPU allows endianness to be softwareconfigured.
+
+The next section is for you to tell your hardware engineer about how to set up a byte address consistent system—and even how to make that system configurable with the CPU, if some of your users might set up the MIPS CPU both ways.
 
 
 #### Wiring Endianness-Inconsistent Buses
 
-Suppose we’ve got a 64-bit MIPS CPU configured big-endian, and we need to
-connect it to a little-endian 32-bit bus such as PCI.
+Suppose we’ve got a 64-bit MIPS CPU configured big-endian, and we need to connect it to a little-endian 32-bit bus such as PCI.
 
-Figure 10.6 shows how we’d wire up the data buses to achieve the recommended
-outcome of consistent byte addresses as seen by the big-endian CPU
-and the little-endian bus.
+Figure 10.6 shows how we’d wire up the data buses to achieve the recommended outcome of consistent byte addresses as seen by the big-endian CPU and the little-endian bus.
 
-The numbers called “byte lane” show the byte-within-bus-width part of the
-address of the byte data traveling there.Writing in the byte lane numbers is the
-key to getting one of these connections right.
+The numbers called “byte lane” show the byte-within-bus-width part of the address of the byte data traveling there.Writing in the byte lane numbers is the key to getting one of these connections right.
 
-Since the CPU bus is 64 bits wide and the PCI bus 32 bits, you need to be
-able to connect each half of the wide bus to the narrow bus according to the
-“word” address—that’s address bit 2, since address bits 1 and 0 are the bytewithin-
-32-bit-word address. The CPU’s 64-bit bus is big-endian, so its highnumbered
-bits carry the lower addresses, as you can see from the byte lane
-numbers.
+Since the CPU bus is 64 bits wide and the PCI bus 32 bits, you need to be able to connect each half of the wide bus to the narrow bus according to the “word” address—that’s address bit 2, since address bits 1 and 0 are the bytewithin-32-bit-word address. The CPU’s 64-bit bus is big-endian, so its highnumbered bits carry the lower addresses, as you can see from the byte lane numbers.
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_6.PNG">
 
-You may find yourself staring at the numbering of the connections around
-the bus switch for quite some time before they really make sense. Such are the
-joys of endianness.
+You may find yourself staring at the numbering of the connections around the bus switch for quite some time before they really make sense. Such are the joys of endianness.
 
-And note that I only showed data. PCI is a multiplexed bus, and in some
-clock cycles those “byte lanes” are carrying an address. In address cycles, PCI
-bus wire 31 is carrying the most significant bit of the address. The address-time
-connection from your MIPS-based system should not be swapped.
+And note that I only showed data. PCI is a multiplexed bus, and in some clock cycles those “byte lanes” are carrying an address. In address cycles, PCI bus wire 31 is carrying the most significant bit of the address. The address-time connection from your MIPS-based system should not be swapped.
 
 #### Wiring an Endianness-Configurable Connection
 
-Suppose you want to build a board or bus switch device that allows you to
-configure a MIPS CPU to run with either endianness. How can we generalize
-the advice above?
+Suppose you want to build a board or bus switch device that allows you to configure a MIPS CPU to run with either endianness. How can we generalize the advice above?
 
-We’d suggest that, if you can persuade your hardware designer, you should
-put a programmable byte lane swapper between the CPU and the I/O system.
-The way this works is shown diagrammatically in Figure 10.7; note that this is
-only a 32-bit configurable interface and it’s an exercise for you to generalize it
-to a 64-bit CPU connection.
+We’d suggest that, if you can persuade your hardware designer, you should put a programmable byte lane swapper between the CPU and the I/O system. The way this works is shown diagrammatically in Figure 10.7; note that this is only a 32-bit configurable interface and it’s an exercise for you to generalize it to a 64-bit CPU connection.
 
-We call this a byte lane swapper, not a byte swapper, to emphasize that
-it does not alter its behavior on a per-transfer basis, and in particular to
-indicate that it is not switched on and off for transfers of different sizes.
-There are circumstances where it can be switched on and off for transfers to
-different address regions—mapping some part of the system as bit number
-consistent/byte address scrambled—but that’s for you to make work.
+We call this a byte lane swapper, not a byte swapper, to emphasize that it does not alter its behavior on a per-transfer basis, and in particular to indicate that it is not switched on and off for transfers of different sizes. There are circumstances where it can be switched on and off for transfers to different address regions—mapping some part of the system as bit number consistent/byte address scrambled—but that’s for you to make work.
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_7.PNG">
 
-What a byte lane swapper does achieve is to ensure that whether your CPU
-is set up to be big- or little-endian, the relationship between the CPU and the
-now mismatched external bus or device can still be one where byte sequnce is
-preserved.
+What a byte lane swapper does achieve is to ensure that whether your CPU is set up to be big- or little-endian, the relationship between the CPU and the now mismatched external bus or device can still be one where byte sequnce is preserved.
 
-You normally won’t put the byte-lane swapper between the CPU and its
-local memory—this is just as well, because the CPU/local memory connection
-is fast and wide, which would make the byte swapper expensive.
+You normally won’t put the byte-lane swapper between the CPU and its local memory—this is just as well, because the CPU/local memory connection is fast and wide, which would make the byte swapper expensive.
 
-As mentioned above, so long as you can decode the CPU’s system interface
-successfully, you can treat the CPU/local memory as a unit and install
-the byte swapper between the CPU/memory unit and the rest of the system.
-In this case, the relationship between bit number and byte order inside the
-local memory changes with the CPU, but this fact is not visible from the
-rest of the world.
+As mentioned above, so long as you can decode the CPU’s system interface successfully, you can treat the CPU/local memory as a unit and install the byte swapper between the CPU/memory unit and the rest of the system. In this case, the relationship between bit number and byte order inside the local memory changes with the CPU, but this fact is not visible from the rest of the world.
 
 #### False Cures and False Prophets for Endianness Problems
 
-Every design team facing up to endianness for the first time goes through the
-stage of thinking that the troubles reflect a hardware deficiency to be solved. It’s
-never that simple. Here are a few examples.
+Every design team facing up to endianness for the first time goes through the stage of thinking that the troubles reflect a hardware deficiency to be solved. It’s never that simple. Here are a few examples.
 
 * Configurable I/O controllers: Some newer I/O devices and system controllers
 can themselves be configured into big-endian and little-endian
@@ -604,9 +408,7 @@ endianness and to print the helpful message:
 
     Emergency - wrong endianness configured.
 
-The word Emergency is held as a C string, null-terminated. You should
-now know enough to understand why the ROM start-up code contains the
-enigmatic lines:
+The word Emergency is held as a C string, null-terminated. You should now know enough to understand why the ROM start-up code contains the enigmatic lines:
 
     .align 4
     .ascii "remEcneg\000\000\000y"
@@ -702,138 +504,49 @@ swap multibyte integer data again.
 
 # 3 Trouble with Visible Caches
 
-In section 4.6, you learned about the operations you can use to get your caches
-initialized and operating correctly. This section alerts you to some of the problems
-that can come up and explains what you can do to deal with them.
+In section 4.6, you learned about the operations you can use to get your caches initialized and operating correctly. This section alerts you to some of the problems that can come up and explains what you can do to deal with them.
 
-Most of the time, the caches are completely invisible to software, serving
-only to accelerate the system as they should. But especially if you need to deal
-with DMA controllers and the like, it can be helpful to think of the caches as
-independent buffer memories, as shown in Figure 10.9.
+Most of the time, the caches are completely invisible to software, serving only to accelerate the system as they should. But especially if you need to deal with DMA controllers and the like, it can be helpful to think of the caches as independent buffer memories, as shown in Figure 10.9.
 
-It’s important to remember that transfers between cache and memory always
-work with blocks of memory that fit the cache line structure—typically 16- or
-32-byte-aligned blocks—so the cache may read or write a block because the
+It’s important to remember that transfers between cache and memory always work with blocks of memory that fit the cache line structure—typically 16- or 32-byte-aligned blocks—so the cache may read or write a block because the
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_9.PNG">
 
-CPU makes direct reference to just one of the byte addresses contained within
-it; even if the CPU never touches any of the other bytes in the cache line, it’ll
-still include all the bytes in the next transfer of that cache line.
+CPU makes direct reference to just one of the byte addresses contained within it; even if the CPU never touches any of the other bytes in the cache line, it’ll still include all the bytes in the next transfer of that cache line.
 
-In an ideal system, we could always be certain that the state of the memory
-is up-to-date with all the operations requested by the CPU, and that
-every valid cache line contains an exact copy of the appropriate memory
-location. Unfortunately, practical systems can’t always live up to this ideal.
-We’ll assume that you initialize your caches after any reset, and that you
-avoid (rather than try to live with) the dreaded cache aliases described in
-section 4.12. Starting from those assumptions, how does a real system’s
-behavior fall short of the ideal?
+In an ideal system, we could always be certain that the state of the memory is up-to-date with all the operations requested by the CPU, and that every valid cache line contains an exact copy of the appropriate memory location. Unfortunately, practical systems can’t always live up to this ideal. We’ll assume that you initialize your caches after any reset, and that you avoid (rather than try to live with) the dreaded cache aliases described in section 4.12. Starting from those assumptions, how does a real system’s behavior fall short of the ideal?
 
-* Stale data in the cache: When your CPU writes to memory in cached
-space, it updates the cached copy (and may also write memory at the
-same time). But if a a memory location is updated in any other way, any
-cached copies of its contents continue to hold the old value, and are now
-out-of-date. That can happen when a DMA controller writes data. Or,
-when the CPU writes new instructions for itself, the I-cache may continue
-to hold whatever was at the same location before. It’s important
-for programmers to realize that the hardware generally doesn’t deal with
-these conditions automatically.
+* Stale data in the cache: When your CPU writes to memory in cached space, it updates the cached copy (and may also write memory at the same time). But if a a memory location is updated in any other way, any cached copies of its contents continue to hold the old value, and are now out-of-date. That can happen when a DMA controller writes data. Or, when the CPU writes new instructions for itself, the I-cache may continue to hold whatever was at the same location before. It’s important for programmers to realize that the hardware generally doesn’t deal with these conditions automatically.
 
-* Stale data in memory: When the CPU writes some data into a (writeback)
-cache line, that data is not immediately copied to memory. If the
-data is read later by the CPU, it gets the cached copy and is fine; but if
-something that isn’t the CPU reads memory, it may get the old value.
-That can happen to an outbound DMA transfer.
+* Stale data in memory: When the CPU writes some data into a (writeback) cache line, that data is not immediately copied to memory. If the data is read later by the CPU, it gets the cached copy and is fine; but if something that isn’t the CPU reads memory, it may get the old value. That can happen to an outbound DMA transfer.
 
-The software weapons you have to fight problems caused by visible caches
-are a couple of standard subroutines that allow you to clean up cache/memory
-inconsistency, built on MIPS cache instructions. They operate on cache locations
-corresponding to a specified area of memory and can write-back up-todate
-cache data or invalidate cache locations (or both).
+The software weapons you have to fight problems caused by visible caches are a couple of standard subroutines that allow you to clean up cache/memory inconsistency, built on MIPS cache instructions. They operate on cache locations corresponding to a specified area of memory and can write-back up-todate cache data or invalidate cache locations (or both).
 
-Well, of course, you can always map data uncached. In fact, there are some
-circumstances when you will do just that: Some network device controllers,
-for example, have a memory-resident control structure where they read and
-write bytes and bit flags, and it’s a lot easier if you map that control structure
-uncached. The same is true, of course, of memory-mapped I/O registers,
-where you need total control over what gets read and written. You can do that
-by accessing those registers through pointers in kseg1 or some other uncached
-space; if you use cached space for I/O, bad things will happen!
+Well, of course, you can always map data uncached. In fact, there are some circumstances when you will do just that: Some network device controllers, for example, have a memory-resident control structure where they read and write bytes and bit flags, and it’s a lot easier if you map that control structure uncached. The same is true, of course, of memory-mapped I/O registers, where you need total control over what gets read and written. You can do that by accessing those registers through pointers in kseg1 or some other uncached space; if you use cached space for I/O, bad things will happen!
 
-If (unusually) you need to use the TLB to map hardware register accesses,
-you can mark the page translation as uncached. That’s useful if someone has
-built hardware whose I/O registers are not in the low 512 MB of the physical
-memory space.
+If (unusually) you need to use the TLB to map hardware register accesses, you can mark the page translation as uncached. That’s useful if someone has built hardware whose I/O registers are not in the low 512 MB of the physical memory space.
 
-It’s possible that you might want to map a memory-like device (a graphics
-frame buffer, perhaps) through cached space so as to benefit from the speed of
-the block reads and writes that the CPU only uses to implement cache refills
-and write-backs. But you’d have to explicitly manage the cache by invalidation
-andwrite-back on every such access. Some embeddedCPUs provide strange and
-wonderful cache options that can be useful for that kind of hardware—check
-your manual.
+It’s possible that you might want to map a memory-like device (a graphics frame buffer, perhaps) through cached space so as to benefit from the speed of the block reads and writes that the CPU only uses to implement cache refills and write-backs. But you’d have to explicitly manage the cache by invalidation and write-back on every such access. Some embeddedCPUs provide strange and wonderful cache options that can be useful for that kind of hardware—check your manual.
 
 #### 3.1 Cache Management and DMA Data
 
-This is a common source of errors, and the most experienced programmers will
-sometimes get caught out. Don’t let that worry you too much: Provided you
-think clearly and carefully about what you’re trying to achieve, you’ll be able
-to get your caches to behave as they should while your DMA transfers work
-smoothly and efficiently.
+This is a common source of errors, and the most experienced programmers will sometimes get caught out. Don’t let that worry you too much: Provided you think clearly and carefully about what you’re trying to achieve, you’ll be able to get your caches to behave as they should while your DMA transfers work smoothly and efficiently.
 
-When a DMA device puts data into memory, for example, on receipt of
-network data, most MIPS systems don’t update the caches—even though some
-cache lines may currently be holding addresses within the region just updated
-by the DMA transfer. If the CPU subsequently reads the information in those
-cache lines, it’ll pick up the old, stale version in the cache; as far as the CPU can
-tell, that’s still marked valid, and there’s no indication that the memory has a
-newer version.
+When a DMA device puts data into memory, for example, on receipt of network data, most MIPS systems don’t update the caches—even though some cache lines may currently be holding addresses within the region just updated by the DMA transfer. If the CPU subsequently reads the information in those cache lines, it’ll pick up the old, stale version in the cache; as far as the CPU can tell, that’s still marked valid, and there’s no indication that the memory has a newer version.
 
-To avoid this, your software must actively invalidate any caches’ lines that
-fall within the address range covered by your DMA buffer, before there’s any
-chance that the CPU will try to refer to them again. This is much easier to
-manage if you round out all your DMA buffers so they start and end exactly
-at cache line boundaries.
+To avoid this, your software must actively invalidate any caches’ lines that fall within the address range covered by your DMA buffer, before there’s any chance that the CPU will try to refer to them again. This is much easier to manage if you round out all your DMA buffers so they start and end exactly at cache line boundaries.
 
-For outbound transfers, before you allowaDMAdevice to transfer data from
-memory—such as a packet that you’re sending out via a network interface—you
-must make absolutely sure that none of the data to be sent is still just sitting in
-the cache. After your software has finished writing out the information to be
-transferred by DMA, it must force the write-back of all cache lines currently
-holding information within the address range that the DMA controller will use
-for the transfer. Only then can you safely initiate the DMA transfer.
+For outbound transfers, before you allowaDMAdevice to transfer data from memory—such as a packet that you’re sending out via a network interface—you must make absolutely sure that none of the data to be sent is still just sitting in the cache. After your software has finished writing out the information to be transferred by DMA, it must force the write-back of all cache lines currently holding information within the address range that the DMA controller will use for the transfer. Only then can you safely initiate the DMA transfer.
 
-On some MIPS CPUs, you can avoid the need for explicit write-back operations
-by configuring your caches to use write-through rather than write-back
-behavior, but this cure is really worse than the disease — write-through tends
-to bemuch slower overall and will also raise your system’s power consumption.
+On some MIPS CPUs, you can avoid the need for explicit write-back operations by configuring your caches to use write-through rather than write-back behavior, but this cure is really worse than the disease — write-through tends to bemuch slower overall and will also raise your system’s power consumption.
 
-You really can get rid of the explicit invalidations and write-backs by accessing
-all the memory used for all DMA transfers via an uncached address region.
-This isn’t recommended either, because it’ll almost certainly degrade your system’s
-overall performance farmore than you’d like.Even if your software’s access
-to the buffers is purely sequential, caching the DMA buffer regions will mean
-that information gets read and written in efficient cache-line-sized bursts rather
-than single transfers. The best general advice is to cache everything, with only
-the following exceptions:
+You really can get rid of the explicit invalidations and write-backs by accessing all the memory used for all DMA transfers via an uncached address region. This isn’t recommended either, because it’ll almost certainly degrade your system’s overall performance farmore than you’d like.Even if your software’s access to the buffers is purely sequential, caching the DMA buffer regions will mean that information gets read and written in efficient cache-line-sized bursts rather than single transfers. The best general advice is to cache everything, with only the following exceptions:
 
-* I/O device registers: Perhaps obvious, but worth pointing out. MIPS has
-no dedicated input/output instructions, so all device registers must be
-mapped somewhere in the address space, and very strange things will
-happen if you accidentally let them be cached.
+* I/O device registers: Perhaps obvious, but worth pointing out. MIPS has no dedicated input/output instructions, so all device registers must be mapped somewhere in the address space, and very strange things will happen if you accidentally let them be cached.
 
-* DMA descriptor arrays: Sophisticated DMA controllers share control/
-status information with the CPU using small descriptor data structures
-held in memory. Typically, the CPU uses these to create a long list of
-information to be transferred, and only then tells the DMA controller to
-begin its work. If your system uses descriptors, you’ll want to access the
-memory region that contains them through an uncached address region.
+* DMA descriptor arrays: Sophisticated DMA controllers share control/status information with the CPU using small descriptor data structures held in memory. Typically, the CPU uses these to create a long list of information to be transferred, and only then tells the DMA controller to begin its work. If your system uses descriptors, you’ll want to access the memory region that contains them through an uncached address region.
 
-A portable OS like Linux must deal with a range of caches from the most
-sophisticated and invisible to the crude and simple, so it has a fairlywell-defined
-API (set of stable function calls) for driver writers to use and some terse documentation
-on how to use them. See section 15.1.1.
+A portable OS like Linux must deal with a range of caches from the most sophisticated and invisible to the crude and simple, so it has a fairlywell-defined API (set of stable function calls) for driver writers to use and some terse documentation on how to use them. See section 15.1.1.
 
 #### 3.2 Cache Management and Writing Instructions: Self-Modifying Code
 
@@ -873,7 +586,7 @@ So MIPS32/64 provides the synci instruction, which does a D-side writeback
 and an I-side invalidate of one cache-line-sized piece of your new code.
 Find out how in section 8.5.11.
 
-#### 3.3 CacheManagement and Uncached orWrite-Through Data
+#### 3.3 Cache Management and Uncached orWrite-Through Data
 
 If you mix cached and uncached references that map to the same physical range
 of addresses, you need to think about what this means for the caches. Uncached
@@ -1082,13 +795,7 @@ in your system, and to allow for them in your programming.
 
 # 5 Writing it in C
 
-You probably alreadywrite almost everything inCor in C++. MIPS’s lack of special
-I/O instructions means that I/O register accesses are just normal loads and
-stores with appropriately chosen addresses; that’s convenient, but I/O
-register accesses are usually somewhat constrained, so you need to make sure
-the compiler doesn’t get too clever. MIPS’s use of large numbers of CP0 registers
-also means that OS code can benefit from well-chosen use of C asm()
-operations.
+You probably already write almost everything in C or in C++. MIPS’s lack of special I/O instructions means that I/O register accesses are just normal loads and stores with appropriately chosen addresses; that’s convenient, but I/O register accesses are usually somewhat constrained, so you need to make sure the compiler doesn’t get too clever. MIPS’s use of large numbers of CP0 registers also means that OS code can benefit from well-chosen use of C asm() operations.
 
 #### 5.1 Wrapping Assembly Code with the GNU C Compiler
 
