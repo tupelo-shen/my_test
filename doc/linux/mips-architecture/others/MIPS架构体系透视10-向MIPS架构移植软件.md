@@ -1,32 +1,8 @@
-Very few projects require absolutely all of their software to be created from
-scratch; the vast majority make use of at least some code that already
-exists—at the application level, in the operating system, or both. You may well
-find, however, that the existing code you’d like to use in your MIPS system was
-originally developed for some other microprocessor family.Of course, at a minimum,
-you’ll need to recompile the source code to create a new set of binaries for
-MIPS; but as we’ll see, the task may be more complicated than that. Portability
-refers to the ease with which a piece of software can be transferred successfully
-and correctly to a new environment, particularly a new instruction set. Porting
-a substantial body of software is rarely easy, and the level of difficulty tends
-to rise sharply if the software in question is (or includes) an OS or OS-related
-software such as device drivers.
+Very few projects require absolutely all of their software to be created from scratch; the vast majority make use of at least some code that already exists—at the application level, in the operating system, or both. You may well find, however, that the existing code you’d like to use in your MIPS system was originally developed for some other microprocessor family. Of course, at a minimum, you’ll need to recompile the source code to create a new set of binaries for MIPS; but as we’ll see, the task may be more complicated than that. Portability refers to the ease with which a piece of software can be transferred successfully and correctly to a new environment, particularly a new instruction set. Porting a substantial body of software is rarely easy, and the level of difficulty tends to rise sharply if the software in question is (or includes) an OS or OS-related software such as device drivers.
 
-High-level software (Linux application code or the like) will typically have
-been written with at least some notion of portability and will quite probably
-have been used in several environments already, so there’s a reasonable likelihood
-that you’ll be able to recompile it without having to make changes. Lowlevel
-software—perhaps a large portion of the source code, for some embedded
-systems—is more troublesome. Software that has been developed exclusively in
-just one particular environment is especially likely to present portability problems,
-since its creators may not have recognized any particular need to avoid or
-resolve them. The object of this chapter is to draw your attention to areas that
-are particularly likely to cause problems when you’re porting software to MIPS.
+High-level software (Linux application code or the like) will typically have been written with at least some notion of portability and will quite probably have been used in several environments already, so there’s a reasonable likelihood that you’ll be able to recompile it without having to make changes. Lowlevel software—perhaps a large portion of the source code, for some embedded systems—is more troublesome. Software that has been developed exclusively in just one particular environment is especially likely to present portability problems, since its creators may not have recognized any particular need to avoid or resolve them. The object of this chapter is to draw your attention to areas that are particularly likely to cause problems when you’re porting software to MIPS.
 
-The parts of a system that drive the lowest-level hardware are inevitably
-nonportable; embedded systems are typically subject to significant design
-upgrades every couple of years or so, and it’s just not reasonable (and certainly
-not cost effective) to insist that the original hardware/software interfaces
-be preserved throughout such changes.
+The parts of a system that drive the lowest-level hardware are inevitably nonportable; embedded systems are typically subject to significant design upgrades every couple of years or so, and it’s just not reasonable (and certainly not cost effective) to insist that the original hardware/software interfaces be preserved throughout such changes.
 
 # 1 Low-Level Software for MIPS Applications: A Checklist of Frequently Encountered Problems
 
