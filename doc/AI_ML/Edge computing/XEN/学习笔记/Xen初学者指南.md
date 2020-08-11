@@ -410,23 +410,23 @@ Xen社区写了一个工具，称为`pygrub`（使用python编写），辅助半
 
 # 13 创建一个Windows全虚拟化客户机
 
-HVM guests are quite a bit different to their PV counterparts. Because they require the emulation of hardware there are more moving pieces that need to be configured etc.
+HVM客户机和PV客户机有很大不同。因为需要硬件模拟，所以有更多的功能块需要配置。
 
-The main point worth mentioning here is that HVM requires the emulation of ATA, Ethernet and other devices, while virtualized CPU and Memory access is performed in hardware to achieve good performance. Because of this the default emulated devices are very slow and we generally try to use PV drivers within HVM domains. We will be installing a set of Windows PV drivers that greatly increase performance once we have our Windows guest running.
+特别需要提的是，HVM需要模拟ATA、以太网和其它设备，而在硬件上实现CPU虚拟化和内存访问，以期获取更好的性能。由于完全模拟的硬件设备非常慢，所以一般在HVM域中使用HV驱动。我们将安装一些Windows半虚拟化驱动，这些驱动程序将在Windows客户机运行后极大地提高性能。
 
-This extra emulation is provided by QEMU which will have been installed along with the Xen software.
+这些设备的模拟是由QEMU提供的，它已经与Xen软件一起安装了。
 
-To set up the HVM domU, we need to create a logical volume to store our Windows VM hard disk, create a config file that tells the hypervisor to start the domain in HVM mode and boot from the DVD in order to install Windows.
+为了创建HVM类型的DomU，需要创建一个逻辑卷保存我们的Windows虚拟机硬盘，创建一个配置文件告诉管理程序使用HVM模式启动DomU域，且为了安装Windows从DVD启动。
 
-First, create the new logical volume - name the volume "windows", set the size to 20GB and use the volume group vg0 we created earlier.
+首先，创建新的逻辑卷-命名为卷`windows`，设置其大小为20G。（利用我们之前创建的卷组`vg0`）
 
     lvcreate -nwindows -L20G vg0
 
-Next open a new file with your text editor of choice:
+打开一个新文件：
 
     nano windows.cfg
 
-Paste the config below into the file and save it, NOTE this assumes your Windows iso is located in /root/ with the filename windows.iso. In the kernel = line below, be sure the xen version number matches your installation (e.g. xen-4.11, not 4.0):
+拷贝下面的配置内容到新文件中，并保存。假设你的windows镜像位于`/root/`目录下，名称为`windows.iso`。在`kernel`那行，确保xen的版本与你安装的版本相同。
 
     kernel = "/usr/lib/xen-4.0/boot/hvmloader"
     type='hvm'
@@ -444,48 +444,44 @@ Paste the config below into the file and save it, NOTE this assumes your Windows
     vnclisten=""
     vncpasswd=""
 
-The vnclisten= line specifies valid VNC connection addresses. vnclisten="127.0.0.1" will limit connections to the local machine. vnclisten="0.0.0.0" will accept unauthenticated remote connections from anywhere so is not suitable except in a secure network.
+`vnclisten=`指定了有效的VNC连接地址。`vnclisten="127.0.0.1"`限定连接到本机。`vnclisten="0.0.0.0"`将会接受未经授权的远程连接，除非是在可信的网络环境里，否则尽量不要使用。
 
-Start the guest as described below in Starting a GUI guest and proceed with Windows' installation.
+按照下面启动GUI客户机中所描述的方式启动客户机，然后继续Windows的安装。
 
-Once you have installed Windows by formatting the disk and by following the prompts the domain will restart - however this time we want to prevent it booting from DVD so destroy the domain with
+完成Windows的安装后，我们如果不想从DVD启动，需要销毁这个域：
 
     xl destroy windows
 
-Then change the boot line in the config file to read boot="c"' restart the domain with
+然后改变配置文件中的`boot`行，`boot="c"`，然后重新启动客户域：
 
     xl create windows.cfg
 
-Reconnect with VNC and finish the installation. When this process is complete you should then proceed to download the GPLPV drivers for Windows by James Harper.
+重连VNC，完成安装。这一步完成之后，就可以下载由`James Harper`实现的GPLPV的Windows驱动。
 
-## 13.1 Installing PV drivers for HVM guests
+## 13.1 为HVM客户机安装PV驱动
 
-Signed drivers can be obtained from [Univention's website](http://wiki.univention.de/index.php?title=Installing-signed-GPLPV-drivers).
+签名驱动程序可以从[Univention's website](http://wiki.univention.de/index.php?title=Installing-signed-GPLPV-drivers)获取。
 
-Many thanks for Univention for making signed drivers available to the Xen Project community and of course a massive thanks to James for all his work on making Windows in guest VMs such a smooth experience.
-
-On finalizing the installation and rebooting you should notice much improved disk and network performance and the hypervisor will now be able to gracefully shutdown your Windows domains.
-
-Another slightly different version of James Harper's drivers can be found [here](https://github.com/spurious/win-pvdrivers-mirror).
+`James Harper`的另一个稍有不同的版本可以从下面的地址获取：[here](https://github.com/spurious/win-pvdrivers-mirror).
 
 # 14 启动GUI客户机（使用VNC服务器） 
 
 <div id="14"></div>
 
-Here is the command to start the domain and connect to it via VNC from your graphical machine.
+下面是启动Windows客户机的命令：
 
     xl create windows.cfg
 
-The VNC display should be available on port 5900 of your dom0 IP, for instance using gvncviewer:
+通过VNC客户端连接Windows客户机，使用你本机IP地址，端口号是`5900`。
 
     gvncviewer <dom0-ip-address>:5900
 
-If this does not work try it without the port number and if you are trying from a GUI on dom0, try specifying localhost instead of the dom0 ip:
+如果这不工作，可以使用下面的命令（不使用端口号）；在Dom0域上的话，可以尝试使用localhost代替Dom0的ip地址：
 
     gvncviewer localhost
 
-# 15 Conclusion
+# 15 结论
 
-That concludes our introduction to the Xen Project software, by now you can setup both PV and HVM domains on a bare dom0 hypervisor!
+我们对Xen的介绍到此位置，现在可以在Dom0监控程序上设置PV和HVM域了。
 
-You can now move onto building your own guest images or try out some prebuilt [Guest VM Images](https://wiki.xenproject.org/wiki/Guest_VM_Images).
+现在你可以开始构建自己的客户机镜像或者尝试一些其它的镜像了。可以参考[Guest VM Images](https://wiki.xenproject.org/wiki/Guest_VM_Images).
