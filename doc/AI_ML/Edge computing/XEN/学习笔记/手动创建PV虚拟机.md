@@ -4,6 +4,8 @@
 
 下载最新的alpine-virt镜像文件，下载地址：[https://alpinelinux.org/downloads/](https://alpinelinux.org/downloads/)。
 
+> 注意下载的时候选择合适的版本，在这儿应该选择给虚拟系统使用的镜像
+
 在本文中，我们使用目录`/data/`作为下载和存储的位置。
 
 # 2 挂载镜像文件
@@ -24,7 +26,7 @@
 
 或者，Dom0上已经有一个LVM卷组（假设叫`vg0`），还有空间，可以为`alpine`创建一个逻辑卷：
 
-    sudo lvcreate -n alpine -L 10g vg1
+    sudo lvcreate -n alpine -L 10g vg0
 
 # 4 创建引导ISO镜像的DomU配置文件
 
@@ -59,7 +61,7 @@
 
     xl create -f /etc/xen/a1.cfg  -c
 
-使用`root`账号登陆虚拟机，没有密码。
+使用`root`账号登陆虚拟机，没有密码。然后执行`setup-alpine`命令完成基本配置。具体的可以参考[Installation_Handbook](https://wiki.alpinelinux.org/wiki/Installation#Installation_Handbook)的第3部分。
 
 完成基本的配置之后，会询问你安装`Alpine`的位置，选择`xvda`和`sys`。这将会为你创建3个分区：`xvda1`作为`/boot`分区，`xvda2`作为`swap`分区，`xvda3`作为`/`分区。过程如下所示：
 
@@ -100,7 +102,7 @@
     menuentry 'alpine-xen' {
         set root=(xen/xvda,msdos1)
         linux /boot/vmlinuz-virt root=/dev/xvda3 modules=ext4
-        initrd /boot/initramfs 
+        initrd /boot/initramfs-virt 
      }
 
 最后，`Ctrl-S`保存，`Ctrl-X`退出。
@@ -122,7 +124,7 @@
             'format=raw, vdev=xvda, access=w, target=/data/a1.img'
            ]
     # 网络配置
-    vif = ['bridge=br0']
+    vif = ['bridge=br0'] # 需要注意，与你的主机的网络名称相同
     # DomU设置
     memory = 512
     name = "alpine-a1"
