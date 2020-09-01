@@ -26,44 +26,27 @@ LwIP 定义了一个lwip_sock 类型的sockets数组，通过套接字就可以�
      
     /** 全局可用套接字数组 **/
     static struct lwip_sock sockets[NUM_SOCKETS];
-     
-    union lwip_sock_lastdata {
-        struct netbuf *netbuf;
-        struct pbuf *pbuf;
-    };
-     
-    /** 包含用于套接字的所有内部指针和状态*/
+
+    /** 包含socket所使用的所有内部指针和状态 */
     struct lwip_sock {
-        /* 套接字当前是在netconn上构建的，每个套接字都有一个netconn */
-        struct netconn *conn;
-        /* 从上一次读取中留下的数据 */
-        union lwip_sock_lastdata lastdata;
-    #if LWIP_SOCKET_SELECT || LWIP_SOCKET_POLL
-        /*
-         * number of times data was received, set by event_callback(),
-         * tested by the receive and select functions 
-         */
-        s16_t rcvevent;
-        /*
-         * number of times data was ACKed (free send buffer), set by event_callback(),
-         * tested by select
-         */
-        u16_t sendevent;
-        /* 
-         * error happened for this socket, set by event_callback(), tested by select
-         */
-        u16_t errevent;
-        /* 使用select等待此套接字的线程数 */
-        SELWAIT_T select_waiting;
-    #endif /* LWIP_SOCKET_SELECT || LWIP_SOCKET_POLL */
-    #if LWIP_NETCONN_FULLDUPLEX
-        /* counter of how many threads are using a struct lwip_sock (not the 'int') */
-        u8_t fd_used;
-        /* status of pending close/delete actions */
-        u8_t fd_free_pending;
-    #define LWIP_SOCK_FD_FREE_TCP  1
-    #define LWIP_SOCK_FD_FREE_FREE 2
-    #endif
+    /** socket构建在netconn之上，每一个socket对应一个netconn */
+    struct netconn *conn;
+    /** 上一次读完之后剩余的数据 */
+    void *lastdata;
+    /** 上次读取之后剩余的数据的偏移量 */
+    u16_t lastoffset;
+    /** 收取的数据次数，由event_callback()回调函数设置
+      tested by the receive and select functions */
+    s16_t rcvevent;
+    /** number of times data was ACKed (free send buffer), set by event_callback(),
+      tested by select */
+    u16_t sendevent;
+    /** error happened for this socket, set by event_callback(), tested by select */
+    u16_t errevent; 
+    /** last error that occurred on this socket */
+    int err;
+    /** 通过select调用等待该socket的线程数 */
+    int select_waiting;
     };
 
 # 3 Socket API
