@@ -158,6 +158,8 @@ Ubuntu更新源
     wget http://mirrors.ustc.edu.cn/debian/dists/jessie/main/installer-amd64/current/images/netboot/xen/vmlinuz
     wget http://mirrors.ustc.edu.cn/debian/dists/jessie/main/installer-amd64/current/images/netboot/xen/debian.cfg
 
+    wget http://mirrors.aliyun.com/ubuntu/dists/xenial/main/installer-amd64/current/images/netboot/xen/xm-debian.cfg
+
 > 注意：我的wget不知道为什么下载不下来？？？我是手动下载到相应目录下的。
 
 接下来，我们创建虚拟机的配置文件，限制其内存为2048M，将文件命名为`ubuntu.cfg`。不要忘记替换我们之前查找的卷组名称！
