@@ -60,6 +60,7 @@ Ubuntu更新源
     deb-src http://mirrors.163.com/ubuntu/ bionic-proposed main restricted universe multiverse
     deb-src http://mirrors.163.com/ubuntu/ bionic-backports main restricted universe multiverse
 
+> 另外，需要注意的是，更换源的时候，注意与你的主机系统对应的版本一致。
 
 如果在执行命令`apt-get update`时，报错：`Hash Sum mismatch`。通过搜索资料发现使用apt命令的时候附加参数-o Acquire-by-hash=yes。但是这个命令是在`apt 1.2.10`以及更高版本进行支持的（Ubuntu 16.04支持这个命令）。
 
@@ -161,6 +162,8 @@ Ubuntu更新源
     wget http://mirrors.aliyun.com/ubuntu/dists/xenial/main/installer-amd64/current/images/netboot/xen/xm-debian.cfg
 
 > 注意：我的wget不知道为什么下载不下来？？？我是手动下载到相应目录下的。
+> 
+> 最后我的解决办法是使用阿里云的镜像网站可以。
 
 接下来，我们创建虚拟机的配置文件，限制其内存为2048M，将文件命名为`ubuntu.cfg`。不要忘记替换我们之前查找的卷组名称！
 
@@ -173,6 +176,7 @@ Ubuntu更新源
     kernel = "/var/lib/xen/images/ubuntu-netboot/vmlinuz"
 
     ramdisk = "/var/lib/xen/images/ubuntu-netboot/initrd.gz"
+    #下面这句话没有也可以
     extra = "debian-installer/exit/always_halt=true -- console=hvc0"
 
 启动DomU并运行安装程序，无需赘言：
@@ -183,6 +187,7 @@ Ubuntu更新源
 > 
 > 1. 原因常见为下载的内核版本不对。
 
+接下来，在控制台界面上就能看见安装程序开始执行。
 You should see a Linux system start booting in your console, follow the installer through. Once complete, the DomU will shutdown. Now we're going to want to set-up a bootloader and configuring our DomU to use it
 
     sudo -s
@@ -216,19 +221,21 @@ See the [troubleshooting section](https://www.bentasker.co.uk/documentation/linu
 
     boot="dc"
 
-What we've changed is the Disk definition (to include the CDROM) and we've added a definition for the boot order. The inclusion of the VNC line allows us to connect to the server via VNC (which is useful if your installer only has a graphical mode).
+* 首先，改变硬盘定义（包含CDROM），并为引导顺序添加定义。
 
-We've also removed the paths to the kernel and ramdisk because they're on the CD/DVD and it's own bootloader will take care of that.
+* VNC行允许我们通过VNC连接到服务器（这是非常有用的，如果你的安装程序只有图形界面模式的话）。
 
-Once the install is complete, we'll need to either remove the CDROM definition, or at least swap the boot order round (to cd)
+* 另外，我们移除了kernel和ramdisk，因为现在，我们使用CD/DVD作为引导启动盘了，它里边有自己的bootloader。
+
+* 完成安装后，需要移除CDROM或者改变启动引导顺序。
 
 # 6 自动启动DomU
 
-We've gone to the trouble of creating our VM's, but as it stands whenever the host system is restarted, we'll have to manually fire the things up! Setting DomU's to start automatically is simply a case of creating a symbolic link though
+设置客户虚拟机自启动，使用一个符号链接：
 
     sudo ln -s /etc/xen/ubuntu.cfg /etc/xen/auto 
 
-Obviously use the relevant configuration filename and path
+`ubuntu.cfg`是对应虚拟机的配置文件。
 
 # 7 创建一个Clone版本
 
