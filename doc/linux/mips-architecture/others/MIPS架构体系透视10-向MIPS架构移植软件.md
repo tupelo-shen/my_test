@@ -8,14 +8,7 @@ The parts of a system that drive the lowest-level hardware are inevitably nonpor
 
 The following are problems that have come up fairly frequently:
 
-1. Endianness: The computer world is divided into little- and big-endian
-camps, and a gulf of incomprehension falls between them. Most
-MIPS CPUs can be set up to run either big-endian or little-endian;
-but even if you already know which way your MIPS system will be
-configured, it’s strongly recommended that you make sure you understand
-this issue thoroughly. It’s caught out many experienced developers
-before you, and it will catch out some more. Read about it in
-section 10.2.
+1. Endianness: The computer world is divided into little- and big-endian camps, and a gulf of incomprehension falls between them. Most MIPS CPUs can be set up to run either big-endian or little-endian; but even if you already know which way your MIPS system will be configured, it’s strongly recommended that you make sure you understand this issue thoroughly. It’s caught out many experienced developers before you, and it will catch out some more. Read about it in section 10.2.
 
 2. Data layout and alignment in memory: Your program may make unportable assumptions about the memory layout of data declared in C. It’s almost always unportable to use C struct declarations to map input files or data received through a communication link, for example. Danger can lurk in a program that employs multiple views of private data with differently typed pointers or unions. However, data layout goes together with a description of other conventions (for register use, argument passing, and stack handling) and you’ll find that in the next chapter: If you need to take a peek ahead, it’s in section 11.1.
 
@@ -27,143 +20,45 @@ section 10.2.
 
 # 2 Endianness:Words, Bytes, and Bit Order
 
-The word endianness was introduced to computer science by Danny Cohen
-(Cohen 1980). In an article of rare humor and readability, Cohen observed that
-computer architectures had divided up into two camps, based on an arbitrary
-choice of the way in which byte addressing and integer definitions are related
-in communications systems.
+The word endianness was introduced to computer science by Danny Cohen (Cohen 1980). In an article of rare humor and readability, Cohen observed that computer architectures had divided up into two camps, based on an arbitrary choice of the way in which byte addressing and integer definitions are related in communications systems.
 
-In Jonathan Swift’s Gulliver’s Travels, the “little-endians” and “big-endians”
-fought a war over the correct end at which to start eating a boiled egg. Swift
-was satirizing 18th-century religious disputes, and neither of his sides can see
-that their difference is entirely arbitrary. Cohen’s joke was appreciated, and the
-word has stuck. The problem is not just relevant to communications; it has
-implications for portability too.
+In Jonathan Swift’s Gulliver’s Travels, the “little-endians” and “big-endians” fought a war over the correct end at which to start eating a boiled egg. Swift was satirizing 18th-century religious disputes, and neither of his sides can see that their difference is entirely arbitrary. Cohen’s joke was appreciated, and the word has stuck. The problem is not just relevant to communications; it has implications for portability too.
 
-Computer programs are always dealing with sequence and order of different
-types of data: iterating in order over the characters in a string, the words in
-an array, or the bits in a binary representation. C programmers live with a pervasive
-assumption that all these variables are stored in a memory that is itself
-visible as a sequence of bytes—memcpy() will copy any data type. And C’s I/O
-system models all I/O operations as bytes; you can also read() and write()
-any chunk of memory containing any data type.
+Computer programs are always dealing with sequence and order of different types of data: iterating in order over the characters in a string, the words in an array, or the bits in a binary representation. C programmers live with a pervasive assumption that all these variables are stored in a memory that is itself visible as a sequence of bytes—memcpy() will copy any data type. And C’s I/O system models all I/O operations as bytes; you can also read() and write() any chunk of memory containing any data type.
 
-So one computer can write out some data, and another computer can read
-it; suddenly, we’re interested in whether the second computer can understand
-what the first one wrote.
+So one computer can write out some data, and another computer can read it; suddenly, we’re interested in whether the second computer can understand what the first one wrote.
 
-We understand that we need to be careful with padding and alignment
-(details in section 11.1). And it’s probably too much to expect that complex
-data types like floating-point numberswill always transfer intact. Butwe’d hope
-at least to see simple twos complement integers coming across OK; the curse
-of endianness is that they don’t. The 32-bit integer whose hexadecimal value
-was written as 0x1234.5678 quite often reads in as 0x7856.3412—it’s been
-“byte-swapped.” To understand why, let’s go back a bit.
+We understand that we need to be careful with padding and alignment (details in section 11.1). And it’s probably too much to expect that complex data types like floating-point numberswill always transfer intact. Butwe’d hope at least to see simple twos complement integers coming across OK; the curse of endianness is that they don’t. The 32-bit integer whose hexadecimal value was written as 0x1234.5678 quite often reads in as 0x7856.3412—it’s been “byte-swapped.” To understand why, let’s go back a bit.
 
 # 2.1 Bits, Bytes,Words, and Integers
 
-A 32-bit binary integer is represented by a sequence of bits, with each bit having
-a different significance. The least significant bit is “ones,” then “twos,” then
-“fours”—just as a decimal representation is “ones,” “tens,” and “hundreds.”
-When your memory is byte-addressable, your 32-bit integer occupies four bytes.
-There are two reasonable choices about how the integer and bytewise view tie
-up: Some computers put the least significant (LS) bits “first” (that is, in loweraddressed
-memory bytes) and some put the most significant (MS) bit first—
-and Cohen called them little-endian and big-endian, respectively. When I first
-got to know about computers in 1976, DEC’s minicomputers were little-endian
-and IBM mainframes were big-endian; neither camp was about to give way.
+A 32-bit binary integer is represented by a sequence of bits, with each bit having a different significance. The least significant bit is “ones,” then “twos,” then “fours”—just as a decimal representation is “ones,” “tens,” and “hundreds.” When your memory is byte-addressable, your 32-bit integer occupies four bytes. There are two reasonable choices about how the integer and bytewise view tie up: Some computers put the least significant (LS) bits “first” (that is, in loweraddressed memory bytes) and some put the most significant (MS) bit first—and Cohen called them little-endian and big-endian, respectively. When I first got to know about computers in 1976, DEC’s minicomputers were little-endian and IBM mainframes were big-endian; neither camp was about to give way.
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_1.PNG">
 
-It’s worth stressing that the curse of choice only appeared once you could
-address bytes. Pioneering computers through to the late 1960s were generally
-organized around a single word size: Instructions, integers, and memory width
-were all the same word size. Such a computer has no endianness: It has word
-order in memory and bit order inside words, and those are unrelated.
+It’s worth stressing that the curse of choice only appeared once you could address bytes. Pioneering computers through to the late 1960s were generally organized around a single word size: Instructions, integers, and memory width were all the same word size. Such a computer has no endianness: It has word order in memory and bit order inside words, and those are unrelated.
 
 Just as with opening a boiled egg, both camps have good arguments.
 
-We’re used to writing decimals with the most significant digits to the left,
-and (reading left to right as usual) we say numbers that way: Shakespeare might
-have said “four and twenty,” but we say “twenty-four.” So if you write down
-numbers, it’s natural to put the most significant bits first. Bytes first appeared
-as a convenient way of packing characters into words, before memory was byte
-addressable. A 1970s vintage IBM programmer had spent most of his or her
-career poring over vast dump listings, and each set of characters represented a
-word, which was a number. Little-endian numbers look ridiculous. They were
-instinctive big-endians. But with numbers written MS to the left and byte
-addresses increasing in the same direction, it would have been inconsistent to
-have numbered the bits from right to left: So IBM labeled the MS bit of a word
-bit 0. Their world looked like Figure 10.1.
+We’re used to writing decimals with the most significant digits to the left, and (reading left to right as usual) we say numbers that way: Shakespeare might have said “four and twenty,” but we say “twenty-four.” So if you write down numbers, it’s natural to put the most significant bits first. Bytes first appeared as a convenient way of packing characters into words, before memory was byte addressable. A 1970s vintage IBM programmer had spent most of his or her career poring over vast dump listings, and each set of characters represented a word, which was a number. Little-endian numbers look ridiculous. They were instinctive big-endians. But with numbers written MS to the left and byte addresses increasing in the same direction, it would have been inconsistent to have numbered the bits from right to left: So IBM labeled the MS bit of a word bit 0. Their world looked like Figure 10.1.
 
-But it’s also natural to number the bits according to their arithmetic
-significance within integer data types—that is, to assign bit number n to
-the position that has arithmetic significance 2n. It’s then consistent to store
-bits 0–7 in byte 0, and you’ve become a little-endian. Having words appear
-backward in dumps is a shame, but the little-endian view made particular
-sense to people who’d gotten used to thinking of memory as a big array of
-bytes. Intel, in particular, is little-endian. So its words, bytes, and bits look
-like Figure 10.2.
+But it’s also natural to number the bits according to their arithmetic significance within integer data types—that is, to assign bit number n to the position that has arithmetic significance 2n. It’s then consistent to store bits 0–7 in byte 0, and you’ve become a little-endian. Having words appear backward in dumps is a shame, but the little-endian view made particular sense to people who’d gotten used to thinking of memory as a big array of bytes. Intel, in particular, is little-endian. So its words, bytes, and bits look like Figure 10.2.
 
-You’ll notice that these diagrams have exactly the same contents: only the
-MS/LS are interchanged, as well as the order of the fields. IBM big-endians see
-words broken into bytes, while little-endians see bytes built into words. Both
-these systems seemed unarguably right to different people: There’s lots of merit
-in both, but you have to choose.
+You’ll notice that these diagrams have exactly the same contents: only the MS/LS are interchanged, as well as the order of the fields. IBM big-endians see words broken into bytes, while little-endians see bytes built into words. Both these systems seemed unarguably right to different people: There’s lots of merit in both, but you have to choose.
 
-But let’s get back to our observation about the problem above. Our mangled
-word started as 0x1234.5678, which is 00010010 00110100 01010110
-01111000 in binary. If you transfer it naively to a system with the opposite
-endianness, you’d surely expect to see all the bits reversed. In that case you’d
-receive the number 00011110 01101010 00101100 01001000, which is
-hex 0x1E6A.2C48. But we said we’d read hex 0x7856.3412.
+But let’s get back to our observation about the problem above. Our mangled word started as 0x1234.5678, which is 00010010 00110100 01010110 01111000 in binary. If you transfer it naively to a system with the opposite endianness, you’d surely expect to see all the bits reversed. In that case you’d receive the number 00011110 01101010 00101100 01001000, which is hex 0x1E6A.2C48. But we said we’d read hex 0x7856.3412.
 
-It’s true that complete bit reversal could arise in some circumstances; there
-are communication links that send the MS bit first, and some that send the LS
-bit first. But sometime in the 1970s 8-bit bytes emerged as a universal base unit
-both inside computers and in computer communications systems (where they
-were called “octets”). Typically, communication systems build all their messages
-out of bytes, and only the lowest-level hardware engineers know which bit goes
-first.
+It’s true that complete bit reversal could arise in some circumstances; there are communication links that send the MS bit first, and some that send the LS bit first. But sometime in the 1970s 8-bit bytes emerged as a universal base unit both inside computers and in computer communications systems (where they were called “octets”). Typically, communication systems build all their messages out of bytes, and only the lowest-level hardware engineers know which bit goes first.
 
-Meanwhile, every microprocessor system got to use 8-bit peripheral controllers
-(wider controllers were reserved for the high-end stuff), and all those
-peripherals have 8-bit ports numbered 0 through 7, and the most significant
-bit is 7. Somehow, without a shot apparently fired, every byte was little-endian,
-and has been ever since.
+Meanwhile, every microprocessor system got to use 8-bit peripheral controllers (wider controllers were reserved for the high-end stuff), and all those peripherals have 8-bit ports numbered 0 through 7, and the most significant  bit is 7. Somehow, without a shot apparently fired, every byte was little-endian, and has been ever since.
 
-Early microprocessor systems were 8-bit CPUs on 8-bit buses with 8-bit
-memory systems, so they had no endianness. Intel’s 8086 was a 16-bit littleendian
-system. When Motorola introduced the 68000 microprocessor around
-1978, they greatly admired IBM’s mainframe architecture. Either in admiration
-for IBM or to differentiate themselves from Intel, they thought they
-should be big-endians too. But Motorola couldn’t oppose the prevailing bitswithin-
-bytes convention—every 8-bit Motorola peripheral would have had to
-be connected to a 68000 with its data bus bit-twisted. As a result, the 68000
-family looks like Figure 10.3, with the bits and bytes numbered in opposite
-directions.
+Early microprocessor systems were 8-bit CPUs on 8-bit buses with 8-bit memory systems, so they had no endianness. Intel’s 8086 was a 16-bit littleendian system. When Motorola introduced the 68000 microprocessor around 1978, they greatly admired IBM’s mainframe architecture. Either in admiration for IBM or to differentiate themselves from Intel, they thought they should be big-endians too. But Motorola couldn’t oppose the prevailing bitswithin-bytes convention—every 8-bit Motorola peripheral would have had to be connected to a 68000 with its data bus bit-twisted. As a result, the 68000 family looks like Figure 10.3, with the bits and bytes numbered in opposite directions.
 
-The 68000 and its successors went on to be used for most successful UNIX
-servers and workstations (notably with Sun). When MIPS and other RISCs
-emerged in the 1980s, their designers needed to woo system designers with the
-right endianness, so they designed CPUs that could swing either way. But from
-the 68000 onward, big-endian has meant 68000-style big-endian, with bits and
-bytes going opposite ways. When you set up a MIPS CPU to be big-endian, it
-looks like Figure 10.3. And that’s where the trouble really starts.
+The 68000 and its successors went on to be used for most successful UNIX servers and workstations (notably with Sun). When MIPS and other RISCs emerged in the 1980s, their designers needed to woo system designers with the right endianness, so they designed CPUs that could swing either way. But from the 68000 onward, big-endian has meant 68000-style big-endian, with bits and bytes going opposite ways. When you set up a MIPS CPU to be big-endian, it looks like Figure 10.3. And that’s where the trouble really starts.
 
-One small difficulty comes when you read hardware manuals for your CPU
-and see register diagrams. Everyone’s convinced that registers are (first and
-foremost) 32-bit integers, so they’re invariably drawn with the MS bit (bit 31,
-remember) first. This has some consequences for programmers and hardware
-designers alike. That picture motivates the difference between “shift-left” and
-“shift-right” instructions, determines the bit-number arguments of bitfield
-instructions, and even refers to the labeling of the bitfields that make up MIPS
-instructions.
+One small difficulty comes when you read hardware manuals for your CPU and see register diagrams. Everyone’s convinced that registers are (first and foremost) 32-bit integers, so they’re invariably drawn with the MS bit (bit 31, remember) first. This has some consequences for programmers and hardware designers alike. That picture motivates the difference between “shift-left” and “shift-right” instructions, determines the bit-number arguments of bitfield instructions, and even refers to the labeling of the bitfields that make up MIPS instructions.
 
-Once you get over that, there is serious software trouble when porting software
-ormoving data between incompatible machines; there is hardware trouble
-when connecting incompatible components or buses. We’ll take the software
-and hardware problems separately.
+Once you get over that, there is serious software trouble when porting software ormoving data between incompatible machines; there is hardware trouble when connecting incompatible components or buses. We’ll take the software and hardware problems separately.
 
 # 2.2 Software and Endianness
 
@@ -289,98 +184,41 @@ As mentioned above, so long as you can decode the CPU’s system interface succe
 
 Every design team facing up to endianness for the first time goes through the stage of thinking that the troubles reflect a hardware deficiency to be solved. It’s never that simple. Here are a few examples.
 
-* Configurable I/O controllers: Some newer I/O devices and system controllers
-can themselves be configured into big-endian and little-endian
-modes. You’re going to have to read the manual very carefully before
-using such a feature, particularly if you mean to use it not as a static
-(design time) option but rather as a jumper (reset time) option.
+* Configurable I/O controllers: Some newer I/O devices and system controllers can themselves be configured into big-endian and little-endian modes. You’re going to have to read the manual very carefully before using such a feature, particularly if you mean to use it not as a static (design time) option but rather as a jumper (reset time) option.
 
-It is quite common for such a feature to affect only bulk data transfers,
-leaving the programmer to handle other endianness issues, such as access
-to bit-coded device registers or shared memory control fields. Also, the
-controller designer probably didn’t have the benefit of this book—and
-confusion about endianness is widespread.
+    It is quite common for such a feature to affect only bulk data transfers, leaving the programmer to handle other endianness issues, such as access to bit-coded device registers or shared memory control fields. Also, the controller designer probably didn’t have the benefit of this book—and confusion about endianness is widespread.
 
-* Hardware that byte-swaps according to transfer type: If you’re designing
-in some byte-swap hardware, it seems appealing to try to solve
-the whole problem. If we just swapped byte data to preserve its
-addresses, but left words alone, couldn’t we prevent the whole software
-problem? The answer is no, there aren’t any hardware fixes for
-the software problem. For example, many of the transfers in a real
-system are of data cache lines. They may contain an arbitrary mixture
-of data sizes and alignments; if you think about it for a moment,
-you’ll see that there simply isn’t any way to know where the boundaries
-are, which means there’s no way to determine the required swap
-configuration.
+* Hardware that byte-swaps according to transfer type: If you’re designing in some byte-swap hardware, it seems appealing to try to solve the whole problem. If we just swapped byte data to preserve its addresses, but left words alone, couldn’t we prevent the whole software problem? The answer is no, there aren’t any hardware fixes for the software problem. For example, many of the transfers in a real system are of data cache lines. They may contain an arbitrary mixture of data sizes and alignments; if you think about it for a moment, you’ll see that there simply isn’t any way to know where the boundaries are, which means there’s no way to determine the required swap configuration.
 
-Conditional byte-swapping just adds confusion. Anything more than
-unconditional byte lane swapping is snake oil.
+Conditional byte-swapping just adds confusion. Anything more than unconditional byte lane swapping is snake oil.
 
 # 2.4 Bi-endian Software for a MIPS CPU
 
-You may want to create binary code that will run correctly on MIPS CPUs
-with either endianness—probably for a particular board that may be run either
-way or to create a portable device driver that may run on boards of either
-configuration. It’s a bit tricky, and you will probably only do a tiny part of your
-bootstrap code like this, but here are some guidelines.
+You may want to create binary code that will run correctly on MIPS CPUs with either endianness—probably for a particular board that may be run either way or to create a portable device driver that may run on boards of either configuration. It’s a bit tricky, and you will probably only do a tiny part of your bootstrap code like this, but here are some guidelines.
 
-The MIPS CPU doesn’t have to do toomuch to change endianness. The only
-parts of the instruction set that recognize objects smaller than 32 bits are partialword
-loads and stores. On a MIPS CPU with a 32-bit bus, the instruction:
+The MIPS CPU doesn’t have to do toomuch to change endianness. The only parts of the instruction set that recognize objects smaller than 32 bits are partialword loads and stores. On a MIPS CPU with a 32-bit bus, the instruction:
 
     lbu t0, 1(zero)
 
-takes the byte at byte program address 1, loads it into the least significant bits
-(0 through 7) of register t0, and fills the rest of the register with zero bits. This
-description is endianness independent. However, in big-endian mode the data
-loaded into the register will be taken from bits 16–23 of the CPU data bus; in
-little-endian mode, the byte is loaded from bits 8–15 of the CPU data bus.
+takes the byte at byte program address 1, loads it into the least significant bits (0 through 7) of register t0, and fills the rest of the register with zero bits. This description is endianness independent. However, in big-endian mode the data loaded into the register will be taken from bits 16–23 of the CPU data bus; in little-endian mode, the byte is loaded from bits 8–15 of the CPU data bus.
 
-Inside the MIPS CPU, there’s data-steering hardware that the CPU uses
-to direct all the active bytes in a transfer from their respective byte lanes
-at the interface to the correct positions within the internal registers. This
-steering logic has to accommodate all permutations of load size, address,
-and alignment (including the load/store left/right instructions described in
-section 8.5.1).
+Inside the MIPS CPU, there’s data-steering hardware that the CPU uses to direct all the active bytes in a transfer from their respective byte lanes at the interface to the correct positions within the internal registers. This steering logic has to accommodate all permutations of load size, address, and alignment (including the load/store left/right instructions described in section 8.5.1).
 
-It is the change in the relationship between the active byte lane and the
-address on partial-word loads and stores that characterizes the MIPS CPU’s
-endianness.When you reconfigure your MIPS CPU’s endianness, it’s that steering
-logic between data and register whose behavior changes.
+It is the change in the relationship between the active byte lane and the address on partial-word loads and stores that characterizes the MIPS CPU’s endianness.When you reconfigure your MIPS CPU’s endianness, it’s that steering logic between data and register whose behavior changes.
 
-Complementing the chip’s configurability, most MIPS toolchains can produce
-code of either endianness, based on a command-line option.
+Complementing the chip’s configurability, most MIPS toolchains can produce code of either endianness, based on a command-line option.
 
-If you set a MIPS CPU to the wrong endianness for its system, then a couple
-of things will happen.
+If you set a MIPS CPU to the wrong endianness for its system, then a couple of things will happen.
 
-First, if you change nothing else, the software will crash quickly, because on
-any partial-word write the memory system will pick up garbage data from the
-wrong part of the CPU bus. At the same time as reconfiguring the CPU, we’d
-better reconfigure the logic that decodes CPU cycles.2
+First, if you change nothing else, the software will crash quickly, because on any partial-word write the memory system will pick up garbage data from the wrong part of the CPU bus. At the same time as reconfiguring the CPU, we’d better reconfigure the logic that decodes CPU cycles.2
 
-If you fix that, you’ll find that the CPU’s view of byte addressing becomes
-scrambled with respect to the rest of the system; in terms of the description
-above, we’ve implicitly opted for a connection that keeps the bit numbers consistent,
-rather than the byte addresses.
+If you fix that, you’ll find that the CPU’s view of byte addressing becomes scrambled with respect to the rest of the system; in terms of the description above, we’ve implicitly opted for a connection that keeps the bit numbers consistent, rather than the byte addresses.
 
-Of course, data written by the CPU after a change of endianness will seem
-fine to the CPU itself; if we allow changes of endianness only at reset time, then
-volatile memory that is private to the CPU won’t give us any trouble.
+Of course, data written by the CPU after a change of endianness will seem fine to the CPU itself; if we allow changes of endianness only at reset time, then volatile memory that is private to the CPU won’t give us any trouble.
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_8.PNG">
 
-Note also that the CPU’s view of bit numbering within aligned bus-width
-words continues to match the rest of the system. This is the choice we described
-earlier as bit number consistent and that we suggested you should generally
-avoid. But in this particular case it has a useful side effect, because MIPS instructions
-are encoded as bitfields in 32-bit words. An instruction ROM that makes
-sense to a big-endian CPU will make sense to a little-endian CPU too, allowing
-us to share a bootstrap. Nothing works perfectly—in this case, any data in
-the ROM that doesn’t consist of aligned 32-bit words will be scrambled. Many
-years ago, Algorithmics’ MIPS boards had just enough bi-endian code in their
-boot ROM to detect that the main ROM program does not match the CPU’s
-endianness and to print the helpful message:
+Note also that the CPU’s view of bit numbering within aligned bus-width words continues to match the rest of the system. This is the choice we described earlier as bit number consistent and that we suggested you should generally avoid. But in this particular case it has a useful side effect, because MIPS instructions are encoded as bitfields in 32-bit words. An instruction ROM that makes sense to a big-endian CPU will make sense to a little-endian CPU too, allowing us to share a bootstrap. Nothing works perfectly—in this case, any data in the ROM that doesn’t consist of aligned 32-bit words will be scrambled. Many years ago, Algorithmics’ MIPS boards had just enough bi-endian code in their boot ROM to detect that the main ROM program does not match the CPU’s endianness and to print the helpful message:
 
     Emergency - wrong endianness configured.
 
@@ -389,24 +227,13 @@ The word Emergency is held as a C string, null-terminated. You should now know e
     .align 4
     .ascii "remEcneg\000\000\000y"
 
-That’s what the string Emergency (with its standard C terminating null and
-two bytes of essential padding) looks like when viewed with the wrong endianness.
-It would be even worse if it didn’t start on a four-byte-aligned location.
-Figure 10.8 (drawn from the point of view of a confirmed big-endian) shows
-what is going on.
+That’s what the string Emergency (with its standard C terminating null and two bytes of essential padding) looks like when viewed with the wrong endianness. It would be even worse if it didn’t start on a four-byte-aligned location. Figure 10.8 (drawn from the point of view of a confirmed big-endian) shows what is going on.
 
-You’ve seen that writing bi-endian code is possible, but be aware that when
-you’re ready to load it into ROM, you’ll be asking your tools to do something
-they weren’t designed to handle. Typically, big-endian tools pack instruction
-words into the bytes of a load file with the most significant bits first, and littleendian
-tools work the other way around. You’ll need to think carefully about
-the result you need to achieve, and examine the files you generate to make sure
-everything went according to plan.
+You’ve seen that writing bi-endian code is possible, but be aware that when you’re ready to load it into ROM, you’ll be asking your tools to do something they weren’t designed to handle. Typically, big-endian tools pack instruction words into the bytes of a load file with the most significant bits first, and littleendian tools work the other way around. You’ll need to think carefully about the result you need to achieve, and examine the files you generate to make sure everything went according to plan.
 
 #### 2.5 Portability and Endianness-Independent Code
 
-By a fairly well-respected convention, most MIPS toolchains define the symbol
-BYTE ORDER as follows:
+By a fairly well-respected convention, most MIPS toolchains define the symbol BYTE ORDER as follows:
 
     #if BYTE_ORDER == BIG_ENDIAN
     /* big-endian version... */
@@ -414,69 +241,25 @@ BYTE ORDER as follows:
     /* little-endian version... */
     #endif
 
-So if you really need to, you can put in different code to handle each case. But
-it’s better—wherever possible—to write endianness-independent code. Particularly
-in a well-controlled situation (such as when writing code for a MIPS
-system that may be initialized with the CPU in either mode), you can get rid
-of a lot of dependencies by good thinking.
+So if you really need to, you can put in different code to handle each case. But it’s better—wherever possible—to write endianness-independent code. Particularly in a well-controlled situation (such as when writing code for a MIPS system that may be initialized with the CPU in either mode), you can get rid of a lot of dependencies by good thinking.
 
-All data references that pick up data from an external source or device are
-potentially endianness dependent. But according to how your system is wired,
-youmay be able to produce code that works both ways. There are only two ways
-of wiring the wrong endianness together: One preserves byte addresses and the
-other bit numbers. For some particular peripheral register access in a particular
-range of systems, there’s a good chance that the endianness change consistently
-sticks to one of these.
+All data references that pick up data from an external source or device are potentially endianness dependent. But according to how your system is wired, youmay be able to produce code that works both ways. There are only two ways of wiring the wrong endianness together: One preserves byte addresses and the other bit numbers. For some particular peripheral register access in a particular range of systems, there’s a good chance that the endianness change consistently sticks to one of these.
 
-If your device is typically mapped to be byte address compatible, then you
-should program it strictly with byte operations. If ever, for reasons of efficiency
-or necessity, you want to transfer more than one byte at a time, you need to
-write endianness-conditional code that packs or unpacks that data.
+If your device is typically mapped to be byte address compatible, then you should program it strictly with byte operations. If ever, for reasons of efficiency or necessity, you want to transfer more than one byte at a time, you need to write endianness-conditional code that packs or unpacks that data.
 
-If your device is compatible at the word (32-bit) level—for example, it consists
-of registers wired (by however devious and indirect a route) to a fixed set
-of MIPS data bus bits—then program it with bus-width read/write operations.
-Thatwill be 32-bit or 64-bit loads and stores. If the device registers are notwired
-to MIPS data bus bits starting at 0, you’ll probably want to shift the data after a
-read and before a write. For example, 8-bit registers on a 32-bit bus in a system
-originally conceived as big-endian are commonly wired via bits 31–24.
+If your device is compatible at the word (32-bit) level—for example, it consists of registers wired (by however devious and indirect a route) to a fixed set of MIPS data bus bits—then program it with bus-width read/write operations. That will be 32-bit or 64-bit loads and stores. If the device registers are notwired to MIPS data bus bits starting at 0, you’ll probably want to shift the data after a read and before a write. For example, 8-bit registers on a 32-bit bus in a system originally conceived as big-endian are commonly wired via bits 31–24.
 
 #### 2.6 Endianness and Foreign Data
 
-This chapter is about programming, not a treatise on I/O and communications,
-so we’ll keep this section brief. Any data that is not initialized in
-your code, chosen libraries, and OS is foreign. It may be data you read
-from some memory-mapped piece of hardware, data put into memory by
-DMA, data in a preprogrammed ROM that isn’t part of your program, or
-you may be trying to interpret a byte stream obtained from an “abstract”
-I/O device under your OS.
+This chapter is about programming, not a treatise on I/O and communications, so we’ll keep this section brief. Any data that is not initialized in your code, chosen libraries, and OS is foreign. It may be data you read from some memory-mapped piece of hardware, data put into memory by DMA, data in a preprogrammed ROM that isn’t part of your program, or you may be trying to interpret a byte stream obtained from an “abstract” I/O device under your OS.
 
-The first stage is to figure out what this data looks like in memory; with
-C, that can usually be accomplished by mapping out what its contents are as
-an array of unsigned char. Even if you know your data and compiler well
-enough to guess which C structure will successfully map to the data, fall back to
-the array of bytes when something is not as you expect; it’s far too easy to miss
-what is really going on if your data structure is incorrect.
+The first stage is to figure out what this data looks like in memory; with C, that can usually be accomplished by mapping out what its contents are as an array of unsigned char. Even if you know your data and compiler well enough to guess which C structure will successfully map to the data, fall back to the array of bytes when something is not as you expect; it’s far too easy to miss what is really going on if your data structure is incorrect.
 
-Apart from endianness, the data may consist of data types that are not
-supported by your compiler/CPU; it may have similar types but with completely
-different encodings; it may have familiar data but be incorrectly
-aligned; or, falling under this section’s domain, it may have the wrong
-endianness.
+Apart from endianness, the data may consist of data types that are not supported by your compiler/CPU; it may have similar types but with completely different encodings; it may have familiar data but be incorrectly aligned; or, falling under this section’s domain, it may have the wrong endianness.
 
-If the chain along which the data has reached you has preserved byte order
-at each stage, the worst that will happen is that integer data will be represented
-with an opposite order, and it’s easy enough to build a “swap” macro to restore
-the two, four, or eight bytes of an integer value.
+If the chain along which the data has reached you has preserved byte order at each stage, the worst that will happen is that integer data will be represented with an opposite order, and it’s easy enough to build a “swap” macro to restore the two, four, or eight bytes of an integer value.
 
-But if the data has passed over a bit number consistent/byte address scrambled
-interface, it can be more difficult. In these circumstances, you need to
-locate the boundaries corresponding to the width of the bus where the data
-got swapped; then, taking groups of bytes within those boundaries, swap them
-without regard to the underlying data type. If you do it right, the result should
-now make sense, with the correct byte sequence, although you may still need
-to cope with the usual problems in the data—including, possibly, the need to
-swap multibyte integer data again.
+But if the data has passed over a bit number consistent/byte address scrambled interface, it can be more difficult. In these circumstances, you need to locate the boundaries corresponding to the width of the bus where the data got swapped; then, taking groups of bytes within those boundaries, swap them without regard to the underlying data type. If you do it right, the result should now make sense, with the correct byte sequence, although you may still need to cope with the usual problems in the data—including, possibly, the need to swap multibyte integer data again.
 
 # 3 Trouble with Visible Caches
 
@@ -526,248 +309,85 @@ A portable OS like Linux must deal with a range of caches from the most sophisti
 
 #### 3.2 Cache Management and Writing Instructions: Self-Modifying Code
 
-If your code ever tries to write instructions into memory, then execute them,
-you’ll need to make sure you allow for cache behavior.
+If your code ever tries to write instructions into memory, then execute them, you’ll need to make sure you allow for cache behavior.
 
-This can surprise you on two levels. First, if you have a write-back
-D-cache, the instructions that your program writes out may not find their way
-to main memory until something triggers a write-back of the relevant cache
-lines. The instructions that your program wrote out could just be sitting in the
-D-cache at the time you try to execute them, and the CPU’s fetches simply can’t
-access them there. So the first step is to do write-back operations on the cache
-lines at which you write the instructions; that at least ensures they reach main
-memory.
+This can surprise you on two levels. First, if you have a write-back D-cache, the instructions that your program writes out may not find their way to main memory until something triggers a write-back of the relevant cache lines. The instructions that your program wrote out could just be sitting in the D-cache at the time you try to execute them, and the CPU’s fetches simply can’t access them there. So the first step is to do write-back operations on the cache lines at which you write the instructions; that at least ensures they reach main memory.
 
-The second surprise (regardless of which type of D-cache you have) is
-that even after writing out the new instructions to some region of main
-memory, your CPU’s I-cache may still hold copies of the information that
-used to be held in those addresses. Before you tell the CPU to execute the
-newly written instructions, it’s essential that your software first invalidates
-all the lines in the I-cache that contain information at the affected address
-range.
+The second surprise (regardless of which type of D-cache you have) is that even after writing out the new instructions to some region of main memory, your CPU’s I-cache may still hold copies of the information that used to be held in those addresses. Before you tell the CPU to execute the newly written instructions, it’s essential that your software first invalidates all the lines in the I-cache that contain information at the affected address range.
 
-Of course, you could avoid the need for these explicit write-back and invalidate
-operations by writing and then executing the new instructions within an
-uncached address region; but that gives up the advantages of caching and is
-almost always a mistake.
+Of course, you could avoid the need for these explicit write-back and invalidate operations by writing and then executing the new instructions within an uncached address region; but that gives up the advantages of caching and is almost always a mistake.
 
-The general-purpose cache management instructions described in
-section 4.9 are CP0 instructions, only usable by kernel-privilege software. That
-doesn’t matter when cache operations are related to DMA operations, which
-are also entirely kernel matters. But it does matter with applications like writing
-instructions and executing them (think of a modern application using a
-“just-in-time” interpreted/translated language).
+The general-purpose cache management instructions described in section 4.9 are CP0 instructions, only usable by kernel-privilege software. That doesn’t matter when cache operations are related to DMA operations, which are also entirely kernel matters. But it does matter with applications like writing instructions and executing them (think of a modern application using a “just-in-time” interpreted/translated language).
 
-So MIPS32/64 provides the synci instruction, which does a D-side writeback
-and an I-side invalidate of one cache-line-sized piece of your new code.
-Find out how in section 8.5.11.
+So MIPS32/64 provides the synci instruction, which does a D-side writeback and an I-side invalidate of one cache-line-sized piece of your new code. Find out how in section 8.5.11.
 
 #### 3.3 Cache Management and Uncached orWrite-Through Data
 
-If you mix cached and uncached references that map to the same physical range
-of addresses, you need to think about what this means for the caches. Uncached
-writes will update only the copy of a given address in main memory, possibly
-leaving what’s nowa stale copy of that location’s contents in the D-cache—orthe
-I-cache.Uncached loadswill pick up whatever they find in main memory—even
-if that information is, in fact, stale with respect to an up-to-date copy present
-only in cache.
+If you mix cached and uncached references that map to the same physical range of addresses, you need to think about what this means for the caches. Uncached writes will update only the copy of a given address in main memory, possibly leaving what’s nowa stale copy of that location’s contents in the D-cache—orthe I-cache.Uncached loadswill pick up whatever they find in main memory—even if that information is, in fact, stale with respect to an up-to-date copy present only in cache.
 
-Careful use of cached and uncached references to the same physical region
-may be useful, or even necessary, in the low-level code that brings your system
-into a known state following a reset. But for running code, you probably
-don’t want to do that. For each region of physical memory, decide whether your
-software should access it cached or uncached, then be absolutely consistent in
-treating it that way.
+Careful use of cached and uncached references to the same physical region may be useful, or even necessary, in the low-level code that brings your system into a known state following a reset. But for running code, you probably don’t want to do that. For each region of physical memory, decide whether your software should access it cached or uncached, then be absolutely consistent in treating it that way.
 
 #### 3.4 Cache Aliases and Page Coloring
 
-There’s more about the hardware origin of cache aliases in section 4.12. The
-problem occurs with L1 caches that are virtually indexed but physically tagged,
-and where the index range is big enough to span two or more page sizes. The
-index range is the size of one “set” of the cache, so with common 4-KB pages
-you can get aliases in an 8-KB direct-mapped cache or a 32-KB four-way
-set-associative cache.
+There’s more about the hardware origin of cache aliases in section 4.12. The problem occurs with L1 caches that are virtually indexed but physically tagged, and where the index range is big enough to span two or more page sizes. The index range is the size of one “set” of the cache, so with common 4-KB pages you can get aliases in an 8-KB direct-mapped cache or a 32-KB four-way set-associative cache.
 
-The “page color” of a location is the value of those one or more virtual
-address bits that choose a page-sized chunk within the appropriate cache set.
-Two virtual pointers to the same physical data can produce an alias only if they
-have a different page color. So long as all pointers to the same data have the same
-color, all is well—all the data, even though at different virtual addresses, will be
-stored in the same physical portion of the cache and will be correctly identified
-by the (common) physical tag.
+The “page color” of a location is the value of those one or more virtual address bits that choose a page-sized chunk within the appropriate cache set. Two virtual pointers to the same physical data can produce an alias only if they have a different page color. So long as all pointers to the same data have the same color, all is well—all the data, even though at different virtual addresses, will be stored in the same physical portion of the cache and will be correctly identified by the (common) physical tag.
 
-It’s quite common in Linux (for example) for a physical page to be accessible
-at multiple virtual locations (shared libraries are routinely shared between
-programs at different virtual addresses).
+It’s quite common in Linux (for example) for a physical page to be accessible at multiple virtual locations (shared libraries are routinely shared between programs at different virtual addresses).
 
-Most of the time, theOSis able to overalign virtual address choices for shared
-data—the sharing processes may not use the same address, but we’ll make sure
-their different virtual addresses are amultiple of, say, 64KBapart, so the different
-virtual addresses have the same color. That takes up a bit more virtual memory,
-but virtual memory is fairly cheap.
+Most of the time, theOSis able to overalign virtual address choices for shared data—the sharing processes may not use the same address, but we’ll make sure their different virtual addresses are amultiple of, say, 64KBapart, so the different virtual addresses have the same color. That takes up a bit more virtual memory, but virtual memory is fairly cheap.
 
-It’s easy to think that cache aliases are harmless so long as the data is “readonly”
-(it must have been written once, but that was before there were aliases to
-it):We don’t care if there aremultiple copies of a read-only page. But they’re only
-mostly harmless. It is possible to tolerate aliases to read-only data, particularly in
-the I-cache: But you need to make sure that cache management software is aware
-that data that has been invalidated at one virtual address may still be cached at
-another.
+It’s easy to think that cache aliases are harmless so long as the data is “readonly” (it must have been written once, but that was before there were aliases to it):We don’t care if there aremultiple copies of a read-only page. But they’re only mostly harmless. It is possible to tolerate aliases to read-only data, particularly in the I-cache: But you need to make sure that cache management software is aware that data that has been invalidated at one virtual address may still be cached at another.
 
-With the widespread use of virtual-memory OSs (particularly Linux) in the
-embedded and consumer computing markets, MIPS CPUs are increasingly
-being built so that cache aliases can’t happen. It’s about time this long-lasting
-bug was fixed.
+With the widespread use of virtual-memory OSs (particularly Linux) in the embedded and consumer computing markets, MIPS CPUs are increasingly being built so that cache aliases can’t happen. It’s about time this long-lasting bug was fixed.
 
-Whatever you need to do, the cache primitive operations required for a
-MIPS32/64 CPU are described in section 4.9.1.
+Whatever you need to do, the cache primitive operations required for a MIPS32/64 CPU are described in section 4.9.1.
 
 # 4 Memory Access Ordering and Reordering
 
-Programmers tend to think of their code executing in a well-behaved sequence:
-The CPU looks at an instruction, updates the state of the system in the appropriate
-ways, then goes on to the next instruction. But our program can run
-faster if we allow the CPU to break out of this purely sequential form of execution,
-so that operations aren’t necessarily constrained to take place in strict
-program order. This is particularly true of the read and write transactions
-performed at the processor’s interface, triggered by its execution of load and
-store instructions.
+Programmers tend to think of their code executing in a well-behaved sequence: The CPU looks at an instruction, updates the state of the system in the appropriate ways, then goes on to the next instruction. But our program can run faster if we allow the CPU to break out of this purely sequential form of execution, so that operations aren’t necessarily constrained to take place in strict program order. This is particularly true of the read and write transactions performed at the processor’s interface, triggered by its execution of load and store instructions.
 
-From the CPU’s point of view, a store requires only an outbound write
-request: Present the memory address and data, and leave the memory controller
-to get on with it. Practical memory and I/O devices are relatively slow, and in
-the time the write is completed the CPU may be able to run tens or hundreds of
-instructions.
+From the CPU’s point of view, a store requires only an outbound write request: Present the memory address and data, and leave the memory controller to get on with it. Practical memory and I/O devices are relatively slow, and in the time the write is completed the CPU may be able to run tens or hundreds of instructions.
 
-Reads are different, of course: They require two-way communication
-in the form of an outbound request and an inbound response. When the
-CPU needs to know the contents of a memory location or a device register,
-there’s probably not much it can do until the system responds with the
-information.
+Reads are different, of course: They require two-way communication in the form of an outbound request and an inbound response. When the CPU needs to know the contents of a memory location or a device register, there’s probably not much it can do until the system responds with the information.
 
-In the quest for higher performance, that means we want to make reads
-as fast as possible, even at the expense of making writes somewhat slower.
-Taking this thinking a step further, we can even make write requests wait in a
-queue, and pass any subsequent read requests to memory ahead of the buffered
-writes. From the CPU’s point of view, this is a big advantage; by starting the
-read transaction immediately, it gets the response back as soon as possible.
-The writes will have to be done sometime, and the queue is of finite size: But
-it’s likely that after this read is done there will be a period while the CPU is
-running from cache. And if the queue fills up, we’ll just have to stop while
-some writes happen: That’s certainly no worse than if we’d done the writes in
-sequence.
+In the quest for higher performance, that means we want to make reads as fast as possible, even at the expense of making writes somewhat slower. Taking this thinking a step further, we can even make write requests wait in a queue, and pass any subsequent read requests to memory ahead of the buffered writes. From the CPU’s point of view, this is a big advantage; by starting the read transaction immediately, it gets the response back as soon as possible. The writes will have to be done sometime, and the queue is of finite size: But it’s likely that after this read is done there will be a period while the CPU is running from cache. And if the queue fills up, we’ll just have to stop while some writes happen: That’s certainly no worse than if we’d done the writes in sequence.
 
-You can probably see a problem here: Some programs may write a location
-and then read it back again. If the read overtakes the write, we may get stale data
-from memory and our programwill malfunction.Most of the time we can fix it
-with extra hardware that checks an outgoing read request against the addresses
-of entries in the write queue and doesn’t allow the read to overtake a matching
-write.4
+You can probably see a problem here: Some programs may write a location and then read it back again. If the read overtakes the write, we may get stale data from memory and our programwill malfunction.Most of the time we can fix it with extra hardware that checks an outgoing read request against the addresses of entries in the write queue and doesn’t allow the read to overtake a matching write.4
 
-In systems where tasks that could be really concurrent (that is, they might be
-running on different CPUs) share variables, the problem of ordering reads and
-writes becomes more dangerous. It’s true that much of the time the tasks have
-no expectation ofmutual ordering.Ordering matters when the tasks are deliberately
-using shared memory for synchronization and communication, but in this
-case the software will be using carefully crafted OS synchronization operations
-(locks and semaphores, for example).
+In systems where tasks that could be really concurrent (that is, they might be running on different CPUs) share variables, the problem of ordering reads and writes becomes more dangerous. It’s true that much of the time the tasks have no expectation ofmutual ordering.Ordering matters when the tasks are deliberately using shared memory for synchronization and communication, but in this case the software will be using carefully crafted OS synchronization operations (locks and semaphores, for example).
 
-But there are some shared-memory communication tricks—often good,
-cheap, efficient ones—that don’t need so many semaphores or locks but are
-disrupted by arbitrary cycle reordering. Suppose, for example, we have two
-tasks: one is writing a data structure, the other is reading it. They use the data
-structure in turn, as shown in Figure 10.10.
+But there are some shared-memory communication tricks—often good, cheap, efficient ones—that don’t need so many semaphores or locks but are disrupted by arbitrary cycle reordering. Suppose, for example, we have two tasks: one is writing a data structure, the other is reading it. They use the data structure in turn, as shown in Figure 10.10.
 
-For correct operation,we need to knowthatwhenthe reader sees the updated
-value in the key field, we can guarantee that all the other updates will be visible
-to the reader as well.
+For correct operation,we need to knowthatwhenthe reader sees the updated value in the key field, we can guarantee that all the other updates will be visible to the reader as well.
 
-Unless we discard all the performance advantages of decoupling reads and
-writes fromtheCPU, it’s not practical for hardware to conceal all ordering issues
-fromthe programmer. The MIPS architecture provides the sync instruction for
-this purpose: You’re assured that (for all participants in the shared
-memory) all accesses made before the sync will precede those made afterward.
-It’sworth dwelling on the limited nature of that promise: It only relates to ordering,
-and only as seen by participants in uncached or cache-coherent memory
-accesses.
+Unless we discard all the performance advantages of decoupling reads and writes fromtheCPU, it’s not practical for hardware to conceal all ordering issues fromthe programmer. The MIPS architecture provides the sync instruction for this purpose: You’re assured that (for all participants in the shared memory) all accesses made before the sync will precede those made afterward. It’sworth dwelling on the limited nature of that promise: It only relates to ordering, and only as seen by participants in uncached or cache-coherent memory accesses.
 
-To make the example above reliable on a suitable system, the writer should
-include sync just before writing keyfield, and the reader should have a sync
-just after reading keyfield. See section 8.5.9 for details. But there’s a lot more
-to this subject; if you’re building such a system, you’re strongly recommended
-to use an OS that provides suitable synchronization mechanisms, and read up
-on this subject.
+To make the example above reliable on a suitable system, the writer should include sync just before writing keyfield, and the reader should have a sync just after reading keyfield. See section 8.5.9 for details. But there’s a lot more to this subject; if you’re building such a system, you’re strongly recommended to use an OS that provides suitable synchronization mechanisms, and read up on this subject.
 
-Different architectures make different promises about ordering. At one
-extreme, you can require all CPU and system designers to contrive that all the
-writes and reads made by one CPU appear to be in exactly the same order from
-the viewpoint of another CPU: That’s called “strongly ordered.” There are
-weaker promises too (such as “all writes remain in order”); but the MIPS architecture
-takes the radical position that no guarantees are made at all.
+Different architectures make different promises about ordering. At one extreme, you can require all CPU and system designers to contrive that all the writes and reads made by one CPU appear to be in exactly the same order from the viewpoint of another CPU: That’s called “strongly ordered.” There are weaker promises too (such as “all writes remain in order”); but the MIPS architecture takes the radical position that no guarantees are made at all.
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_10.PNG">
 
-#### 4.1 Ordering andWrite Buffers
+#### 4.1 Ordering and Write Buffers
 
-Let’s escape fromthe lofty theory and describe something rather more practical.
-The idea of holding outbound requests in a write buffer turns out to work especially
-well in practice because of the way store instructions tend to be bunched
-together. For a CPU running compiled MIPS code, it’s typical to find that only
-about 10 percentage of the instructions executed are stores; but these accesses
-tend to come in bursts—for example, when a function prologue saves a group
-of register values.
+Let’s escape fromthe lofty theory and describe something rather more practical. The idea of holding outbound requests in a write buffer turns out to work especially well in practice because of the way store instructions tend to be bunched together. For a CPU running compiled MIPS code, it’s typical to find that only about 10 percentage of the instructions executed are stores; but these accesses tend to come in bursts—for example, when a function prologue saves a group of register values.
 
-Most of the time the operation of the write buffer is completely transparent
-to software. But there are some special situations in which the programmer
-needs to be aware of what’s happening:
+Most of the time the operation of the write buffer is completely transparent to software. But there are some special situations in which the programmer needs to be aware of what’s happening:
 
-1. Timing relations for I/O register accesses: This affects all MIPS CPUs. After
-the CPU executes a store to update an I/O device register, the outbound
-write request is liable to incur some delay in the write buffer, on its way
-to the device. Other events, such as inbound interrupts, may take place
-after the CPU executes the store instruction, but before the write request
-takes effect within the I/O device. This can lead to surprising behavior:
-For example, the CPU may receive an interrupt from a device “after” you
-have told it not to generate interrupts. To give another example: If an I/O
-device needs some software-implemented delay to recover after a write,
-you must ensure that the write buffer is empty before you start counting
-out that delay— ensuring also that the CPU waits while the write buffer
-empties. It’s good practice to define a subroutine that does this job, and
-it’s traditionally given the name wbflush(). See section 10.4.2 for hints
-on implementing it.
+1. Timing relations for I/O register accesses: This affects all MIPS CPUs. After the CPU executes a store to update an I/O device register, the outbound write request is liable to incur some delay in the write buffer, on its way to the device. Other events, such as inbound interrupts, may take place after the CPU executes the store instruction, but before the write request takes effect within the I/O device. This can lead to surprising behavior: For example, the CPU may receive an interrupt from a device “after” you have told it not to generate interrupts. To give another example: If an I/O device needs some software-implemented delay to recover after a write, you must ensure that the write buffer is empty before you start counting out that delay— ensuring also that the CPU waits while the write buffer empties. It’s good practice to define a subroutine that does this job, and it’s traditionally given the name wbflush(). See section 10.4.2 for hints on implementing it.
 
-2. Reads overtaking writes: The MIPS32/64 architecture permits this behavior,
-discussed above. If your software is to be robust and portable, it should
-not assume that read and write order is preserved. Where you need to
-guarantee that two cycles happen in some particular order, you need the
-sync instruction described in section 8.5.9.
+2. Reads overtaking writes: The MIPS32/64 architecture permits this behavior, discussed above. If your software is to be robust and portable, it should not assume that read and write order is preserved. Where you need to guarantee that two cycles happen in some particular order, you need the sync instruction described in section 8.5.9.
 
-3. Byte gathering: Some write buffers watch for partial-word writes within
-the same memory word (or even writes within the same cache line) and
-will combine those partial writes into a single operation.
-To avoid unpleasant symptoms when uncachedwrites are combined into
-a word-width, it’s a good idea to map your I/O registers such that each
-register is in a separate word location (i.e., 8-bit registers should be at
-least four bytes apart).
+3. Byte gathering: Some write buffers watch for partial-word writes within the same memory word (or even writes within the same cache line) and will combine those partial writes into a single operation. To avoid unpleasant symptoms when uncachedwrites are combined into a word-width, it’s a good idea to map your I/O registers such that each register is in a separate word location (i.e., 8-bit registers should be at least four bytes apart).
 
-#### 4.2 Implementing wbflush
+#### 4.2 Implementing wb flush
 
-Most write queues can be emptied out by performing an uncached store to
-any location and then performing an operation that reads the same data back.
-A write queue certainly can’t permit the read to overtake the write—it would
-return stale data. Put a sync instruction between the write and the read, and
-that should be effective on any system compliant with MIPS32/64.
+Most write queues can be emptied out by performing an uncached store to any location and then performing an operation that reads the same data back. A write queue certainly can’t permit the read to overtake the write—it would return stale data. Put a sync instruction between the write and the read, and that should be effective on any system compliant with MIPS32/64.
 
-This is effective, but not necessarily efficient; you can minimize the overhead
-by loading from the fastest memory available. Perhaps your system offers
-something system-specific but faster. Use it after reading the following note!
+This is effective, but not necessarily efficient; you can minimize the overhead by loading from the fastest memory available. Perhaps your system offers something system-specific but faster. Use it after reading the following note!
 
-> Write buffers are often implemented within the CPU, but may also be implemented
-outside it; any system controller or memory interface that boasts of
-a write-posting feature introduces another level of write buffering to your system.
-Write buffers outside the CPU can give you just the same sort of trouble
-as those inside it. Take care to find out where all the write buffers are located
-in your system, and to allow for them in your programming.
+> Write buffers are often implemented within the CPU, but may also be implemented outside it; any system controller or memory interface that boasts of a write-posting feature introduces another level of write buffering to your system. Write buffers outside the CPU can give you just the same sort of trouble as those inside it. Take care to find out where all the write buffers are located in your system, and to allow for them in your programming.
 
 # 5 Writing it in C
 
@@ -776,28 +396,11 @@ You probably already write almost everything in C or in C++. MIPS’s lack of sp
 #### 5.1 Wrapping Assembly Code with the GNU C Compiler
 
 
-TheGNUC Compiler (“GCC”) allows you to enclose snippets of assembly code
-within C source files. GCC’s feature is particularly powerful, but other modern
-compilers probably could support the example here. But their syntax is probably
-quite different, so we’ll just discuss GCC here.
-If you want low-level control over something that extends beyond a handful
-of machine instructions, such as a library function that carries out some clever
-computation, you’ll really need to get to gripswithwriting pure MIPS assembly;
-but if you just want to insert a short sequence that consists of one or a few specific
-MIPS instructions, the asm() directive can achieve the desired result quite
-simply. Better still, you can leave it to the compiler to manage the selection of
-registers according to its own conventions.
+TheGNUC Compiler (“GCC”) allows you to enclose snippets of assembly code within C source files. GCC’s feature is particularly powerful, but other modern compilers probably could support the example here. But their syntax is probably quite different, so we’ll just discuss GCC here. If you want low-level control over something that extends beyond a handful of machine instructions, such as a library function that carries out some clever computation, you’ll really need to get to gripswithwriting pure MIPS assembly; but if you just want to insert a short sequence that consists of one or a few specific MIPS instructions, the asm() directive can achieve the desired result quite simply. Better still, you can leave it to the compiler to manage the selection of registers according to its own conventions.
 
-As an example, the following code makes GCC use the three-operand form
-of multiply, available on more recent MIPS CPUs. If you just use the normal C
-language * multiplication operator, the work could end up being done by the
-original formof themultiply instruction that accepts only two source operands,
-implicitly sending its double-length result to the hi/lo register pair.5
+As an example, the following code makes GCC use the three-operand form of multiply, available on more recent MIPS CPUs. If you just use the normal C language * multiplication operator, the work could end up being done by the original formof themultiply instruction that accepts only two source operands, implicitly sending its double-length result to the hi/lo register pair.5
 
-The C function mymul() is exactly like the three-operand mul and delivers
-the less significant half of the double-length result; the more significant half is
-simply discarded, and it’s up to you to ensure that overflows are either avoided
-or irrelevant.
+The C function mymul() is exactly like the three-operand mul and delivers the less significant half of the double-length result; the more significant half is simply discarded, and it’s up to you to ensure that overflows are either avoided or irrelevant.
 
     static int __inline__ mymul(int a, int b)
     {
@@ -812,50 +415,23 @@ or irrelevant.
         return p;
     }
 
-The function itself is declared inline, which instructs the compiler that
-a use of this function should be replaced by a copy of its logic (which
-permits local register optimization to apply). Adding static means that
-the function need not be published for other modules to use, so no binary
-of the function itself will be generated. It very often makes sense to wrap
-an asm() like this: You’d probably usually then put the whole definition
-in an include file. You could use a C preprocessor macro, but the inlined
-function is a bit cleaner.
+The function itself is declared inline, which instructs the compiler that a use of this function should be replaced by a copy of its logic (which permits local register optimization to apply). Adding static means that the function need not be published for other modules to use, so no binary of the function itself will be generated. It very often makes sense to wrap an asm() like this: You’d probably usually then put the whole definition in an include file. You could use a C preprocessor macro, but the inlined function is a bit cleaner.
 
-The declarations inside the asm() parentheses tell GCC to emit a MIPS mul
-line to the assemblerwith three operands on the command line—onewill be the
-output and two will be inputs.
+The declarations inside the asm() parentheses tell GCC to emit a MIPS mul line to the assemblerwith three operands on the command line—onewill be the output and two will be inputs.
 
-Onthe line below,we tellGCCabout operand %0, the product: first, that this
-value will be write-only (meaning that there’s no need to preserve its original
-value) with the “=” modifier; the “r” tells GCC that it’s free to choose any of
-the general-purpose registers to hold this value. Finally, we tell GCC that the
-operand we wrote as %0 corresponds to the C variable p.
+Onthe line below,we tellGCCabout operand %0, the product: first, that this value will be write-only (meaning that there’s no need to preserve its original value) with the “=” modifier; the “r” tells GCC that it’s free to choose any of the general-purpose registers to hold this value. Finally, we tell GCC that the operand we wrote as %0 corresponds to the C variable p.
 
-On the third line of the asm() construct, we tell GCC about operands %1
-and %2.Again,we allowGCCto put these in any of the general-purpose registers,
-and tell it that they correspond to the C variables a and b.
+On the third line of the asm() construct, we tell GCC about operands %1 and %2.Again,we allowGCCto put these in any of the general-purpose registers, and tell it that they correspond to the C variables a and b.
 
-At the end of the example function, the resultwe obtained fromthemultiply
-instruction is returned to the C caller.
+At the end of the example function, the result we obtained from the multiply instruction is returned to the C caller.
 
-GCC allows considerable control over the specification of the operands; you
-can tell it that certain values are both read andwritten and that certain hardware
-registers are left with meaningless values as a side effect of a particular assembly
-sequence.You can dig out the details fromthe MIPS-specific sections of theGCC
-manual.
+GCC allows considerable control over the specification of the operands; you can tell it that certain values are both read and written and that certain hardware registers are left with meaningless values as a side effect of a particular assembly sequence.You can dig out the details fromthe MIPS-specific sections of the GCC manual.
 
 #### 5.2 Memory-Mapped I/O Registers and “Volatile”
 
-Most of you will be writing code that accesses I/O registers in C—you certainly
-shouldn’t be using assembly code in the absence of any pressing need to do so,
-and since all I/O registers in MIPSmust be memory-mapped, it is never difficult
-to access them from C. Having said that, you should keep in mind that as compilers
-advance, or if you make significant use of C++, it can become harder to
-predict exactly the low-level instruction sequences that’ll end up in your code.
-Here are some well-worn hints.
+Most of you will be writing code that accesses I/O registers in C—you certainly shouldn’t be using assembly code in the absence of any pressing need to do so, and since all I/O registers in MIPSmust be memory-mapped, it is never difficult to access them from C. Having said that, you should keep in mind that as compilers advance, or if you make significant use of C++, it can become harder to predict exactly the low-level instruction sequences that’ll end up in your code. Here are some well-worn hints.
 
-I might write a piece of code that is intended to poll the status register of a
-serial port and to send a character when it’s ready:
+I might write a piece of code that is intended to poll the status register of a serial port and to send a character when it’s ready:
 
     unsigned char *usart_sr = (unsigned char *) 0xBFF00000;
     unsigned char *usart_data = (unsigned char *) 0xBFF20000;
@@ -868,11 +444,7 @@ serial port and to send a character when it’s ready:
     }
 
 
-I’d be upset if this sent two characters and then looped forever, but that
-would be quite likely to happen. The compiler sees the memory-mapped I/O
-reference implied by *usart sr as a loop-invariant fetch; there are no stores in
-the while loop so it seems safe to pull the load out of the loop. Your compiler
-has recognized that your C program is equivalent to:
+I’d be upset if this sent two characters and then looped forever, but that would be quite likely to happen. The compiler sees the memory-mapped I/O reference implied by *usart sr as a loop-invariant fetch; there are no stores in the while loop so it seems safe to pull the load out of the loop. Your compiler has recognized that your C program is equivalent to:
 
     void putc(ch)
     char ch;
@@ -889,94 +461,31 @@ You could prevent this particular problem by defining your registers as follows:
     volatile unsigned char *usart_data =
     (unsigned char *) 0xBFF20000;
 
-A similar situation can exist if you examine a variable that is modified by an
-interrupt or other exception handler.Again, declaring the variable as volatile
-should fix the problem.
-I won’t guarantee that this will always work: The C bible describes the
-operation of volatile as implementation dependent. I suspect, though, that
-compilers that ignore the volatile keyword are implicitly not allowed to optimize
-away loads.
-Many programmers have trouble using volatile. The thing to remember
-is that it behaves just like any other C type modifier—just like unsigned in the
-example above. You need to avoid syndromes like this:
+A similar situation can exist if you examine a variable that is modified by an interrupt or other exception handler.Again, declaring the variable as volatile should fix the problem. I won’t guarantee that this will always work: The C bible describes the operation of volatile as implementation dependent. I suspect, though, that compilers that ignore the volatile keyword are implicitly not allowed to optimize away loads. Many programmers have trouble using volatile. The thing to remember is that it behaves just like any other C type modifier—just like unsigned in the example above. You need to avoid syndromes like this:
 
     typedef char * devptr;
     volatile devptr mypointer;
 
-You’ve now told the compiler that it must keep loading the pointer value
-from the variable devptr, but you’ve said nothing about the behavior of the
-register you’re using it to point at. It would be more useful to write the code like
-this:
+You’ve now told the compiler that it must keep loading the pointer value from the variable devptr, but you’ve said nothing about the behavior of the register you’re using it to point at. It would be more useful to write the code like this:
 
     typedef volatile char * devptr;
     devptr mypointer;
 
-Once you’ve dealt with this, the most common reason that optimized code
-breaks will be that you have tried to drive the hardware too fast. There are often
-timing constraints associated with reads and writes of hardware registers, and
-you’ll often have to deliberately slow your code to fit in.
+Once you’ve dealt with this, the most common reason that optimized code breaks will be that you have tried to drive the hardware too fast. There are often timing constraints associated with reads and writes of hardware registers, and you’ll often have to deliberately slow your code to fit in.
 
-What’s the main lesson of this section? While it’s easier to write and
-maintain hardware driver code in C than in assembly, it’s important to
-use this option responsibly. In particular, you’ll need to understand enough
-about the way the toolchain converts your high-level source code into lowlevel
-machine instructions to make sure you get the system behavior that
-you intended.
+What’s the main lesson of this section? While it’s easier to write and maintain hardware driver code in C than in assembly, it’s important to use this option responsibly. In particular, you’ll need to understand enough about the way the toolchain converts your high-level source code into lowlevel machine instructions to make sure you get the system behavior that you intended.
 
-#### 5.3 Miscellaneous Issues WhenWriting C for MIPS Applications
+#### 5.3 Miscellaneous Issues When Writing C for MIPS Applications
 
-* Negative pointers:When running simpleunmappedcode on aMIPSCPU,
-all pointers are in the kseg0 or kseg1 areas, so any data pointer’s 32-bit
-value has the top bit set and looks “negative.” Unmapped programs on
-most other architectures are dealing with physical addresses, which are
-usually a lot smaller than 2 GB!
-Such pointer values could cause trouble when pointer values are being
-compared, if the pointer were implicitly converted to a signed integer
-type. Any implicit conversions between integer and pointer types (quite
-common in C) should be made explicit and should specify an unsigned
-integer type (you should use unsigned long for this).
-Most compilers will warn about pointer-to-integer conversions, though
-you may have to specify an option.
+* Negative pointers:When running simpleunmappedcode on a MIPS CPU, all pointers are in the kseg0 or kseg1 areas, so any data pointer’s 32-bit value has the top bit set and looks “negative.” Unmapped programs on most other architectures are dealing with physical addresses, which are usually a lot smaller than 2 GB! Such pointer values could cause trouble when pointer values are being compared, if the pointer were implicitly converted to a signed integer type. Any implicit conversions between integer and pointer types (quite common in C) should be made explicit and should specify an unsigned integer type (you should use unsigned long for this). Most compilers will warn about pointer-to-integer conversions, though you may have to specify an option.
 
-* Signed versus unsigned characters: In early C compilers, the char type
-used for strings was usually equivalent to signed char; this is consistent
-with the convention for larger integer values. However, as soon as you
-have to deal with character encodings using more than 7-bit values, this
-is dangerous when converting or comparing. Modern compilers usually
-make char equivalent to unsigned char instead.
-If you discover that your old program depends on the default signextension
-of char types, good compilers offer an option that will restore
-the traditional convention.
+* Signed versus unsigned characters: In early C compilers, the char type used for strings was usually equivalent to signed char; this is consistent with the convention for larger integer values. However, as soon as you have to deal with character encodings using more than 7-bit values, this is dangerous when converting or comparing. Modern compilers usually make char equivalent to unsigned char instead. If you discover that your old program depends on the default signextension of char types, good compilers offer an option that will restore the traditional convention.
 
-* Moving from 16-bit int: A significant number of programs are being
-moved up from 16-bit x86 or other CPUs where the standard int is
-a 16-bit value. Such programs may rely, much more subtly than you
-think, on the limited size and overflow characteristics of 16-bit values.
-Although you can get correct operation by translating such types
-into short, that will be inefficient. In most cases you can let variables
-quietly pick up the MIPS int size of 32 bits, but you should
-be particularly aware of places where signed comparisons are used to
-catch 16-bit overflow.
+* Moving from 16-bit int: A significant number of programs are being moved up from 16-bit x86 or other CPUs where the standard int is a 16-bit value. Such programs may rely, much more subtly than you think, on the limited size and overflow characteristics of 16-bit values. Although you can get correct operation by translating such types into short, that will be inefficient. In most cases you can let variables quietly pick up the MIPS int size of 32 bits, but you should be particularly aware of places where signed comparisons are used to catch 16-bit overflow.
 
-* Programming that depends on the stack: Some kind of function invocation
-stack and data stack are implicit in C’s block structure.
-Despite the MIPS hardware’s complete lack of stack support, MIPS
-C compilers implement a fairly conventional stack structure. Even so,
-if your program thinks it knows what the stack looks like, it won’t be
-portable. If possible, don’t just replace the old assumptions with new
-ones: Two of the most common motivations for stack abuse are now
-satisfied with respectable and standards-conforming macro/library
-operations, which may tackle what your software was trying to do
-before:
+* Programming that depends on the stack: Some kind of function invocation stack and data stack are implicit in C’s block structure. Despite the MIPS hardware’s complete lack of stack support, MIPS C compilers implement a fairly conventional stack structure. Even so, if your program thinks it knows what the stack looks like, it won’t be portable. If possible, don’t just replace the old assumptions with new ones: Two of the most common motivations for stack abuse are now satisfied with respectable and standards-conforming macro/library operations, which may tackle what your software was trying to do before:
 
-    - stdargs: Use this include-file-based macro package to implement
-routines with a variable number of parameters whose type need not
-be predefined at compile time.
+    - stdargs: Use this include-file-based macro package to implement routines with a variable number of parameters whose type need not be predefined at compile time.
 
-    - alloca(): To allocate memory at run time, use this library function,
-which is “on the stack” in the sense that it will be automatically freed when the function allocating thememory returns. Some compilers
-implement alloca() as a built-in function that actually extends
-the stack; otherwise, there are pure-library implementations available.
-But don’t assume that suchmemory is actually at an addresswith some
-connection with the stack.
+    - alloca(): To allocate memory at run time, use this library function, which is “on the stack” in the sense that it will be automatically freed when the function allocating thememory returns. Some compilers implement alloca() as a built-in function that actually extends the stack; otherwise, there are pure-library implementations available. But don’t assume that suchmemory is actually at an address with some connection with the stack.
 
