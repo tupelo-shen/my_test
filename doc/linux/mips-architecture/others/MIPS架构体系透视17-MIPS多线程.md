@@ -4,27 +4,45 @@ Multithreading hardware was 2004–2005’s “Next Big Thing” in computers. N
 
 So let’s attempt to define what it is, and then why it’s useful.We’ll use “multithreading” without the hyphen, and use the abbreviation “MT” to refer to the MIPS32/64 architecture extension (the MT ASE).
 
-# 17.1 What Is Multithreading?
+硬件多线程技术曾经是2004-2005年计算机领域的“下一个大事件”。但是，到了2006年，曾经在1975-1980年火热的虚拟化技术又成为了“下一个大事件”。虽然、多线程硬件技术炒作的浪潮虽已过去，但是多线程技术仍然很重要。
+
+本文中，我们试图定义什么是多线程，为什么它很有用。我们使用`MT`的缩写引用MIPS32/64架构关于多线程技术的扩展（MT ASE）。
+
+# 17.1 什么是多线程?
 
 A thread is `a sequence of instructions executed in the order the programmer intended`.
 
+`线程`，英文名称`thread`，是指按照指定顺序执行的指令序列。
+
 That seems a bit simple, really, though it leaves a “thread” as a thing that is probably pretty tangled (there are muddied paths following the call tree of subroutines and loops within loops). But when a conventional CPU takes an interrupt, that isn’t the same thread (at least, not until and unless the interrupt handler returns). And what operating systems variously call “processes,” “tasks,” or “jobs” are all separate threads.
+
+`thread`这个单词在英文中有“脉络”和“线路”的意思。那么，用其形容代码的话，可以引申为由子程序调用和循环嵌套组成的一段程序，这段程序的执行顺序是一定的。但是，当CPU处理中断的时候，就打断了这样的线程执行顺序。换句话说，中断程序又可以称为一个单独的线程。虽然，从中断还可以返回之前的线程，但是这确实是两个不同的线程。操作系统称之为“任务”、“进程”、“作业”等东西都是不同的线程。
 
 You only need to define a thread when you intend to have more than one (otherwise it’s just the program the CPU is running). It’s easy to see why you might want more than one thread on a timeshared computer where different users were impatient to get their programs run.
 
+只有当你打算使用多个线程的时候，才需要定义一个线程。否则，线程就是CPU上正在运行的整个程序。对于基于时间片轮转的计算机系统，为不同的用户程序定义多个线程，以保证每个用户程序看起来好像独自占用CPU的使用权一样。
+
 Sometimes you want a computer to run a single program, but one that must reconcile competing needs to respond. Some problems are inherently concurrent. You can (in theory)write an explicit program using some kind of multiway select call to wait for one of a number of events, figure out the event, and call the appropriate subroutine. Or maybe you can invent a concurrent programming language.
 
-But explicitly concurrent programs are very hard to write, and no concurrent language ever took off. In the 1970s, research into practical ways to design, write, and test programs that dealt with concurrent events arrived at a conclusion. Researchers homed in on the idea of usingmultiple simple threads that influence each other only through simple, stylized interfaces. 
+有时候，你可能想要写一个大程序，对于一些并发事件采用基于事件驱动的机制进行轮询，进而调用响应的子程序。或者，你也可以发明一个并发编程语言，处理并发事件。
+
+But explicitly concurrent programs are very hard to write, and no concurrent language ever took off. In the 1970s, research into practical ways to design, write, and test programs that dealt with concurrent events arrived at a conclusion. Researchers homed in on the idea of using multiple simple threads that influence each other only through simple, stylized interfaces. 
+
+但是很显然，并发编程很难编写，也从没有一种并发编程语言流行起来。到了20世纪70年代，对于设计、编写和测试处理并发事件的程序的实用方法达成了一个结论，使用多个简单的线程，它们之间通过一些简单的、程式化的接口相互影响和交互。
 
 Furious internecine wars were fought over whether those interfaces should be based on message passing or something simpler like semaphores: The wars have long since been abandoned, and everybody won. Modern OSs contain a variety of communication mechanisms, though different programming communities seem to favor different subsets.
 
+但是，对于这些接口是基于消息传递还是类似于信号量(semaphore)的方式，曾经展开了激烈的讨论。最后的结果就是，现代OS一般包含多种通信机制，不同的编程社区可能会选择不同的子集。
+
 The word thread emerged as a term distinct from “process” in order to free the thread from other baggage: UNIX processes each had their own address space, but threads were things that might share an address space. The POSIX standard 1003.1 (known as “PThreads”) proposed a rich cross-OS programming interface for threads that explicitly share code and data, and PThreads has been substantially accepted by a wide range of modern operating systems.
 
-## 17.1.1 Which Resources Do You Need to Run Two Threads at Once?
+为了区分进程和线程，`thread`这个术语出现了：UNIX定义进程具有自己独立的地址空间，而线程可以共享地址空间。`POSIX standard 1003.1`（俗称`PThread`）为共享代码和数据的线程提出了丰富的跨操作系统编程接口，这一标准已经被大量的现代操作系统所接收，成为事实上的标准。
+
+## 17.1.1 同时运行两个线程需要哪些资源?
 
 Two complete CPUs will do it, of course. But that seems a lot: What’s the minimum you need?
 
-You can get a good clue about this by looking at the information kept about each thread by a multithreading OS (on a conventional CPU). Look at a thread when it’s not running, and you’ll find a PC (the address the thread will execute from when it next starts up) and saved values of all the programmer-visible registers. For user-privilege programs on MIPS, that’s the general-purpose registers and the hi/lo accumulator of themultiplier. The OS will need to keep some kind of identifier as to which thread is running, as well as a flag to say whether it’s currently holding kernel privilege (as itwill be when executing a system call). A MIPS OS maintaining multiple address spaces will need the ASID value too, because it’s used by the hardware when translating addresses.
+You can get a good clue about this by looking at the information kept about each thread by a multithreading OS (on a conventional CPU). Look at a thread when it’s not running, and you’ll find a PC (the address the thread will execute from when it next starts up) and saved values of all the programmer-visible registers. For user-privilege programs on MIPS, that’s the general-purpose registers and the hi/lo accumulator of the multiplier. The OS will need to keep some kind of identifier as to which thread is running, as well as a flag to say whether it’s currently holding kernel privilege (as itwill be when executing a system call). A MIPS OS maintaining multiple address spaces will need the ASID value too, because it’s used by the hardware when translating addresses.
 
 That’s about it: PC, general-purpose registers, thread ID, kernel mode, ASID. An OS calls this the thread context, and at a minimum each thread must have its own copy of those registers and fields.
 
@@ -32,7 +50,7 @@ There’s another angle you can take. If you want someone to buy your multithrea
 
 That’s two different approaches to multithreading. Which should MIPS adopt? Before we come to that, let’s take a belated look at why it’s worth doing at all.
 
-# 17.2 Why Is MT Useful?
+# 17.2 为什么需要多线程?
 
 Conventional CPUs in 2005–2006 are hitting the “memory wall.” The time taken to run an instruction has gone down much faster than the time taken to access memory. How much faster? Intel’s 32-bit x86 CPUs have gone from running at 16 MHz in 1985 to about 3 GHz in 2005—200 times faster in 20 years. During that time memory access time has dropped too, but by rather less than a factor of four, from about 180 ns in 1985 to 50 ns now.[^1]
 
@@ -44,7 +62,7 @@ There’s another reason why multithreading hardware might be useful for embedde
 
 So multithreading might be a good thing. How do we do it? And is it a good bargain? As usual for embedded systems the biggest cost factors are silicon area and power consumption.
 
-# 17.3 How to Do Multithreading for MIPS
+# 17.3 MIPS如何实现多线程
 
 RISC CPUs like to leave the software in charge, rather than moving policy decisions into hardware. RISC principles favor flexible and general-purpose solutions. That motivates a number of features of MIPS MT:
 
@@ -124,7 +142,7 @@ The interrupt exception may be taken by any available TC associated with the VPE
 
 The MIPS architecture already provides multiple ways to refuse an interrupt exception. An interrupt to any thread from this VPE can be prevented by exception mode, a global interrupt-enable flag (whichmay be zero), and per-interrupt mask bits: that’s SR(EXL), SR(IE), and SR(IM)—and that list is not exhaustive.
 
-The MIPSMTspecification adds yet another reason not to take an interrupt. You can now set a new per-TC CP0 register field TCStatus(IXMT) (interrupt exempt), which will prevent the particular TC from being used for an interrupt exception.
+The MIPS MT specification adds yet another reason not to take an interrupt. You can now set a new per-TC CP0 register field TCStatus(IXMT) (interrupt exempt), which will prevent the particular TC from being used for an interrupt exception.
 
 ## 17.3.4 Thread Priority Hints
 
@@ -132,7 +150,7 @@ Some application developers express interest in being able to steer the provisio
 
 It’s too early to comment on how successful developers will be at using this scheme. 
 
-## 17.3.4 User-Privilege Dynamic Thread Creation—the Fork Instruction
+## 17.3.5 User-Privilege Dynamic Thread Creation—the Fork Instruction
 
 An interesting but commercially unexplored application of multithreading hardware is to provide another way of discovering and exploiting parallelism in sequential algorithms. For example, a loop might be optimized by having two threads running its odd- and even-numbered iterations, respectively.
 
@@ -144,7 +162,7 @@ The OS enables this by maintaining a pool of ready-to-fork but otherwise idle TC
 
 `fork` is a forward-looking feature: At the time of writing, no OS yet supports such a pool of TCs. It’s there so that the MIPS MT architecture can be well placed as multithreading ideas spread.
 
-# 17.4 MT in Action
+# 17.4 多线程的实际应用
 
 It’s early days yet, but what are people doing with multithreading and, particularly, with MIPS MT? 
 
