@@ -1,34 +1,60 @@
 [TOC]
 
-Very few projects require absolutely all of their software to be created from scratch; the vast majority make use of at least some code that already exists—at the application level, in the operating system, or both. You may well find, however, that the existing code you’d like to use in your MIPS system was originally developed for some other microprocessor family. Of course, at a minimum, you’ll need to recompile the source code to create a new set of binaries for MIPS; but as we’ll see, the task may be more complicated than that. Portability refers to the ease with which a piece of software can be transferred successfully and correctly to a new environment, particularly a new instruction set. Porting a substantial body of software is rarely easy, and the level of difficulty tends to rise sharply if the software in question is (or includes) an OS or OS-related software such as device drivers.
+> 站在巨人的肩膀上，才能看得更远。
+> 
+> If I have seen further, it is by standing on the shoulders of giants.
+> 
+<p align="right">牛顿</p>
 
-High-level software (Linux application code or the like) will typically have been written with at least some notion of portability and will quite probably have been used in several environments already, so there’s a reasonable likelihood that you’ll be able to recompile it without having to make changes. Lowlevel software—perhaps a large portion of the source code, for some embedded systems—is more troublesome. Software that has been developed exclusively in just one particular environment is especially likely to present portability problems, since its creators may not have recognized any particular need to avoid or resolve them. The object of this chapter is to draw your attention to areas that are particularly likely to cause problems when you’re porting software to MIPS.
+科学巨匠尚且如此，何况芸芸众生呢。我们不可能每个软件都从头开始搞起。大部分时候，我们都是利用已有的软件，不管是应用软件，还是操作系统。所以，对于MIPS架构来说，完全可以把在其它架构上运行的软件拿来为其所用。
 
-The parts of a system that drive the lowest-level hardware are inevitably nonportable; embedded systems are typically subject to significant design upgrades every couple of years or so, and it’s just not reasonable (and certainly not cost effective) to insist that the original hardware/software interfaces be preserved throughout such changes.
+但是，这是一个说简单也简单，说复杂也复杂的工作。为什么这么说呢？如果你要采用的软件，其可移植性比较好的话，可能只需要使用支持MIPS架构的编译器重新编译以便就可以了；如果程序只是为特定的硬件平台编写的话（大部分嵌入式软件都是如此），可能处处是坑。比如说`Linux`系统，在编写应用或者系统软件的时候，一般都会考虑可移植性。所以说，基于Linux的软件一般都可以直接编译使用。但是，像现在流行的一些实时操作系统，比如、`μC/OS`、`Free-RTOS`、`RT-Thread`或其它一些基于微内核的系统，它们的程序一般不通用，需要修改才能在其它平台上运行。
 
-# 1 Low-Level Software for MIPS Applications: A Checklist of Frequently Encountered Problems
+而且，越往底层越难移植，几乎所有嵌入式系统上的驱动程序都不能直接使用。而且，嵌入式系统软件通常好几年才会发生一次重大设计更新，所以，如果坚持考虑软硬件上的接口兼容并不合理，尤其是考虑到成本效益的时候。
 
-The following are problems that have come up fairly frequently:
+本文就是总结一些在移植代码或者编写代码时，应该需要特别关注的一些点。
 
-1. Endianness: The computer world is divided into little- and big-endian camps, and a gulf of incomprehension falls between them. Most MIPS CPUs can be set up to run either big-endian or little-endian; but even if you already know which way your MIPS system will be configured, it’s strongly recommended that you make sure you understand this issue thoroughly. It’s caught out many experienced developers before you, and it will catch out some more. Read about it in section 10.2.
+# 1 基于MIPS架构移植软件时常见的问题
 
-2. Data layout and alignment in memory: Your program may make unportable assumptions about the memory layout of data declared in C. It’s almost always unportable to use C struct declarations to map input files or data received through a communication link, for example. Danger can lurk in a program that employs multiple views of private data with differently typed pointers or unions. However, data layout goes together with a description of other conventions (for register use, argument passing, and stack handling) and you’ll find that in the next chapter: If you need to take a peek ahead, it’s in section 11.1.
+以下是一些比较常见的问题：
 
-3. Need for explicit cache management: You may find that code you’d like to reuse was developed for a microprocessor that didn’t implement caches at all, or one that used a CPU with caches that are “invisible” to software (almost all side effects of caching in PC-compatible processors are hidden by clever hardware, for instance). But most MIPS CPUs keep their hardware simple by letting some side effects remain visible and making software responsible for cache management; we’ll describe what this means in section 10.3.
+1. 大小端 
 
-4. Memory access ordering and reordering: In many modern embedded or consumer systems, data moving around the system may pass through a chain of subsystems as it moves from its source to its final destination. Those subsystems may themselves encapsulate a lot of complicated hardware, and may present you with unexpected problems. For example, pieces of information passed between the CPU and I/O devices may be forced to wait in queues, incurring variable amounts of delay; or they may be separated into several independent traffic streams, so the order in which they arrive at their respective destinations can’t be guaranteed to match the order in which they were originally sent. Typical problems and solutions are discussed in section 10.4.
+    计算机的世界分为大端（`big-endian`）和小端（`little-endian`）两个阵营。为了二者兼容，MIPS架构一般都可以配置到底使用大端还是小端模式。所以，我们应该彻底理解这个问题，不要在这个问题上栽跟头。
 
-5. Writing it in C: This is not so much a problem as an opportunity. But there are things you can do in C (and probably should do in preference to writing assembly code) that are fairly MIPS-specific. This section talks about inline assembly, using memory-mapped registers, and a ragbag of possible pitfalls using MIPS.
+2. 内存布局和对齐 
 
-# 2 Endianness:Words, Bytes, and Bit Order
+    大部分时候，我们可以假定C声明的数据结构在内存中的布局是不可移植的。比如，使用C的结构体表示从输入文件或者网络上接收的数据的时候。还有，对于指针或者union型数据，通过不同方法引用的时候，也会存在风险。但是，内存布局海域一些其它的一些约定有关（比如寄存器的使用，参数传递和堆栈等）。
+
+3. 需要显式管理Cache
+
+    对于嵌入式系统来说，大部分时候采用的都是微处理器，可能并没有实现Cache硬件。但是，随着半导体技术的发展，现在的高端工业处理器一般都带有Cache，只是对于系统软件来说是不可见的而已（比如大部分处理器把Cahce可能带有的副作用都由硬件进行处理，软件不需要管理）。但是，大部分MIPS架构的CPU为了保持硬件的简单，而将一些Cache的副作用暴漏给软件，需要软件进行处理。关于这部分内容，我们后面会进行阐述。
+
+4. 内存访问顺序 
+
+    在大部分的嵌入式或者消费电子产品中，一般都挂载了许多子系统，这些子系统一般通过一条总线，比如PCIe总线、AHB总线、APB总线等进行通信。虽然方便了我们对系统进行扩展，但是也带来了不可预知的问题。比如，CPU和I/O设备之间的信息需要缓存处理，招致不可见的延时；或者它们被拆分成几个数据流，扔到总线上，但是对于到达目的地的顺序却没有保障。关于这部分内容，我们后面会进行阐述。
+
+5. 编程语言
+    
+    对于语言，当然大部分时候使用C语言了。但是，对于MIPS架构来说，有些事情可能使用汇编语言编写更好。讲解这部分内容的时候，主要涉及inline汇编、内存映射寄存器和MIPS架构可能出现的各种缺陷。
+
+# 2 字节序：WORD、BYTE和BIT
 
 The word endianness was introduced to computer science by Danny Cohen (Cohen 1980). In an article of rare humor and readability, Cohen observed that computer architectures had divided up into two camps, based on an arbitrary choice of the way in which byte addressing and integer definitions are related in communications systems.
 
+`WORD`最早是由`Danny Cohen`在1980年引入计算机科学的。在他的文章中，以其独有的幽默和智慧指出，通信系统分为两大阵营，分别是字节寻址访问和整数寻址访问。
+
 In Jonathan Swift’s Gulliver’s Travels, the “little-endians” and “big-endians” fought a war over the correct end at which to start eating a boiled egg. Swift was satirizing 18th-century religious disputes, and neither of his sides can see that their difference is entirely arbitrary. Cohen’s joke was appreciated, and the word has stuck. The problem is not just relevant to communications; it has implications for portability too.
+
+在乔纳森·斯威夫特（Jonathan Swift）的《格列佛游记》（Gulliver’s Travels）中，`little-endians`派和`big-endians`派就如何吃一个煮熟的鸡蛋展开了一场战争。斯威夫特讽刺的是18世纪的宗教争端问题，双方都不知道他们的分歧是完全武断的。科恩的笑话很受欢迎，这个词也就流传了下来。这个问题不仅仅体现在通信上，对于代码的可移植性也有影响。
 
 Computer programs are always dealing with sequence and order of different types of data: iterating in order over the characters in a string, the words in an array, or the bits in a binary representation. C programmers live with a pervasive assumption that all these variables are stored in a memory that is itself visible as a sequence of bytes—memcpy() will copy any data type. And C’s I/O system models all I/O operations as bytes; you can also read() and write() any chunk of memory containing any data type.
 
+计算机程序总是在处理不同类型的数据序列：迭代字符串中的字符，数组中的WORD类型元素，以及二进制表示的BIT位。C程序员普遍认为，所有这些变量都存储在内存中，而内存本身是作为字节序列可见的-比如，memcpy()函数能够复制任何数据，不论什么数据类型。而且，使用C语言编写的I/O系统也将I/O操作以字节进行建模，你才能够使用read()和write()之类的函数读写包含任何数据类型的内存块。
+
 So one computer can write out some data, and another computer can read it; suddenly, we’re interested in whether the second computer can understand what the first one wrote.
+
+这样，一个计算机写数据，另一个计算机读数据。那么，我们不禁想，第二台计算机是如何理解第一台计算所写的数据的呢？
 
 We understand that we need to be careful with padding and alignment (details in section 11.1). And it’s probably too much to expect that complex data types like floating-point numberswill always transfer intact. Butwe’d hope at least to see simple twos complement integers coming across OK; the curse of endianness is that they don’t. The 32-bit integer whose hexadecimal value was written as 0x1234.5678 quite often reads in as 0x7856.3412—it’s been “byte-swapped.” To understand why, let’s go back a bit.
 
