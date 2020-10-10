@@ -56,41 +56,74 @@ So one computer can write out some data, and another computer can read it; sudde
 
 这样，一个计算机写数据，另一个计算机读数据。那么，我们不禁想，第二台计算机是如何理解第一台计算所写的数据的呢？
 
-We understand that we need to be careful with padding and alignment (details in section 11.1). And it’s probably too much to expect that complex data types like floating-point numberswill always transfer intact. Butwe’d hope at least to see simple twos complement integers coming across OK; the curse of endianness is that they don’t. The 32-bit integer whose hexadecimal value was written as 0x1234.5678 quite often reads in as 0x7856.3412—it’s been “byte-swapped.” To understand why, let’s go back a bit.
+We understand that we need to be careful with padding and alignment (details in section 11.1). And it’s probably too much to expect that complex data types like floating-point numbers will always transfer intact. But we’d hope at least to see simple twos complement integers coming across[^1] OK; the curse[^2] of endianness is that they don’t. The 32-bit integer whose hexadecimal value was written as 0x1234.5678 quite often reads in as 0x7856.3412—it’s been “byte-swapped.” To understand why, let’s go back a bit.
 
-# 2.1 Bits, Bytes,Words, and Integers
+另外，我们不止一次地被提醒，要小心数据填充和对齐。因为这对于数据搬运会产生很大的影响。比如说，因为填充的原因，想要完整准确地传递float型数据就变得很难，所以，浮点数据存在精度问题。但是，我们期望至少能够正确表述整形数据，而"字节序"就是个拦路虎。比如说，一个32位整型数，用16进制进行表示为`0x12345678`，而读进来却为`0x78563412`，发生了字节交换。想要理解为什么，我们需要追溯一下字节序的发展历史。
 
-A 32-bit binary integer is represented by a sequence of bits, with each bit having a different significance. The least significant bit is “ones,” then “twos,” then “fours”—just as a decimal representation is “ones,” “tens,” and “hundreds.” When your memory is byte-addressable, your 32-bit integer occupies four bytes. There are two reasonable choices about how the integer and bytewise view tie up: Some computers put the least significant (LS) bits “first” (that is, in loweraddressed memory bytes) and some put the most significant (MS) bit first—and Cohen called them little-endian and big-endian, respectively. When I first got to know about computers in 1976, DEC’s minicomputers were little-endian and IBM mainframes were big-endian; neither camp was about to give way.
+[^1]: come across，偶然相遇，无意中出现，讲的清楚明白，给人...印象；
+[^2]: curse，诅咒，咒骂；
 
-<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_1.PNG">
+# 2.1 位、字节、字和整形
+
+A 32-bit binary integer is represented by a sequence of bits, with each bit having a different significance. The least significant bit is “ones,” then “twos,” then “fours”—just as a decimal representation is “ones,” “tens,” and “hundreds.” When your memory is byte-addressable, your 32-bit integer occupies four bytes. There are two reasonable choices about how the integer and bytewise view tie up: Some computers put the least significant (LS) bits “first” (that is, in lower addressed memory bytes) and some put the most significant (MS) bit first—and Cohen called them little-endian and big-endian, respectively. When I first got to know about computers in 1976, DEC’s minicomputers were little-endian and IBM mainframes were big-endian; neither camp was about to give way.
+
+我们知道一个32位的int型数据，是由32个比特位组成的，它们每一位都有自己的意义，就像我们熟悉的10进制那样，每一位分别表示`个`、`十`、`百`、`千`、...以此类推，对于二进制，bit0代表1，bit1代表2，bit3代表4，bit4代表8，...。对于一个可以按字节访问的内存来说，32位整数占据4个字节。如何从比特位的视角表述整形数，有两种选择：一派，将低有效位（LS）放在前，也就是存储在内存的低地址里；而另一派，将高有效位（`MS`）放在前。科恩将其分别称为小端和大端。最早的时候，DEC的微型计算机是小端，而IBM的大型机是大端。彼时，两个阵营互不妥协。
 
 It’s worth stressing that the curse of choice only appeared once you could address bytes. Pioneering computers through to the late 1960s were generally organized around a single word size: Instructions, integers, and memory width were all the same word size. Such a computer has no endianness: It has word order in memory and bit order inside words, and those are unrelated.
+
+有一个细节需要特殊提一下，大小端字节序的问题只有能够按字节访问的时候才会有。1960年代之前的电脑都是按照WORD大小进行组织：包括指令，整型数和内存宽度都是WORD大小。所以，不存在字节序的大小端问题。
 
 Just as with opening a boiled egg, both camps have good arguments.
 
 We’re used to writing decimals with the most significant digits to the left, and (reading left to right as usual) we say numbers that way: Shakespeare might have said “four and twenty,” but we say “twenty-four.” So if you write down numbers, it’s natural to put the most significant bits first. Bytes first appeared as a convenient way of packing characters into words, before memory was byte addressable. A 1970s vintage IBM programmer had spent most of his or her career poring over vast dump listings, and each set of characters represented a word, which was a number. Little-endian numbers look ridiculous. They were instinctive big-endians. But with numbers written MS to the left and byte addresses increasing in the same direction, it would have been inconsistent to have numbered the bits from right to left: So IBM labeled the MS bit of a word bit 0. Their world looked like Figure 10.1.
 
+我们再读写10进制数据的时候，习惯于从左到右，高有效位在左，低有效位在右。BYTE最早引入计算机，是为了方便将CHAR型字符打包成WORD，然后进行数据的交互。1970年代，一位IBM的老工程师花费了大量的时间，研究大量的内存dump列表，每个WORD大小的数据代表一组字符。这样看起来，使用小端字节序没有必要。大端字节序更有利于使用和阅读。但是，将数字的高有效位写在左端，字节顺序也是自左向右增加，这样和从右到左对bit位进行编号的行为不一致。于是，IBM将一个高有效位标记为bit0。看起来如下图所示：
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_1.PNG">
+
 But it’s also natural to number the bits according to their arithmetic significance within integer data types—that is, to assign bit number n to the position that has arithmetic significance 2n. It’s then consistent to store bits 0–7 in byte 0, and you’ve become a little-endian. Having words appear backward in dumps is a shame, but the little-endian view made particular sense to people who’d gotten used to thinking of memory as a big array of bytes. Intel, in particular, is little-endian. So its words, bytes, and bits look like Figure 10.2.
+
+但是，根据整型数据类型的算术意义对bit位进行编号更自然，也就是说，标记为`N`的bit位，其算术意义就是`2^N`。这样，就可以把bit0-7存储在`字节0`中。显然，这种方式就变成了小端模式。显然，这种方式不利于阅读，但是对于将内存看成是一个字节型的大数组的人来说，就会非常有意义。
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_2.PNG">
 
 You’ll notice that these diagrams have exactly the same contents: only the MS/LS are interchanged, as well as the order of the fields. IBM big-endians see words broken into bytes, while little-endians see bytes built into words. Both these systems seemed unarguably right to different people: There’s lots of merit in both, but you have to choose.
 
+通过上面的讨论，可以看出，两幅图中，内容都是相同的，只是最高有效位（MS）和最低有效位（LS）进行了互换，当然，bit位的顺序也发生了互换。IBM主导的大端模式，看到的是被分割成字节的WORD；而Intel主导的小端模式看到的是构建WORD的字节序列。毋庸置疑的是，对于不同的人群，它们都非常有用。它们都有自己的优点，就看你怎么选择了。
+
 But let’s get back to our observation about the problem above. Our mangled word started as 0x1234.5678, which is 00010010 00110100 01010110 01111000 in binary. If you transfer it naively to a system with the opposite endianness, you’d surely expect to see all the bits reversed. In that case you’d receive the number 00011110 01101010 00101100 01001000, which is hex 0x1E6A.2C48. But we said we’d read hex 0x7856.3412.
+
+让我们回到上面的问题。16进制数据`0x12345678`，二进制形式为`00010010 00110100 01010110 01111000`。如果传送给一个具有相反字节序的系统，你肯定期望看到所有的位是相反的：`00011110 01101010 00101100 01001000`，16进制为`0x1E6A2C48`。但是，为什么我们上边却说是`0x78563412`。
 
 It’s true that complete bit reversal could arise in some circumstances; there are communication links that send the MS bit first, and some that send the LS bit first. But sometime in the 1970s 8-bit bytes emerged as a universal base unit both inside computers and in computer communications systems (where they were called “octets”). Typically, communication systems build all their messages out of bytes, and only the lowest-level hardware engineers know which bit goes first.
 
+的确，在某些情况下完全可以实现上面的位反转：有些通讯链路先发送最高有效位，另一些则先发送最低有效位。但是，在上世纪70年代，更多地使用8位的字节作为计算机内部和计算机通信系统的基本单元。通常，通信系统使用字节构建消息流，由硬件决定哪一位首先被发送出去。
+
 Meanwhile, every microprocessor system got to use 8-bit peripheral controllers (wider controllers were reserved for the high-end stuff), and all those peripherals have 8-bit ports numbered 0 through 7, and the most significant  bit is 7. Somehow, without a shot apparently fired, every byte was little-endian, and has been ever since.
 
-Early microprocessor systems were 8-bit CPUs on 8-bit buses with 8-bit memory systems, so they had no endianness. Intel’s 8086 was a 16-bit littleendian system. When Motorola introduced the 68000 microprocessor around 1978, they greatly admired IBM’s mainframe architecture. Either in admiration for IBM or to differentiate themselves from Intel, they thought they should be big-endians too. But Motorola couldn’t oppose the prevailing bitswithin-bytes convention—every 8-bit Motorola peripheral would have had to be connected to a 68000 with its data bus bit-twisted. As a result, the 68000 family looks like Figure 10.3, with the bits and bytes numbered in opposite directions.
+与此同时，每个微控制器系统都使用8位宽的外设控制器（更宽的控制器是为高端设备预留的），这些外设一般都使用8位端口，bit0-bit7，最高有效位是bit7。对此，没有任何争议，每个字节都采用小端字节序。从那以后，一直保持到现在。
+
+Early microprocessor systems were 8-bit CPUs on 8-bit buses with 8-bit memory systems, so they had no endianness. Intel’s 8086 was a 16-bit little-endian system. When Motorola introduced the 68000 microprocessor around 1978, they greatly admired IBM’s mainframe architecture. Either in admiration for IBM or to differentiate themselves from Intel, they thought they should be big-endians too. But Motorola couldn’t oppose the prevailing bits within-bytes convention—every 8-bit Motorola peripheral would have had to be connected to a 68000 with its data bus bit-twisted. As a result, the 68000 family looks like Figure 10.3, with the bits and bytes numbered in opposite directions.
+
+而早期的微处理器系统，都是8位CPU，使用8位总线和一个8位的内存进行通信，所以，根本不存在字节序问题。Intel的8086是一个16位的小端系统。当摩托罗拉在1978年左右推出68000微处理器时，他们推崇IBM的大型机架构。不管是处于对IBM的敬仰，还是为了区别于Intel，他们选择了大端模式。但是，它们无法违反8位外设控制器的习惯，于是，每一个8位的摩托罗拉的外设通过交错的数据总线与68000进行连接。这就是，我们为什么说收到`0x78563412`数据的原因。于是，68000家族系列使用如下图所示的字节序：
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_3.PNG">
 
 The 68000 and its successors went on to be used for most successful UNIX servers and workstations (notably with Sun). When MIPS and other RISCs emerged in the 1980s, their designers needed to woo system designers with the right endianness, so they designed CPUs that could swing either way. But from the 68000 onward, big-endian has meant 68000-style big-endian, with bits and bytes going opposite ways. When you set up a MIPS CPU to be big-endian, it looks like Figure 10.3. And that’s where the trouble really starts.
 
+68000及其后继产品被大多数成功的UNIX服务器和工作站所使用（尤其是SUN公司）。所以，当MIPS架构和其它RISC指令集架构的CPU在1980年代出现时，他们的设计者为了兼容大小端字节序，都设置了配置选项，可以自由选择使用大小端模式。但是，从68000开始，大端模式就指68000风格的大端字节序，其bit位和字节序相反。当你配置MIPS架构CPU为大端模式时，就如上图所示。
+
 One small difficulty comes when you read hardware manuals for your CPU and see register diagrams. Everyone’s convinced that registers are (first and foremost) 32-bit integers, so they’re invariably drawn with the MS bit (bit 31, remember) first. This has some consequences for programmers and hardware designers alike. That picture motivates the difference between “shift-left” and “shift-right” instructions, determines the bit-number arguments of bitfield instructions, and even refers to the labeling of the bitfields that make up MIPS instructions.
 
-Once you get over that, there is serious software trouble when porting software ormoving data between incompatible machines; there is hardware trouble when connecting incompatible components or buses. We’ll take the software and hardware problems separately.
+选择不同的大小端模式，可能会影响你阅读CPU和寄存器手册。尤其是对于位操作指令，向左移动和向右移动的区别，位操作指令的参数位置等。
 
-# 2.2 Software and Endianness
+Once you get over that, there is serious software trouble when porting software or moving data between incompatible machines; there is hardware trouble when connecting incompatible components or buses. We’ll take the software and hardware problems separately.
 
-Here’s a software-oriented definition of endianness: A CPU/compiler system where the lowest addressed byte of amultibyte integer holds the least significant bits is called little-endian; a system where the lowest addressed byte of a multibyte integer holds the most significant bits is called big-endian. You can very easily find out which sort of CPU you have by running a piece of deliberately nonportable code:
+理解了这些，就要面对大小端模式对于软硬件的影响：软件的话，比如移植软件和数据通信；硬件的话，如不兼容组件或总线之间的连接问题。对此，我们分别进行阐述。
+
+# 2.2 软件和字节序
+
+Here’s a software-oriented definition of endianness: A CPU/compiler system where the lowest addressed byte of a multi-byte integer holds the least significant bits is called little-endian; a system where the lowest addressed byte of a multibyte integer holds the most significant bits is called big-endian. You can very easily find out which sort of CPU you have by running a piece of deliberately nonportable code:
 
     #include<stdio.h>
     main ()
