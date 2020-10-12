@@ -14,7 +14,7 @@
 
 本文就是总结一些在移植代码或者编写代码时，应该需要特别关注的一些点。
 
-# 1 基于MIPS架构移植软件时常见的问题
+# 1 MIPS架构移植软件时常见的问题
 
 以下是一些比较常见的问题：
 
@@ -63,7 +63,7 @@ We understand that we need to be careful with padding and alignment (details in 
 [^1]: come across，偶然相遇，无意中出现，讲的清楚明白，给人...印象；
 [^2]: curse，诅咒，咒骂；
 
-# 2.1 位、字节、字和整形
+## 2.1 位、字节、字和整形
 
 A 32-bit binary integer is represented by a sequence of bits, with each bit having a different significance. The least significant bit is “ones,” then “twos,” then “fours”—just as a decimal representation is “ones,” “tens,” and “hundreds.” When your memory is byte-addressable, your 32-bit integer occupies four bytes. There are two reasonable choices about how the integer and bytewise view tie up: Some computers put the least significant (LS) bits “first” (that is, in lower addressed memory bytes) and some put the most significant (MS) bit first—and Cohen called them little-endian and big-endian, respectively. When I first got to know about computers in 1976, DEC’s minicomputers were little-endian and IBM mainframes were big-endian; neither camp was about to give way.
 
@@ -121,17 +121,20 @@ Once you get over that, there is serious software trouble when porting software 
 
 理解了这些，就要面对大小端模式对于软硬件的影响：软件的话，比如移植软件和数据通信；硬件的话，如不兼容组件或总线之间的连接问题。对此，我们分别进行阐述。
 
-# 2.2 软件和字节序
+## 2.2 软件和字节序
 
 Here’s a software-oriented definition of endianness: A CPU/compiler system where the lowest addressed byte of a multi-byte integer holds the least significant bits is called little-endian; a system where the lowest addressed byte of a multibyte integer holds the most significant bits is called big-endian. You can very easily find out which sort of CPU you have by running a piece of deliberately nonportable code:
 
-    #include<stdio.h>
+对于软件来说，字节序的定义如下：如果CPU或编译器中，一个整型数的最低寻址字节存储的是最低有效位，那么就是小端模式；如果最低寻址字节存储的是最高有效位，那么就是大端模式。可以通过下面的代码，验证你的CPU是大端还是小端模式。
+
+    #include <stdio.h>
+
     main ()
     {
         union {
-            int as_int;
-            short as_short[2];
-            char as_char[4];
+            int     as_int;
+            short   as_short[2];
+            char    as_char[4];
         } either;
         
         either.as_int = 0x12345678;
@@ -148,76 +151,111 @@ Here’s a software-oriented definition of endianness: A CPU/compiler system whe
 
 Strictly speaking, software endianness is an attribute of the compiler toolchain, which could always—if it worked hard enough—produce the effect of either endianness. But on a byte-addressable CPU like MIPS with native 32-bit arithmetic it would be unreasonably inefficient to buck the hardware; thus we talk of the endianness of the CPU.
 
+严格说来，软件字节序是编译器工具链的一个属性，如果你想的话，可以产生任何字节序。但是对于像MIPS架构这样的可字节寻址的CPU，内部使用32位算术运算，这会导致硬件效率降低；因此，我们主要谈论的是CPU的字节序。
+
 Of course, the question of byte layout within the address space applies to other data types besides integers; it affects any item that occupies more than a single byte, such as floating-point data types, text strings, and even the 32-bit op-codes that represent machine instructions. For some of these noninteger data types, the idea of arithmetic significance applies only in a limited way, and for others it has no meaning at all.
+
+当然了，内存地址空间中字节布局的问题也同样适用于其它数据类型。比如浮点数据类型，文本字符串，甚至是机器指令的32位操作码。对于这些非整型数据类型来说，算术意义大部分情况下根本没有意义。
 
 When a language deals in software-constructed data types bigger than the hardware can manage, then their endianness is purely an issue of software convention—they can be constructed with either endianness. I hope that modern compiler writers appreciate that it’s a good idea to be consistent with the hardware’s own convention.
 
-## Endianness and Program Portability
+当软件要处理的数据类型大于硬件能够管理的数据类型时，字节序问题完全就成为软件的一种约定了，可以是任何字节序。当然了，最好还是与硬件本身的约定保持一致。
+
+### 2.2.1 字节序和可移植性
 
 So long as binary data items are never imported into an application from elsewhere, and so long as you avoid accessing the same piece of data under two different integer types (as we deliberately did above), your CPU’s endianness is invisible (and your code is portable). Modern C compilers will try to watch out for you: If you do this by accident, you’ll probably get a compiler error or warning.
 
+只要应用程序不从外界获取数据，或避免使用不同的整型数据类型访问同一个数据块（如上面我们故意那样做的那样），CPU的字节序对你的应用程序就是不可见的，也就是说，你的代码是可移植的。如果你这样干了，现在的C编译器都会努力在这方面给出warning或者error。
+
 You may not be able to live within those limitations, however; you may have to deal with foreign data delivered into your system from elsewhere, or with memory-mapped hardware registers. For either of these, you need to know exactly how your compiler accesses memory.
+
+但是，应用程序不可能接收这些限制。你可能必须处理外部发送过来的数据，或者需要把硬件寄存器映射到内存上，便于访问。不管哪种应用，你都需要准确知道编译器如何访问内存。
+
+This all seems fairly harmless, but experience shows that of all data-mapping problems, endianness is uniquely confusing. I think this is because it is difficult even to describe the problem without taking a side. The origin of the two alternatives lies in two different ways of drawing the pictures and describing the data; both are natural in different contexts.
+
+这好像没有什么，但是经验告诉我们，字节序是最容易混淆的。因为很难描述这个问题。两种方案起源于勾画和描述数据的不同方式，它们在各自的视角都没有什么问题。
+
+As we saw above, big-endians typically draw their pictures organized around words. So that gives us a big-endian picture of the data structure we used in Figure 10.4. It would look a lot prettier with the IBM convention of labeling the MS bit as bit 0, but that’s no longer done.
+
+如上所述，大端模式通常围绕WORD来组织其数据结构。如下图1所示。虽然按照IBM约定，将最高有效位（MS）标记为位0更为美观，但是，现在已经不在那样做了。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_4.PNG">
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_5.PNG">
 
-This all seems fairly harmless, but experience shows that of all data-mapping problems, endianness is uniquely confusing. I think this is because it is difficult even to describe the problem without taking a side. The origin of the two alternatives lies in two different ways of drawing the pictures and describing the data; both are natural in different contexts.
-
-Aswe sawabove, big-endians typically drawtheir pictures organized around words. So that gives us a big-endian picture of the data structure we used in Figure 10.4. It would look a lot prettier with the IBM convention of labeling the MS bit as bit 0, but that’s no longer done.
-
 But little-endians are likely to emphasize a software-oriented, abstract view of computer memory as an array of bytes. So the same data structure looks like Figure 10.5. Little-endians don’t think of computer data as primarily numeric, so they tend to put all the low numbers (bits, bytes, or whatever) on the left.
+
+而小端模式更主要从软件方面抽象数据结构，将计算机的内存视为一个字节类型的数组。如上图2所示。小端模式没有将数据看作是数值型的，所以倾向于把低有效位存放在左边。
 
 It’s very difficult to achieve a real grasp of endianness without drawing pictures, but many people find themselves struggling to set aside the conventions they’re used to; for example, if you’re used to numbering the bits from right to left, it can take a real effort of will to number them from left to right (a picture of a little-endian structure as drawn by someone with big-endian habits can look very illogical). This is the essence of the subject’s capacity to confuse: It’s difficult even to think about an unfamiliar convention without getting caught up in the ones you know.
 
-#### 2.3 硬件和大小端
+所以，软件大小端的字节序问题，归根结底就是一个习惯的问题：究竟习惯于从左到右，还是从右到左对bit位进行编号。每个人的习惯不同，这也是字节序问题容易混淆的根源。
+
+## 2.3 硬件和字节序
 
 We saw previously that a CPU’s native endianness only shows up when it offers direct support both for word-length numbers and a finer-resolution, byte-sized memory system. Similarly, your hardware system acquires a recognizable endianness when a byte-addressed system is wired up with buses that are multiple bytes wide.
 
-When you transfer multibyte data across the bus, each byte of that data has its own individual address. If the lowest-address byte in the data travels on the eight bus lines (“byte lane”) with the lowest bit numbers, the bus is little-endian. But if the lowest-address byte in the data travels on the byte lanewith the highest bit numbers, the bus is big-endian.
+前面我们已经看见，CPU内部的字节序问题，只有在能够同时提供WORD字长的数据和按字节访问的内存系统中才会出现。同样，当系统与具有多字节宽度的总线进行连接时，也会存在字节序问题。
+
+When you transfer multibyte data across the bus, each byte of that data has its own individual address. If the lowest-address byte in the data travels on the eight bus lines (“byte lane”) with the lowest bit numbers, the bus is little-endian. But if the lowest-address byte in the data travels on the byte lane with the highest bit numbers, the bus is big-endian.
+
+当通过总线传输多个字节数据时，数据中的每个字节都有自己的存储地址。如果总线上传输的数据的低地址字节，被编为低bit位编号，那么这条总线就是小端模式；反之，如果使用高bit位编号对数据的低地址字节进行编号，那么就是大端模式总线。
 
 There’s no necessary connection between the “native” endianness of a CPU and the endianness of its system interface considered as a bus. However, I don’t know of any CPUs where the software and interface endianness are different, so we can talk about “the endianness of a CPU” and mean both internal organization and system interface.
 
 Byte-addressable CPUs announce themselves as either big- or little-endian every time they transfer data. Intel and DEC CPUs are little-endian; Motorola 680x0 and IBM CPUs are big-endian. MIPS CPUs can be either, as configured from power-up; most other RISCs have followed the MIPS lead and chosen to make endianness configurable—a boon when updating an existing system with a new CPU.
 
+可字节寻址的CPU在它们传送数据的时候会声明是大端还是小端字节序。英特尔和DEC的CPU是小端模式；摩托罗拉680x0和IBM的CPU是大端模式。MIPS架构CPU可以支持大小端两种模式，需要上电时进行配置。许多其它RISC指令集架构的CPU也都遵循MIPS架构的思路，选择大小端可配置的方式：这在使用一个新的CPU替换已经存在的系统时是个优点，如果旧系统遵循小端模式，新的CPU也配置为小端模式；反之亦然。
+
 Hardware engineers can hardly be blamed for connecting up different buses by matching up the bit numbers. But trouble strikes when your system includes buses, CPUs, or peripherals whose endianness doesn’t match. In this case the choice is not a happy one; the system designer must choose the lesser of two evils:
 
-* Bit number consistent/byte sequence scrambled: Most obviously, the designer can wire up the two buses according to their bit numbers, which will have the effect of preserving bit numbering within aligned “words.” But since the relationship between bit numbers and bytes-within-words is different on the two buses, the two sides will see the sequence of bytes in memory differently. 
+* Bit number consistent/byte sequence scrambled: 
+
+    Most obviously, the designer can wire up the two buses according to their bit numbers, which will have the effect of preserving bit numbering within aligned “words.” But since the relationship between bit numbers and bytes-within-words is different on the two buses, the two sides will see the sequence of bytes in memory differently. 
 
     Any data that is not of bus-width size and bus-width aligned will get mangled when transferred between the connected buses, with bytes swapped within each bus-width-sized unit. This looks and feels worse than the software problem. With wrong-endianness data in software, you have no problem finding data type boundaries; it’s just that the data doesn’t make sense. With this hardware problem the boundaries are scrambled too (unless the data are, by chance, aligned on bus-width “word” boundaries).
 
     There’s a catch here. If the data being passed across the interface is always aligned word-length integers, then bit-number-consistent wiring will conceal the endianness difference, avoiding the need for software conversion of integers. But hardware engineers very rarely know exactly which data will be passed across an interface over the lifetime of a system, so be cautious.
 
-* Byte address consistent/integers scrambled: The designer can decide to preserve byte addressing by connecting byte lanes that correspond to the same byte-within-word address, even though the bit-numbering of the data lines in the byte lane doesn’t match at all. Then at least the whole system can agree on the data seen as an array of bytes.
+* Byte address consistent/integers scrambled: 
 
-However, there are presumably going to be componentswith mismatched software endianness in the system. So your consistent byte addressing is guaranteed to expose their disagreement about the representation of multibyte integers. And—in particular—even a bus-width-aligned integer (the “natural” unit of transfer)will appear byte-swapped whenmoved to the other endianness.
+    The designer can decide to preserve byte addressing by connecting byte lanes that correspond to the same byte-within-word address, even though the bit-numbering of the data lines in the byte lane doesn’t match at all. Then at least the whole system can agree on the data seen as an array of bytes.
+
+However, there are presumably going to be components with mismatched software endianness in the system. So your consistent byte addressing is guaranteed to expose their disagreement about the representation of multibyte integers. And—in particular—even a bus-width-aligned integer (the “natural” unit of transfer)will appear byte-swapped when moved to the other endianness.
 
 For most purposes, byte address scrambling is much more harmful, and we’d recommend “byte address consistent” wiring. When dealing with data representation and transfer problems, programmers will usually fall back on C’s basic model of memory as an array of bytes, with other data types built up from that. When your assumptions about memory order don’t work out, it’s very hard to see what’s going on.
 
 Unfortunately, a bit number consistent/byte address scrambled connection looks much more natural on a schematic; it can be very hard to persuade hardware engineers to do the right thing.
 
-Not every connection in a system matters. Suppose we have a 32-bit-wide memory system bolted directly to a CPU. The CPU’s system interface may not include a byte-within-word address—the address bus does not specify address bits 1 and 0. Instead, many CPUs have four “byte enables,” which show that data is being transferred on particular byte lanes. The memory array is wired to the whole bus, and on a write the byte enables tell the memory array which of four possible byte locations within the word will actually get written. Internally, the CPU associates each of the byte lanes with a byte-within-word address, but that has no effect on the operation of the memory system. Effectively, the memory/CPU combination acts together and inherits the endianness of the CPU; where byte-within-word 0 actually goes in memory doesn’t matter, so long as the CPU can read it back again.
+Not every connection in a system matters. Suppose we have a 32-bit-wide memory system bolted directly to a CPU. The CPU’s system interface may not include a byte-within-word address—the address bus does not specify address bits 1 and 0. Instead, many CPUs have four “byte enables,” which show that data is being transferred on particular byte lanes. The memory array is wired to the whole bus, and on a write the byte enables tell the memory array which of four possible byte locations within the word will actually get written. Internally, the CPU associates each of the byte lanes with a byte-within-word address, but that has no effect on the operation of the memory system. Effectively, the memory/CPU combination acts together and inherits the endianness of the CPU; where byte-within-word 0 actually goes in memory doesn’t matter, so long as the CPU can read it back again[^3].
 
 It’s very important not to be seduced by this helpful characteristic of a RAM memory into believing that there’s no intrinsic endianness in a simple CPU/RAM system. You can spot the endianness of any transfer on a wide bus. Here’s a sample list of conditions in which you can’t just ignore the CPU’s endianness when building a memory system:
 
-* If your system uses firmware that’s preprogrammed into ROMmemory, the hardware address and byte lane connection assignments within the system need to match those assumed in the way the ROM was programmed, and the data contained in the ROM needs to match the CPU’s configured endianness. In effect, the contents of the ROM are being delivered into your system from somewhere outside it. If the code is to be executed directly from the ROM, it’s especially important to get the endianness right, because it’s impossible for the CPU to apply any corrective software byte-swapping to the op-codes as it fetches them.
+* If your system uses firmware that’s preprogrammed into ROM memory, the hardware address and byte lane connection assignments within the system need to match those assumed in the way the ROM was programmed, and the data contained in the ROM needs to match the CPU’s configured endianness. In effect[^4], the contents of the ROM are being delivered into your system from somewhere outside it. If the code is to be executed directly from the ROM, it’s especially important to get the endianness right, because it’s impossible for the CPU to apply any corrective software byte-swapping to the op-codes as it fetches them.
+* 如果你的系统使用的是预先烧录到ROM内存中的固件时，硬件地址总线和字节数据通道与系统的连接方式必须与ROM编程时假设的方式是一致的。通俗的讲，现在是ROM，程序数据是预先写入到ROM中的，也就是大小端方式固定了，那么它与系统总线的连接必须是一致的大小端方式。尤其是对于指令来说，这很重要，因为它决定了取出的指令中操作码的字节序。
 
 * When a DMA device gets to transfer data directly into memory, then its notions of ordering will matter.
 
-* When aCPUinterface does not in fact use byte enables, but instead issues byte-within-word addresses with a byte-width code (quite common for MIPS CPUs), then at least the hardware that decodes the CPU’s read and write requests must know which endianness the CPU is using. This can be particularly tricky if the CPU allows endianness to be softwareconfigured.
+* When a CPU interface does not in fact use byte enables, but instead issues byte-within-word addresses with a byte-width code (quite common for MIPS CPUs), then at least the hardware that decodes the CPU’s read and write requests must know which endianness the CPU is using. This can be particularly tricky if the CPU allows endianness to be software configured.
 
 The next section is for you to tell your hardware engineer about how to set up a byte address consistent system—and even how to make that system configurable with the CPU, if some of your users might set up the MIPS CPU both ways.
 
+[^3]: 熟悉硬件的工程师可能意识到了一个更为通用的原则：可写存储器的一个性质就是，不管连接到它的地址和数据总线怎么排列，都能继续工作。一个具体数据存储在哪里并不重要，重要的是你给出相同的读取地址时，能够正确读取之前写入的数据即可。
+[^4]: in effect， 实际上，生效
 
-#### Wiring Endianness-Inconsistent Buses
+### 2.3.1 连接字节序不一致的总线
 
 Suppose we’ve got a 64-bit MIPS CPU configured big-endian, and we need to connect it to a little-endian 32-bit bus such as PCI.
 
+假设我们有一个64位的CPU，配置为大端模式，将其与一个小端模式的32位PCI总线相连。下图展示了如何连线，以获得CPU和PCI两端看上去都一致的字节地址。
+
 Figure 10.6 shows how we’d wire up the data buses to achieve the recommended outcome of consistent byte addresses as seen by the big-endian CPU and the little-endian bus.
 
-The numbers called “byte lane” show the byte-within-bus-width part of the address of the byte data traveling there.Writing in the byte lane numbers is the key to getting one of these connections right.
+The numbers called “byte lane” show the byte-within-bus-width part of the address of the byte data traveling there. Writing in the byte lane numbers is the key to getting one of these connections right.
 
-Since the CPU bus is 64 bits wide and the PCI bus 32 bits, you need to be able to connect each half of the wide bus to the narrow bus according to the “word” address—that’s address bit 2, since address bits 1 and 0 are the bytewithin-32-bit-word address. The CPU’s 64-bit bus is big-endian, so its highnumbered bits carry the lower addresses, as you can see from the byte lane numbers.
+Since the CPU bus is 64 bits wide and the PCI bus 32 bits, you need to be able to connect each half of the wide bus to the narrow bus according to the “word” address—that’s address bit 2, since address bits 1 and 0 are the byte-within-32-bit-word address. The CPU’s 64-bit bus is big-endian, so its high-numbered bits carry the lower addresses, as you can see from the byte lane numbers.
+
+因为CPU是64位，而PCI总线是32位，所以，根据32位WORD宽的地址中的bit2，将64位总线分成两组，与32位PCI总线进行连接。比特位1和比特位0是每个WORD中的其中一个字节地址。CPU的64位总线是大端模式，高编号的位携带的是低地址，这个从字节通道的编号能够看出来。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_6.PNG">
 
@@ -225,7 +263,7 @@ You may find yourself staring at the numbering of the connections around the bus
 
 And note that I only showed data. PCI is a multiplexed bus, and in some clock cycles those “byte lanes” are carrying an address. In address cycles, PCI bus wire 31 is carrying the most significant bit of the address. The address-time connection from your MIPS-based system should not be swapped.
 
-#### Wiring an Endianness-Configurable Connection
+### 2.3.2 建立字节序可配置的连接
 
 Suppose you want to build a board or bus switch device that allows you to configure a MIPS CPU to run with either endianness. How can we generalize the advice above?
 
@@ -233,45 +271,79 @@ We’d suggest that, if you can persuade your hardware designer, you should put 
 
 We call this a byte lane swapper, not a byte swapper, to emphasize that it does not alter its behavior on a per-transfer basis, and in particular to indicate that it is not switched on and off for transfers of different sizes. There are circumstances where it can be switched on and off for transfers to different address regions—mapping some part of the system as bit number consistent/byte address scrambled—but that’s for you to make work.
 
+上面的方法毕竟是固定的，一旦完成硬件设计就无法改动了。如果我们想要实现一个类似于总线开关设备，用它进行切换，让CPU既可以工作在大端模式，也可以工作在小端模式，如下图所示。
+
+在这儿，我们称这个总线开关设备为字节通道交换器，而不是字节交换器。主要是想强调这个设备不管是开，还是关，都不会影响传输数据的大小。有了这个设备，我们就可以根据需要，认为关闭或者打开它，存取字节一致或者不一致的数据。
+
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_7.PNG">
 
 What a byte lane swapper does achieve is to ensure that whether your CPU is set up to be big- or little-endian, the relationship between the CPU and the now mismatched external bus or device can still be one where byte sequnce is preserved.
 
+字节通道交换器所做的就是无论你的CPU设置为大端模式还是小端模式，CPU和不匹配的外设总线或设备之间，数据总能按照想要的序列进行交换。
+
 You normally won’t put the byte-lane swapper between the CPU and its local memory—this is just as well, because the CPU/local memory connection is fast and wide, which would make the byte swapper expensive.
+
+正常情况下，在CPU和内存之间不需要添加字节通道交换器。因为它们之间的连接本身就是快速且是并联的，添加字节通道交换器的代价比较昂贵。
 
 As mentioned above, so long as you can decode the CPU’s system interface successfully, you can treat the CPU/local memory as a unit and install the byte swapper between the CPU/memory unit and the rest of the system. In this case, the relationship between bit number and byte order inside the local memory changes with the CPU, but this fact is not visible from the rest of the world.
 
-#### False Cures and False Prophets for Endianness Problems
+综上所述，只要能够成功解码CPU的系统接口，就可以将CPU和本地内存视为一个单元。然后，在CPU/内存单元和系统其它部分之间添加字节通道交换器。这样，无论CPU配置成什么工作模式，字节序不再是一个问题了。
+
+### 2.3.3 False Cures and False Prophets for Endianness Problems
 
 Every design team facing up to endianness for the first time goes through the stage of thinking that the troubles reflect a hardware deficiency to be solved. It’s never that simple. Here are a few examples.
 
-* Configurable I/O controllers: Some newer I/O devices and system controllers can themselves be configured into big-endian and little-endian modes. You’re going to have to read the manual very carefully before using such a feature, particularly if you mean to use it not as a static (design time) option but rather as a jumper (reset time) option.
+每个团队在第一次遇到字节序问题时，都可能会思考：这个问题可能反映了一个需要解决的硬件缺陷。然而，事情往往没有那么简单。比如下面的2个例子，有时候必须需要编程人员的干预。
+
+* 可配置的I/O控制器： 
+
+    Some newer I/O devices and system controllers can themselves be configured into big-endian and little-endian modes. You’re going to have to read the manual very carefully before using such a feature, particularly if you mean to use it not as a static (design time) option but rather as a jumper (reset time) option.
+
+    一些新的I/O设备和系统控制器本身就可以自由配置成大端或者小端模式。想要使用这些特性之前，必须仔细阅读芯片手册。尤其是，硬件设计为可以使用跳线帽进行选择，而不是固定在某种工作模式下时。
 
     It is quite common for such a feature to affect only bulk data transfers, leaving the programmer to handle other endianness issues, such as access to bit-coded device registers or shared memory control fields. Also, the controller designer probably didn’t have the benefit of this book—and confusion about endianness is widespread.
 
-* Hardware that byte-swaps according to transfer type: If you’re designing in some byte-swap hardware, it seems appealing to try to solve the whole problem. If we just swapped byte data to preserve its addresses, but left words alone, couldn’t we prevent the whole software problem? The answer is no, there aren’t any hardware fixes for the software problem. For example, many of the transfers in a real system are of data cache lines. They may contain an arbitrary mixture of data sizes and alignments; if you think about it for a moment, you’ll see that there simply isn’t any way to know where the boundaries are, which means there’s no way to determine the required swap configuration.
+    这些特性一般在大块数据传输时使用，其余的字节序问题，比如访问位编码的设备寄存器或者共享内存的控制位等问题，留给编程人员进行单独处理。
 
-Conditional byte-swapping just adds confusion. Anything more than unconditional byte lane swapping is snake oil.
+* 可以根据传输类型进行字节交换的硬件： 
 
-# 2.4 Bi-endian Software for a MIPS CPU
+    If you’re designing in some byte-swap hardware, it seems appealing to try to solve the whole problem. If we just swapped byte data to preserve its addresses, but left words alone, couldn’t we prevent the whole software problem? The answer is no, there aren’t any hardware fixes for the software problem. For example, many of the transfers in a real system are of data cache lines. They may contain an arbitrary mixture of data sizes and alignments; if you think about it for a moment, you’ll see that there simply isn’t any way to know where the boundaries are, which means there’s no way to determine the required swap configuration.
+
+    如果你正在尝试设计一些字节交换硬件，意图解决整个问题。可以肯定的告诉你，这条路行不通。软件问题没有任何一个可以一劳永逸的硬件解决方案。比如，一个实际系统中的许多传输都是以数据高速缓存作为单位的。他们可能包含不同大小和对其格式的任意数据组合。可能无法知道数据的边界在哪里，也就意味着没有办法确定所需的字节交换配置。
+
+有条件的字节交换除了增加混乱之外，没有什么多大用处。除了无条件的字节通道交换器之外，任何做法都是用来骗人的东西。
+
+## 2.4 为MIPS架构CPU写支持任意字节序的软件
 
 You may want to create binary code that will run correctly on MIPS CPUs with either endianness—probably for a particular board that may be run either way or to create a portable device driver that may run on boards of either configuration. It’s a bit tricky, and you will probably only do a tiny part of your bootstrap code like this, but here are some guidelines.
 
-The MIPS CPU doesn’t have to do toomuch to change endianness. The only parts of the instruction set that recognize objects smaller than 32 bits are partialword loads and stores. On a MIPS CPU with a 32-bit bus, the instruction:
+The MIPS CPU doesn’t have to do too much to change endianness. The only parts of the instruction set that recognize objects smaller than 32 bits are partial-word loads and stores. On a MIPS CPU with a 32-bit bus, the instruction:
 
     lbu t0, 1(zero)
 
 takes the byte at byte program address 1, loads it into the least significant bits (0 through 7) of register t0, and fills the rest of the register with zero bits. This description is endianness independent. However, in big-endian mode the data loaded into the register will be taken from bits 16–23 of the CPU data bus; in little-endian mode, the byte is loaded from bits 8–15 of the CPU data bus.
 
+取地址1处的字节，加载到寄存器t0的最低有效位上（0-7），其余部分填充0。这条指令本身描述是与字节序无关的。但是，大端模式下，数据将从CPU数据总线的位16-23进行读取；小端模式下，将从CPU数据总线的位8-15位进行加载。
+
 Inside the MIPS CPU, there’s data-steering hardware that the CPU uses to direct all the active bytes in a transfer from their respective byte lanes at the interface to the correct positions within the internal registers. This steering logic has to accommodate all permutations of load size, address, and alignment (including the load/store left/right instructions described in section 8.5.1).
 
-It is the change in the relationship between the active byte lane and the address on partial-word loads and stores that characterizes the MIPS CPU’s endianness.When you reconfigure your MIPS CPU’s endianness, it’s that steering logic between data and register whose behavior changes.
+MIPS架构CPU内部，有个硬件单元负责把有效的字节从它们各自的字节通道中，加载到内存寄存器的正确位置上。这个负责操纵数据加载的硬件逻辑能够适应所有的加载大小、地址和对齐方式的组合（包括`load/store`和左右移位指令等）。
+
+It is the change in the relationship between the active byte lane and the address on partial-word loads and stores that characterizes the MIPS CPU’s endianness. When you reconfigure your MIPS CPU’s endianness, it’s that steering logic between data and register whose behavior changes.
+
+正是这个特性使得MIPS架构的CPU能够配置大小端工作模式。当你重新配置MIPS架构CPU的字节序时，正是改变了这个操纵数据加载的硬件逻辑单元的行为。
 
 Complementing the chip’s configurability, most MIPS toolchains can produce code of either endianness, based on a command-line option.
 
+为了配合CPU大小端的可配置性，大部分的MIPS工具链都能够在编译flag中添加一个选项，编译产生任何字节序的代码。
+
 If you set a MIPS CPU to the wrong endianness for its system, then a couple of things will happen.
 
+如果你设置了MIPS架构的CPU与系统不匹配的字节序，将会发生一些预料不到的事情。
+
 First, if you change nothing else, the software will crash quickly, because on any partial-word write the memory system will pick up garbage data from the wrong part of the CPU bus. At the same time as reconfiguring the CPU, we’d better reconfigure the logic that decodes CPU cycles.2
+
+首先，软件可能会迅速崩溃，因为对于字节的读取可能会获取垃圾数据。在重新配置CPU的同时，最好重新配置解码CPU的时钟逻辑[^5]。
 
 If you fix that, you’ll find that the CPU’s view of byte addressing becomes scrambled with respect to the rest of the system; in terms of the description above, we’ve implicitly opted for a connection that keeps the bit numbers consistent, rather than the byte addresses.
 
@@ -292,25 +364,35 @@ That’s what the string Emergency (with its standard C terminating null and two
 
 You’ve seen that writing bi-endian code is possible, but be aware that when you’re ready to load it into ROM, you’ll be asking your tools to do something they weren’t designed to handle. Typically, big-endian tools pack instruction words into the bytes of a load file with the most significant bits first, and littleendian tools work the other way around. You’ll need to think carefully about the result you need to achieve, and examine the files you generate to make sure everything went according to plan.
 
-#### 2.5 Portability and Endianness-Independent Code
+[^5]: 有些CPU接口的字节传输采用独立的字节通道选通信号，就不会发生这种问题。
 
-By a fairly well-respected convention, most MIPS toolchains define the symbol BYTE ORDER as follows:
+## 2.5 可移植性和大小端无关代码
+
+按照约定，大部分的MIPS工具链定义`BYTE_ORDER`作为字节序选择的宏定义选择的符号。
 
     #if BYTE_ORDER == BIG_ENDIAN
-    /* big-endian version... */
+    /* 大端模式版本代码... */
     #else
-    /* little-endian version... */
+    /* 小端模式版本代码... */
     #endif
 
 So if you really need to, you can put in different code to handle each case. But it’s better—wherever possible—to write endianness-independent code. Particularly in a well-controlled situation (such as when writing code for a MIPS system that may be initialized with the CPU in either mode), you can get rid of a lot of dependencies by good thinking.
 
-All data references that pick up data from an external source or device are potentially endianness dependent. But according to how your system is wired, youmay be able to produce code that works both ways. There are only two ways of wiring the wrong endianness together: One preserves byte addresses and the other bit numbers. For some particular peripheral register access in a particular range of systems, there’s a good chance that the endianness change consistently sticks to one of these.
+如果确实需要，你可以选择使用上面的模板编写不同的分支，分别处理大端模式和小端模式的代码。但是，还是尽量编写与字节序无关的代码，CPU处于哪种模式下，就编写哪种模式下的代码。
+
+All data references that pick up data from an external source or device are potentially endianness dependent. But according to how your system is wired, you may be able to produce code that works both ways. There are only two ways of wiring the wrong endianness together: One preserves byte addresses and the other bit numbers. For some particular peripheral register access in a particular range of systems, there’s a good chance that the endianness change consistently sticks to one of these.
+
+所有从外部数据源或设备接收数据的引用都有潜在的字节序问题。但是，根据系统的布线方式，你能够生成双向工作的代码。在不同的字节序之间接线只有两种方式：一种保持字节地址不变，另一种保持位编号不变。在系统特定范围内访问具体的外设寄存器，字节序可以保持与二者之一保持一致。
 
 If your device is typically mapped to be byte address compatible, then you should program it strictly with byte operations. If ever, for reasons of efficiency or necessity, you want to transfer more than one byte at a time, you need to write endianness-conditional code that packs or unpacks that data.
 
-If your device is compatible at the word (32-bit) level—for example, it consists of registers wired (by however devious and indirect a route) to a fixed set of MIPS data bus bits—then program it with bus-width read/write operations. That will be 32-bit or 64-bit loads and stores. If the device registers are notwired to MIPS data bus bits starting at 0, you’ll probably want to shift the data after a read and before a write. For example, 8-bit registers on a 32-bit bus in a system originally conceived as big-endian are commonly wired via bits 31–24.
+如果你的外设通常被映射为字节地址兼容，那么你应该按照字节操作进行编程。如果为了效率或者处于不得已，想要一次传输多个字节，你需要编写根据字节序进行打包和解包的代码。
 
-#### 2.6 Endianness and Foreign Data
+If your device is compatible at the word (32-bit) level—for example, it consists of registers wired (by however devious and indirect a route) to a fixed set of MIPS data bus bits—then program it with bus-width read/write operations. That will be 32-bit or 64-bit loads and stores. If the device registers are not wired to MIPS data bus bits starting at 0, you’ll probably want to shift the data after a read and before a write. For example, 8-bit registers on a 32-bit bus in a system originally conceived as big-endian are commonly wired via bits 31–24.
+
+如果你的外设与32位WORD兼容，通常按照总线宽度进行读写操作。那就是32位或64位的读写操作。
+
+## 2.6 字节序和外来数据（省略）
 
 This chapter is about programming, not a treatise on I/O and communications, so we’ll keep this section brief. Any data that is not initialized in your code, chosen libraries, and OS is foreign. It may be data you read from some memory-mapped piece of hardware, data put into memory by DMA, data in a preprogrammed ROM that isn’t part of your program, or you may be trying to interpret a byte stream obtained from an “abstract” I/O device under your OS.
 
