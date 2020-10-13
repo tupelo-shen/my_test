@@ -404,73 +404,131 @@ If the chain along which the data has reached you has preserved byte order at ea
 
 But if the data has passed over a bit number consistent/byte address scrambled interface, it can be more difficult. In these circumstances, you need to locate the boundaries corresponding to the width of the bus where the data got swapped; then, taking groups of bytes within those boundaries, swap them without regard to the underlying data type. If you do it right, the result should now make sense, with the correct byte sequence, although you may still need to cope with the usual problems in the data—including, possibly, the need to swap multibyte integer data again.
 
-# 3 Trouble with Visible Caches
+# 3 高速缓存可见性带来的问题
 
 In section 4.6, you learned about the operations you can use to get your caches initialized and operating correctly. This section alerts you to some of the problems that can come up and explains what you can do to deal with them.
 
+在之前的文章《[MIPS高速缓存机制](https://tupelo-shen.github.io/2020/06/10/MIPS%E6%9E%B6%E6%9E%84%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A34-Cache%E6%9C%BA%E5%88%B6/) 》中，我们已经了解了初始化和正确操作Cache的方法。本段主要讲解一些可能出现的问题，并解释如何处理这些问题。
+
 Most of the time, the caches are completely invisible to software, serving only to accelerate the system as they should. But especially if you need to deal with DMA controllers and the like, it can be helpful to think of the caches as independent buffer memories, as shown in Figure 10.9.
 
-It’s important to remember that transfers between cache and memory always work with blocks of memory that fit the cache line structure—typically 16- or 32-byte-aligned blocks—so the cache may read or write a block because the
+大部分时候，Cache对软件都是不可见的，只是一个加速系统执行的工具。但是，当你需要处理DMA控制器及其类似的事物时，考虑把Cache作为一个独立的内存的buffer会很有帮助，如下图所示：
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_9.PNG">
 
-CPU makes direct reference to just one of the byte addresses contained within it; even if the CPU never touches any of the other bytes in the cache line, it’ll still include all the bytes in the next transfer of that cache line.
+It’s important to remember that transfers between cache and memory always work with blocks of memory that fit the cache line structure—typically 16- or 32-byte-aligned blocks—so the cache may read or write a block because the CPU makes direct reference to just one of the byte addresses contained within it; even if the CPU never touches any of the other bytes in the cache line, it’ll still include all the bytes in the next transfer of that cache line.
+
+重要的是，Cache和内存之间的传输总是以16字节或32字节对齐的内存块作为传输单元。即使CPU只是读取一个字节，仍然会加载这样的内存块到Cache行中。
 
 In an ideal system, we could always be certain that the state of the memory is up-to-date with all the operations requested by the CPU, and that every valid cache line contains an exact copy of the appropriate memory location. Unfortunately, practical systems can’t always live up to this ideal. We’ll assume that you initialize your caches after any reset, and that you avoid (rather than try to live with) the dreaded cache aliases described in section 4.12. Starting from those assumptions, how does a real system’s behavior fall short of the ideal?
 
-* Stale data in the cache: When your CPU writes to memory in cached space, it updates the cached copy (and may also write memory at the same time). But if a a memory location is updated in any other way, any cached copies of its contents continue to hold the old value, and are now out-of-date. That can happen when a DMA controller writes data. Or, when the CPU writes new instructions for itself, the I-cache may continue to hold whatever was at the same location before. It’s important for programmers to realize that the hardware generally doesn’t deal with these conditions automatically.
+理想情况下，内存的状态与CPU请求的所有操作都是最新的，每个有效的Cache行都保存一份正确的内存备份。不幸的是，实际的系统根本就达不到这种理想的情况。假设每次复位之后都初始化缓存，并且也不存在《[MIPS高速缓存机制](https://tupelo-shen.github.io/2020/06/10/MIPS%E6%9E%B6%E6%9E%84%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A34-Cache%E6%9C%BA%E5%88%B6/)》一文中提到的Cache重影问题。Cache和内存之间还是会存在数据不一致的问题。如下：
 
-* Stale data in memory: When the CPU writes some data into a (writeback) cache line, that data is not immediately copied to memory. If the data is read later by the CPU, it gets the cached copy and is fine; but if something that isn’t the CPU reads memory, it may get the old value. That can happen to an outbound DMA transfer.
+* Cache中的旧数据：
 
-The software weapons you have to fight problems caused by visible caches are a couple of standard subroutines that allow you to clean up cache/memory inconsistency, built on MIPS cache instructions. They operate on cache locations corresponding to a specified area of memory and can write-back up-todate cache data or invalidate cache locations (or both).
+    When your CPU writes to memory in cached space, it updates the cached copy (and may also write memory at the same time). But if a a memory location is updated in any other way, any cached copies of its contents continue to hold the old value, and are now out-of-date. That can happen when a DMA controller writes data. Or, when the CPU writes new instructions for itself, the I-cache may continue to hold whatever was at the same location before. It’s important for programmers to realize that the hardware generally doesn’t deal with these conditions automatically.
+
+    当CPU向Cache的内存区写入数据时，它会更新Cache中的备份，同时写入内存。但是，如果通过其它方式更新了内存，那么Cache中的备份就有可能成为旧数据。比如，DMA控制器写内存，或者，CPU往内存中写入新指令，I-Cache继续保持原先的指令等。所以，编程人员应该注意，硬件是不会自动处理这些情况的。
+
+* 内存中的旧数据： 
+
+    When the CPU writes some data into a (writeback) cache line, that data is not immediately copied to memory. If the data is read later by the CPU, it gets the cached copy and is fine; but if something that isn’t the CPU reads memory, it may get the old value. That can happen to an outbound DMA transfer.
+
+    当CPU写数据到Cache行中（回写），数据不会立即复制到内存中。稍后，CPU读取数据，直接读取Cache拷贝，一切没有问题。但是，如果不是CPU读取数据，而是其它控制器直接从内存读取数据，就会获取旧值。比如，向外传送的DMA。
+
+The software weapons you have to fight problems caused by visible caches are a couple of standard subroutines that allow you to clean up cache/memory inconsistency, built on MIPS cache instructions. They operate on cache locations corresponding to a specified area of memory and can write-back up-to-date cache data or invalidate cache locations (or both).
+
+为此，MIPS架构提供了Cache指令，可以根据需要调用它们，消除这种内存和Cache的不一致性。这些指令可以将最新的Cache数据写回到内存中，或者根据内存的最新状态失效对应的Cache行中的内容。
 
 Well, of course, you can always map data uncached. In fact, there are some circumstances when you will do just that: Some network device controllers, for example, have a memory-resident control structure where they read and write bytes and bit flags, and it’s a lot easier if you map that control structure uncached. The same is true, of course, of memory-mapped I/O registers, where you need total control over what gets read and written. You can do that by accessing those registers through pointers in kseg1 or some other uncached space; if you use cached space for I/O, bad things will happen!
 
+当然了，我们可以把数据映射到非Cache的内存区，比如`kseg1`区域。比如，网络控制器，映射一段非Cache的内存区保存读写的数据和标志位；这样可以方便快速的读取数据，因为不需要同步Cache和内存中的数据。相同的，内存映射的I/O寄存器，最好也映射到非Cache的内存区，通过`kseg1`或其它非Cache内存区中的指针进行访问。如果为I/O使用经过Cache的内存区，可能发生坏事情。
+
 If (unusually) you need to use the TLB to map hardware register accesses, you can mark the page translation as uncached. That’s useful if someone has built hardware whose I/O registers are not in the low 512 MB of the physical memory space.
 
-It’s possible that you might want to map a memory-like device (a graphics frame buffer, perhaps) through cached space so as to benefit from the speed of the block reads and writes that the CPU only uses to implement cache refills and write-backs. But you’d have to explicitly manage the cache by invalidation and write-back on every such access. Some embeddedCPUs provide strange and wonderful cache options that can be useful for that kind of hardware—check your manual.
+如果你需要使用TLB映射硬件寄存器，从而进行访问，你可以标记页转换为非Cache内存区（当然了，这不经常使用）。当I/O寄存器的内存地址不在低512M物理地址空间的时候，该方法是非常有用的。
 
-#### 3.1 Cache Management and DMA Data
+It’s possible that you might want to map a memory-like device (a graphics frame buffer, perhaps) through cached space so as to benefit from the speed of the block reads and writes that the CPU only uses to implement cache refills and write-backs. But you’d have to explicitly manage the cache by invalidation and write-back on every such access. Some embedded CPUs provide strange and wonderful cache options that can be useful for that kind of hardware—check your manual.
+
+还有的使用情况就是映射类似图像帧缓冲区为使用Cache的内存区，充分利用CPU的Cache充填和回写的block读写速度，提高像素帧的刷新频率。但是，每次图像帧的访问，都需要失效和回写Cache，显式地管理Cache。有一些嵌入式CPU，可能会提供一些奇怪但好用地Cache选项，请仔细检查对应芯片的手册。
+
+## 3.1 Cache管理和DMA数据
 
 This is a common source of errors, and the most experienced programmers will sometimes get caught out. Don’t let that worry you too much: Provided you think clearly and carefully about what you’re trying to achieve, you’ll be able to get your caches to behave as they should while your DMA transfers work smoothly and efficiently.
 
+Cache管理和DMA数据传输是一个很容易出错的地方，即使很有经验的编程者也常常会犯错。对此，不要犯怵；只要清晰地知道自己想干什么以及怎么干，你就能让你的Cache和DMA传输正常工作。
+
 When a DMA device puts data into memory, for example, on receipt of network data, most MIPS systems don’t update the caches—even though some cache lines may currently be holding addresses within the region just updated by the DMA transfer. If the CPU subsequently reads the information in those cache lines, it’ll pick up the old, stale version in the cache; as far as the CPU can tell, that’s still marked valid, and there’s no indication that the memory has a newer version.
+
+比如，当从网络上接收到数据后，DMA设备会直接把数据存进内存，大部分MIPS系统不会更新Cache--即使某些Cache行中持有的地址落在DMA传输更新的内存区域中。随后，如果CPU读取这些Cache行的数据，将会读取Cache中旧的、过时的数据；就CPU而言，没有被告知内存中已经有了新数据，Cache中的数据仍然是合法的。
 
 To avoid this, your software must actively invalidate any caches’ lines that fall within the address range covered by your DMA buffer, before there’s any chance that the CPU will try to refer to them again. This is much easier to manage if you round out all your DMA buffers so they start and end exactly at cache line boundaries.
 
-For outbound transfers, before you allowaDMAdevice to transfer data from memory—such as a packet that you’re sending out via a network interface—you must make absolutely sure that none of the data to be sent is still just sitting in the cache. After your software has finished writing out the information to be transferred by DMA, it must force the write-back of all cache lines currently holding information within the address range that the DMA controller will use for the transfer. Only then can you safely initiate the DMA transfer.
+为了避免这种情况，你的程序必须在CPU尝试读取落在DMA缓冲区对应地址范围的数据前，主动失效对应Cache行中的内容。应该将DMA缓冲区的边界和Cache行的边界对齐，这样更容易管理。
 
-On some MIPS CPUs, you can avoid the need for explicit write-back operations by configuring your caches to use write-through rather than write-back behavior, but this cure is really worse than the disease — write-through tends to bemuch slower overall and will also raise your system’s power consumption.
+For outbound transfers, before you allow a DMA device to transfer data from memory—such as a packet that you’re sending out via a network interface—you must make absolutely sure that none of the data to be sent is still just sitting in the cache. After your software has finished writing out the information to be transferred by DMA, it must force the write-back of all cache lines currently holding information within the address range that the DMA controller will use for the transfer. Only then can you safely initiate the DMA transfer.
 
-You really can get rid of the explicit invalidations and write-backs by accessing all the memory used for all DMA transfers via an uncached address region. This isn’t recommended either, because it’ll almost certainly degrade your system’s overall performance farmore than you’d like.Even if your software’s access to the buffers is purely sequential, caching the DMA buffer regions will mean that information gets read and written in efficient cache-line-sized bursts rather than single transfers. The best general advice is to cache everything, with only the following exceptions:
+对于通过DMA向外传输数据，比如网络通信，你必须在允许DMA设备传输数据之前，完全确保Cache中的数据都已经更新到对应的内存发送区域里了。也就是说，在你的程序写完需要由DMA发送的数据信息之后，必须强制写回所有的落在DMA控制器映射的内存地址范围的Cache行中的内容到内存中。只有这样，才能安全启动DMA传输。
 
-* I/O device registers: Perhaps obvious, but worth pointing out. MIPS has no dedicated input/output instructions, so all device registers must be mapped somewhere in the address space, and very strange things will happen if you accidentally let them be cached.
+On some MIPS CPUs, you can avoid the need for explicit write-back operations by configuring your caches to use write-through rather than write-back behavior, but this cure is really worse than the disease — write-through tends to be much slower overall and will also raise your system’s power consumption.
 
-* DMA descriptor arrays: Sophisticated DMA controllers share control/status information with the CPU using small descriptor data structures held in memory. Typically, the CPU uses these to create a long list of information to be transferred, and only then tells the DMA controller to begin its work. If your system uses descriptors, you’ll want to access the memory region that contains them through an uncached address region.
+有些MIPS架构CPU，为了避免显式的回写操作，配置为直写式Cache。但是，这种方案有一个缺点，直写式Cache会造成总体性能上更慢，也会增加系统的电源功耗。
 
-A portable OS like Linux must deal with a range of caches from the most sophisticated and invisible to the crude and simple, so it has a fairlywell-defined API (set of stable function calls) for driver writers to use and some terse documentation on how to use them. See section 15.1.1.
+You really can get rid of the explicit invalidations and write-backs by accessing all the memory used for all DMA transfers via an uncached address region. This isn’t recommended either, because it’ll almost certainly degrade your system’s overall performance far more than you’d like.Even if your software’s access to the buffers is purely sequential, caching the DMA buffer regions will mean that information gets read and written in efficient cache-line-sized bursts rather than single transfers. The best general advice is to cache everything, with only the following exceptions:
 
-#### 3.2 Cache Management and Writing Instructions: Self-Modifying Code
+当然，你也可以通过映射DMA的传输数据区到非Cache内存地址区，避免显式的失效和回写操作。这也是不推荐的一种方式，因为从整体上会降低系统的性能。因为使用Cache读写内存的速度肯定要快于直接从内存读取数据。最好的建议就是使用Cache，只有下面的情况避免使用Cache：
+
+* I/O寄存器： 
+
+    Perhaps obvious, but worth pointing out. MIPS has no dedicated input/output instructions, so all device registers must be mapped somewhere in the address space, and very strange things will happen if you accidentally let them be cached.
+
+    MIPS架构没有专门的输入、输出指令，所以，所有的外设寄存器都必须被映射到一段内存地址空间上，如果使用Cache，会发生一些奇怪的事情。
+
+* DMA描述符数组：
+
+    Sophisticated DMA controllers share control/status information with the CPU using small descriptor data structures held in memory. Typically, the CPU uses these to create a long list of information to be transferred, and only then tells the DMA controller to begin its work. If your system uses descriptors, you’ll want to access the memory region that contains them through an uncached address region.
+
+    复杂的DMA控制器和CPU共享控制和状态信息，这些信息保存在内存中的描述符数据结构中。通常，CPU使用这些描述符结构体创建一个待发送数据信息的列表，然后，只需告诉DMA控制器开始工作即可。如果你的系统使用描述符结构，请将其映射到非Cache内存地址区域。
+
+A portable OS like Linux must deal with a range of caches from the most sophisticated and invisible to the crude and simple, so it has a fairly well-defined API (set of stable function calls) for driver writers to use and some terse documentation on how to use them. See section 15.1.1.
+
+移植性比较好的操作系统，比如Linux，不管是复杂的、不可见的Cache，还是简单的Cache，都能很好的适配。所以，Linux一般提供一组很完备的API，供驱动编写者使用。
+
+## 3.2 Cache管理和写指令数据：自修改代码
 
 If your code ever tries to write instructions into memory, then execute them, you’ll need to make sure you allow for cache behavior.
 
+如果你想在程序的执行过程中，产生新的代码，然后跳转到新代码中执行。必须确保正确的Cache行为。
+
 This can surprise you on two levels. First, if you have a write-back D-cache, the instructions that your program writes out may not find their way to main memory until something triggers a write-back of the relevant cache lines. The instructions that your program wrote out could just be sitting in the D-cache at the time you try to execute them, and the CPU’s fetches simply can’t access them there. So the first step is to do write-back operations on the cache lines at which you write the instructions; that at least ensures they reach main memory.
+
+因为如果你不注意，可能会在两个阶段给你带来意想不到的结果：
+
+* 首先，如果你使用的是回写式D-Cache，你写的指令数据在没有触发相关Cache行的回写操作之前，一直停留在Cache中，并没有写入到内存中。如果，此时CPU尝试执行这些新的代码指令，因为仍然在D-Cache中，CPU无法访问到它们。所以，当CPU写完新指令数据后，首先要做的就是执行回写操作，保证数据写入到内存中。
 
 The second surprise (regardless of which type of D-cache you have) is that even after writing out the new instructions to some region of main memory, your CPU’s I-cache may still hold copies of the information that used to be held in those addresses. Before you tell the CPU to execute the newly written instructions, it’s essential that your software first invalidates all the lines in the I-cache that contain information at the affected address range.
 
+* 其次，不管你使用的是哪种类型的D-Cache，在你把指令数据写入到内存中后，你的I-Cache里仍然持有着这些地址之前的数据。所以，在CPU执行新写的代码指令之前，软件首先应该失效I-Cache中的相关行。
+
 Of course, you could avoid the need for these explicit write-back and invalidate operations by writing and then executing the new instructions within an uncached address region; but that gives up the advantages of caching and is almost always a mistake.
+
+当然了，你也可以使用非Cache区域保存新的代码指令，然后执行它们。但是，这毕竟放弃了Cache的加速效果不是。
 
 The general-purpose cache management instructions described in section 4.9 are CP0 instructions, only usable by kernel-privilege software. That doesn’t matter when cache operations are related to DMA operations, which are also entirely kernel matters. But it does matter with applications like writing instructions and executing them (think of a modern application using a “just-in-time” interpreted/translated language).
 
+我们在《[MIPS高速缓存机制](https://tupelo-shen.github.io/2020/06/10/MIPS%E6%9E%B6%E6%9E%84%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A34-Cache%E6%9C%BA%E5%88%B6/)》一文中描述的Cache管理指令都是协处理器CP0指令，只有特权级的代码才能使用。一般情况下，DMA操作也是内核完成的，这些都没有异议存在。但是，当用户态的应用程序也想要这样写指令，然后执行的话（比如，现在的即时性的解释性语言），却无法访问这些指令。
+
 So MIPS32/64 provides the synci instruction, which does a D-side writeback and an I-side invalidate of one cache-line-sized piece of your new code. Find out how in section 8.5.11.
 
-#### 3.3 Cache Management and Uncached orWrite-Through Data
+所以，MIPS32/64提供了`synci`指令，它可以执行D-Cache的回写操作和I-Cache的失效操作。具体可以参考MIPS指令集参考。
+
+## 3.3 Cache Management and Uncached or Write-Through Data
 
 If you mix cached and uncached references that map to the same physical range of addresses, you need to think about what this means for the caches. Uncached writes will update only the copy of a given address in main memory, possibly leaving what’s nowa stale copy of that location’s contents in the D-cache—orthe I-cache.Uncached loadswill pick up whatever they find in main memory—even if that information is, in fact, stale with respect to an up-to-date copy present only in cache.
 
 Careful use of cached and uncached references to the same physical region may be useful, or even necessary, in the low-level code that brings your system into a known state following a reset. But for running code, you probably don’t want to do that. For each region of physical memory, decide whether your software should access it cached or uncached, then be absolutely consistent in treating it that way.
 
-#### 3.4 Cache Aliases and Page Coloring
+## 3.4 Cache Aliases and Page Coloring
 
 There’s more about the hardware origin of cache aliases in section 4.12. The problem occurs with L1 caches that are virtually indexed but physically tagged, and where the index range is big enough to span two or more page sizes. The index range is the size of one “set” of the cache, so with common 4-KB pages you can get aliases in an 8-KB direct-mapped cache or a 32-KB four-way set-associative cache.
 
