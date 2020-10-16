@@ -522,67 +522,125 @@ So MIPS32/64 provides the synci instruction, which does a D-side writeback and a
 
 所以，MIPS32/64提供了`synci`指令，它可以执行D-Cache的回写操作和I-Cache的失效操作。具体可以参考MIPS指令集参考。
 
-## 3.3 Cache Management and Uncached or Write-Through Data
+## 3.3 Cache管理和非Cache或直写数据
 
-If you mix cached and uncached references that map to the same physical range of addresses, you need to think about what this means for the caches. Uncached writes will update only the copy of a given address in main memory, possibly leaving what’s nowa stale copy of that location’s contents in the D-cache—orthe I-cache.Uncached loadswill pick up whatever they find in main memory—even if that information is, in fact, stale with respect to an up-to-date copy present only in cache.
+If you mix cached and uncached references that map to the same physical range of addresses, you need to think about what this means for the caches. Uncached writes will update only the copy of a given address in main memory, possibly leaving what’s now a stale copy of that location’s contents in the D-cache—or the I-cache. Uncached loads will pick up whatever they find in main memory—even if that information is, in fact, stale with respect to an up-to-date copy present only in cache.
+
+如果你混合使用Cache和非Cache程序地址访问同一段物理内存空间，你需要清楚这意味什么。使用非Cache程序地址往物理内存中写入数据，可能会造成D-Cache或I-Cache中保留一份过时的拷贝（相同地址）。使用非Cache程序地址直接从内存中加载数据，可能是旧数据，而最新的数据还停留在Cache中。
 
 Careful use of cached and uncached references to the same physical region may be useful, or even necessary, in the low-level code that brings your system into a known state following a reset. But for running code, you probably don’t want to do that. For each region of physical memory, decide whether your software should access it cached or uncached, then be absolutely consistent in treating it that way.
 
-## 3.4 Cache Aliases and Page Coloring
+上电复位后，在引导系统进入一个已知状态的底层代码中，使用Cache和非Cache程序地址引用同一段物理地址空间是非常有用，甚至是有非常有必要的。但是，对于运行中的代码，一般不要这样做。而且，不管是使用Cache程序地址，还是使用非Cache程序地址访问物理内存，一定要保证它的一致性。
+
+## 3.4 Cache重影和页着色
 
 There’s more about the hardware origin of cache aliases in section 4.12. The problem occurs with L1 caches that are virtually indexed but physically tagged, and where the index range is big enough to span two or more page sizes. The index range is the size of one “set” of the cache, so with common 4-KB pages you can get aliases in an 8-KB direct-mapped cache or a 32-KB four-way set-associative cache.
 
+我们在《[MIPS高速缓存机制](https://tupelo-shen.github.io/2020/06/10/MIPS%E6%9E%B6%E6%9E%84%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A34-Cache%E6%9C%BA%E5%88%B6/)》一文中已经描述了Cache重影的根源。L1级Cache使用虚拟地址作为索引，而使用物理地址作为Tag标签，如果索引的范围大于、等于2个page页，就可能发生Cache重影。索引范围等于一组Cache的大小，所以，使用4KB大小的page页的话，在8KB大小的直接映射Cache或着32KB大小的4路组相关的Cache上就可能会发生Cache重影。
+
+发生Cache重影会有什么后果呢？在进程上下文切换的时候，必须首先清空Cache，要不然，上个进程映射的物理地址，可能与新进程映射的物理地址相同，导致同一物理地址在Cache上有2份拷贝，可能会导致意想不到的后果。再比如，使用共享内存的时候，多个进程的虚拟地址都可能引用这个数据，如果发生Cache重影，那么也会导致共享内存中的数据不正确。
+
 The “page color” of a location is the value of those one or more virtual address bits that choose a page-sized chunk within the appropriate cache set. Two virtual pointers to the same physical data can produce an alias only if they have a different page color. So long as all pointers to the same data have the same color, all is well—all the data, even though at different virtual addresses, will be stored in the same physical portion of the cache and will be correctly identified by the (common) physical tag.
+
+为此，聪明的软件工程师们想了一个巧妙地技巧：`页着色技术`，又称为Cache着色，其实都是一回事，叫法不一样而已。具体的做法就是，假定page页的大小是4K，然后给每一个page页分配一个颜色（此处的颜色就是一种区分叫法而已，没有任何实际动作），使用虚拟地址的某几个比特位来标记颜色。当然，也可以选择使用物理地址中的某些比特位标记颜色。相同颜色的虚拟地址对应一组Cache。所以，两个虚拟地址想要指向同一个物理地址的数据，必须具有不同的页颜色。也就是说，页着色技术要求页分配程序把任一给定的物理地址映射到具有相同颜色的虚拟地址上。
+
+> 颜色数是否与Cache的way数相等？应该是相等的。
 
 It’s quite common in Linux (for example) for a physical page to be accessible at multiple virtual locations (shared libraries are routinely shared between programs at different virtual addresses).
 
-Most of the time, theOSis able to overalign virtual address choices for shared data—the sharing processes may not use the same address, but we’ll make sure their different virtual addresses are amultiple of, say, 64KBapart, so the different virtual addresses have the same color. That takes up a bit more virtual memory, but virtual memory is fairly cheap.
+比如说，Linux操作系统，多个虚拟地址可能都会访问一个物理页（共享库）。
 
-It’s easy to think that cache aliases are harmless so long as the data is “readonly” (it must have been written once, but that was before there were aliases to it):We don’t care if there aremultiple copies of a read-only page. But they’re only mostly harmless. It is possible to tolerate aliases to read-only data, particularly in the I-cache: But you need to make sure that cache management software is aware that data that has been invalidated at one virtual address may still be cached at another.
+Most of the time, the OS is able to overalign virtual address choices for shared data—the sharing processes may not use the same address, but we’ll make sure their different virtual addresses are a multiple of, say, 64KB apart, so the different virtual addresses have the same color. That takes up a bit more virtual memory, but virtual memory is fairly cheap.
+
+大部分时候，操作系统OS对于共享数据的虚拟地址的对齐肯定满足要求-共享进程也可以不使用相同的地址，但是，我们必须保证不同的虚拟地址必须是64K的倍数，所以不同的虚拟地址具有相同的颜色。也就避免了Cache重影。这可能消耗更多的虚拟内存，但是虚拟内存又不值钱，对吧？😀
+
+It’s easy to think that cache aliases are harmless so long as the data is “readonly” (it must have been written once, but that was before there were aliases to it): We don’t care if there are multiple copies of a read-only page. But they’re only mostly harmless. It is possible to tolerate aliases to read-only data, particularly in the I-cache: But you need to make sure that cache management software is aware that data that has been invalidated at one virtual address may still be cached at another.
+
+想象一下，加入数据都是只读的，Cache重影还会有影响吗？当然是没有什么问题了。但是，必须保证你的程序知道，在失效某个数据的时候，Cache的其它地方还有一份拷贝。
 
 With the widespread use of virtual-memory OSs (particularly Linux) in the embedded and consumer computing markets, MIPS CPUs are increasingly being built so that cache aliases can’t happen. It’s about time this long-lasting bug was fixed.
 
+随着带有虚拟内存管理的操作系统OS在嵌入式和消费者电子产品市场的广泛应用，越来越多的MIPS架构CPU，在硬件层面就消除了Cache重影。相信随着时间的推移，这个问题也许就不存在了吧。
+
 Whatever you need to do, the cache primitive operations required for a MIPS32/64 CPU are described in section 4.9.1.
 
-# 4 Memory Access Ordering and Reordering
+# 4 内存访问的排序和重新排序
 
 Programmers tend to think of their code executing in a well-behaved sequence: The CPU looks at an instruction, updates the state of the system in the appropriate ways, then goes on to the next instruction. But our program can run faster if we allow the CPU to break out of this purely sequential form of execution, so that operations aren’t necessarily constrained to take place in strict program order. This is particularly true of the read and write transactions performed at the processor’s interface, triggered by its execution of load and store instructions.
 
+程序员往往认为他们的代码是顺序执行的：CPU执行指令，更新系统的状态，然后继续下一条指令。但是，如果允许CPU乱序执行，而不是这种串行方式执行，效率可能更高。这对于执行load和store这种存储指令尤其重要。
+
 From the CPU’s point of view, a store requires only an outbound write request: Present the memory address and data, and leave the memory controller to get on with it. Practical memory and I/O devices are relatively slow, and in the time the write is completed the CPU may be able to run tens or hundreds of instructions.
+
+从CPU的角度来看，执行store操作就是发送一个write请求：给出内存地址和数据，其余的交给内存控制器完成。实际的内存和I/O设备相对较慢，等write操作完成，CPU可能已经完成了几十条甚至几百条指令。
 
 Reads are different, of course: They require two-way communication in the form of an outbound request and an inbound response. When the CPU needs to know the contents of a memory location or a device register, there’s probably not much it can do until the system responds with the information.
 
+read操作又有不同：它需要发送一个read请求，然后等待对请求的响应。当CPU需要知道内存或者设备寄存器中的内容时，没有得到请求响应前，可能啥也做不了。
+
 In the quest for higher performance, that means we want to make reads as fast as possible, even at the expense of making writes somewhat slower. Taking this thinking a step further, we can even make write requests wait in a queue, and pass any subsequent read requests to memory ahead of the buffered writes. From the CPU’s point of view, this is a big advantage; by starting the read transaction immediately, it gets the response back as soon as possible. The writes will have to be done sometime, and the queue is of finite size: But it’s likely that after this read is done there will be a period while the CPU is running from cache. And if the queue fills up, we’ll just have to stop while some writes happen: That’s certainly no worse than if we’d done the writes in sequence.
 
-You can probably see a problem here: Some programs may write a location and then read it back again. If the read overtakes the write, we may get stale data from memory and our programwill malfunction.Most of the time we can fix it with extra hardware that checks an outgoing read request against the addresses of entries in the write queue and doesn’t allow the read to overtake a matching write.4
+如果想要追求更高的性能，就意味着我们需要让read尽可能地快，甚至不惜让write操作变得更慢。进一步考虑，我们可以让write操作排队等待，把随后地任何read操作请求提前到write请求队列之前执行。从CPU地角度来看，这是一个大优势：尽可能快地启动read操作，就越早得到read操作的响应。然后，在某个时刻把执行write操作，而且write请求队列的大小是固定的。但是，这个write操作可能需要写Cache一段时间。如果这个队列满了，可能需要停下来等待一段时间，等待所有的write完成操作。但是，这肯定要比顺序执行，效率更高。这就是现代CPU一般都具有一个write buffer的原因。
 
-In systems where tasks that could be really concurrent (that is, they might be running on different CPUs) share variables, the problem of ordering reads and writes becomes more dangerous. It’s true that much of the time the tasks have no expectation ofmutual ordering.Ordering matters when the tasks are deliberately using shared memory for synchronization and communication, but in this case the software will be using carefully crafted OS synchronization operations (locks and semaphores, for example).
+You can probably see a problem here: Some programs may write a location and then read it back again. If the read overtakes the write, we may get stale data from memory and our program will malfunction.Most of the time we can fix it with extra hardware that checks an outgoing read request against the addresses of entries in the write queue and doesn’t allow the read to overtake a matching write.4
+
+看到这儿，你可能会有一个疑问：某些程序可能会写入一个地址，然后再将其读回来，这时候会怎么样呢？如果read提前到write之前执行，我们可能从内存中读取的是旧值，从而导致程序发生故障。通常，CPU会提供额外的硬件，比较read操作的地址和write队列中的地址，如果有相同的项，就不允许这样的read操作提前到write操作之前执行。
+
+In systems where tasks that could be really concurrent (that is, they might be running on different CPUs) share variables, the problem of ordering reads and writes becomes more dangerous. It’s true that much of the time the tasks have no expectation of mutual ordering.Ordering matters when the tasks are deliberately using shared memory for synchronization and communication, but in this case the software will be using carefully crafted OS synchronization operations (locks and semaphores, for example).
+
+上面的讨论没有考虑真正的并发系统，比如多核系统。并发执行的任务间共享变量，对其执行read和write操作会非常危险。比如使用共享变量进行同步和通信的时候，内存访问次序就会非常重要。这种情况下，软件一般会采用精心的设计，比如锁和信号量，进行同步操作。
 
 But there are some shared-memory communication tricks—often good, cheap, efficient ones—that don’t need so many semaphores or locks but are disrupted by arbitrary cycle reordering. Suppose, for example, we have two tasks: one is writing a data structure, the other is reading it. They use the data structure in turn, as shown in Figure 10.10.
 
-For correct operation,we need to knowthatwhenthe reader sees the updated value in the key field, we can guarantee that all the other updates will be visible to the reader as well.
-
-Unless we discard all the performance advantages of decoupling reads and writes fromtheCPU, it’s not practical for hardware to conceal all ordering issues fromthe programmer. The MIPS architecture provides the sync instruction for this purpose: You’re assured that (for all participants in the shared memory) all accesses made before the sync will precede those made afterward. It’sworth dwelling on the limited nature of that promise: It only relates to ordering, and only as seen by participants in uncached or cache-coherent memory accesses.
-
-To make the example above reliable on a suitable system, the writer should include sync just before writing keyfield, and the reader should have a sync just after reading keyfield. See section 8.5.9 for details. But there’s a lot more to this subject; if you’re building such a system, you’re strongly recommended to use an OS that provides suitable synchronization mechanisms, and read up on this subject.
-
-Different architectures make different promises about ordering. At one extreme, you can require all CPU and system designers to contrive that all the writes and reads made by one CPU appear to be in exactly the same order from the viewpoint of another CPU: That’s called “strongly ordered.” There are weaker promises too (such as “all writes remain in order”); but the MIPS architecture takes the radical position that no guarantees are made at all.
+但是，使用共享内存，还有一些技巧，往往效果更好，开销也更小。因为不需要使用信号量或者锁。但是，可能会被乱序执行打断。假设，我们有2个任务，如下图所示：一个读取数据结构，一个写数据结构。它们可以交替使用这个数据结构。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/mips-architecture/others/images/see_mips_run_10_10.PNG">
 
-#### 4.1 Ordering and Write Buffers
+For correct operation,we need to know that when the reader sees the updated value in the key field, we can guarantee that all the other updates will be visible to the reader as well.
 
-Let’s escape fromthe lofty theory and describe something rather more practical. The idea of holding outbound requests in a write buffer turns out to work especially well in practice because of the way store instructions tend to be bunched together. For a CPU running compiled MIPS code, it’s typical to find that only about 10 percentage of the instructions executed are stores; but these accesses tend to come in bursts—for example, when a function prologue saves a group of register values.
+为了能够正确执行，我们需要知道，对于reader任务来说，当什么时候reader任务看见关键域中的值发生了更新时，能够保证其它所有的更新对reader任务可见。
+
+Unless we discard all the performance advantages of decoupling reads and writes from the CPU, it’s not practical for hardware to conceal all ordering issues from the programmer. The MIPS architecture provides the sync instruction for this purpose: You’re assured that (for all participants in the shared memory) all accesses made before the sync will precede those made afterward. It’s worth dwelling on the limited nature of that promise: It only relates to ordering, and only as seen by participants in uncached or cache-coherent memory accesses.
+
+当然，硬件可以实现所有的内存访问顺序问题，从而将它们对程序员不可见，但是也就放弃了解耦read和write操作带来的性能优势。MIPS架构提供了`sync`指令实现这个目的，它可以确保sync指令之前的访问先于之后的执行。但是，这种保障指令有其局限性：只与内存的访问顺序有关，只能被非Cache或具有Cache一致性的内存访问的参与者看见。
+
+To make the example above reliable on a suitable system, the writer should include sync just before writing keyfield, and the reader should have a sync just after reading keyfield. See section 8.5.9 for details. But there’s a lot more to this subject; if you’re building such a system, you’re strongly recommended to use an OS that provides suitable synchronization mechanisms, and read up on this subject.
+
+对于上面的示例，为了让其在合适的系统上可靠地运行，writer任务应该在写关键域的值之前，调用一条sync指令；reader任务应该在读关键域的值之后插入一条sync指令。对于sync指令的详细使用方法，可以参考《MIPS指令集参考大全》一文。
+
+Different architectures make different promises about ordering. At one extreme, you can require all CPU and system designers to contrive that all the writes and reads made by one CPU appear to be in exactly the same order from the viewpoint of another CPU: That’s called “strongly ordered.” There are weaker promises too (such as “all writes remain in order”); but the MIPS architecture takes the radical position that no guarantees are made at all.
+
+不同的体系架构对执行顺序作出了不同的规定。一类极端情况就是，要求所有的CPU和系统设计人员努力保证一个CPU的全部读和写操作，从另一个CPU的角度看上去顺序完全相同，这叫做`强序`。也有一类情况就是`弱序`，比如只要求所有的写操作保持顺序不变。而MIPS架构更为激进，完全就是`无序`访问内存。这就要求我们系统开发人员必须手动保证内存的访问顺序是正确的。
+
+## 4.1 访存顺序和写缓存
+
+Let’s escape from the lofty theory and describe something rather more practical. The idea of holding outbound requests in a write buffer turns out to work especially well in practice because of the way store instructions tend to be bunched together. For a CPU running compiled MIPS code, it’s typical to find that only about 10 percentage of the instructions executed are stores; but these accesses tend to come in bursts—for example, when a function prologue saves a group of register values.
+
+前面讨论了这么多理论，接下来让我们讨论点实际的内容吧。把write操作缓存到一个队列中（也就是硬件中常常讨论的write buffer）的思想在实践中证明非常有效。因为，store指令往往是多条指令扎堆出现。比如，一个运行MIPS代码的CPU，实际上运行的store指令大约占所有指令的10%左右；但是，往往是突发式访问，比如函数的调用过程中，首先需要压栈操作一组寄存器的值。
 
 Most of the time the operation of the write buffer is completely transparent to software. But there are some special situations in which the programmer needs to be aware of what’s happening:
 
-1. Timing relations for I/O register accesses: This affects all MIPS CPUs. After the CPU executes a store to update an I/O device register, the outbound write request is liable to incur some delay in the write buffer, on its way to the device. Other events, such as inbound interrupts, may take place after the CPU executes the store instruction, but before the write request takes effect within the I/O device. This can lead to surprising behavior: For example, the CPU may receive an interrupt from a device “after” you have told it not to generate interrupts. To give another example: If an I/O device needs some software-implemented delay to recover after a write, you must ensure that the write buffer is empty before you start counting out that delay— ensuring also that the CPU waits while the write buffer empties. It’s good practice to define a subroutine that does this job, and it’s traditionally given the name wbflush(). See section 10.4.2 for hints on implementing it.
+但是，一般情况下，写缓存（write buffer）都是硬件保证的，对于软件来说不用管理。但是，也有一些特殊的情况，程序员需要知道怎样处理：
 
-2. Reads overtaking writes: The MIPS32/64 architecture permits this behavior, discussed above. If your software is to be robust and portable, it should not assume that read and write order is preserved. Where you need to guarantee that two cycles happen in some particular order, you need the sync instruction described in section 8.5.9.
+1. I/O寄存器访问的时序 
 
-3. Byte gathering: Some write buffers watch for partial-word writes within the same memory word (or even writes within the same cache line) and will combine those partial writes into a single operation. To avoid unpleasant symptoms when uncachedwrites are combined into a word-width, it’s a good idea to map your I/O registers such that each register is in a separate word location (i.e., 8-bit registers should be at least four bytes apart).
+    This affects all MIPS CPUs. After the CPU executes a store to update an I/O device register, the outbound write request is liable to incur some delay in the write buffer, on its way to the device. Other events, such as inbound interrupts, may take place after the CPU executes the store instruction, but before the write request takes effect within the I/O device. This can lead to surprising behavior: For example, the CPU may receive an interrupt from a device “after” you have told it not to generate interrupts. To give another example: If an I/O device needs some software-implemented delay to recover after a write, you must ensure that the write buffer is empty before you start counting out that delay— ensuring also that the CPU waits while the write buffer empties. It’s good practice to define a subroutine that does this job, and it’s traditionally given the name wbflush(). See section 10.4.2 for hints on implementing it.
 
-#### 4.2 Implementing wb flush
+    这个问题，对于所有架构CPU都存在。比如，CPU发出一个store指令，更新I/O设备寄存器的值，write请求可能会在写缓存中延迟一段时间。这时候，可能会发生其它事件，比如中断。但是此时写入的值还未更新到对应的I/O设备寄存器中。这可能导致一些奇怪的行为：比如，你想禁止产生中断，但是CPU发出write操作之后，CPU还有可能会收到中断。
+
+2. read操作抢先于write操作执行 
+
+    The MIPS32/64 architecture permits this behavior, discussed above. If your software is to be robust and portable, it should not assume that read and write order is preserved. Where you need to guarantee that two cycles happen in some particular order, you need the sync instruction described in section 8.5.9.
+
+    上面已经讨论过，MIPS32/64架构允许这种操作。如果想要软件更加健壮和具有可移植性，就不应该假定read和write操作顺序会被保持。如果想要保证前后两个指令周期是按照特定顺序执行，就需要插入sync指令。
+
+3. 字节汇集
+
+    Some write buffers watch for partial-word writes within the same memory word (or even writes within the same cache line) and will combine those partial writes into a single operation. To avoid unpleasant symptoms when uncached writes are combined into a word-width, it’s a good idea to map your I/O registers such that each register is in a separate word location (i.e., 8-bit registers should be at least four bytes apart).
+
+    有些写缓存会汇集不足WORD大小的write操作，凑成一个WORD大小的write操作，然后再执行（有些写缓存甚至会攒一个Cache行，然后再写入）。所以，为了避免对于非Cache的内存区也做相同的操作，最好的办法就是把I/O寄存器（比如，一个8位的寄存器）映射到一个单独的WORD大小的地址上。
+
+## 4.2 实现wb flush
 
 Most write queues can be emptied out by performing an uncached store to any location and then performing an operation that reads the same data back. A write queue certainly can’t permit the read to overtake the write—it would return stale data. Put a sync instruction between the write and the read, and that should be effective on any system compliant with MIPS32/64.
 
@@ -594,7 +652,7 @@ This is effective, but not necessarily efficient; you can minimize the overhead 
 
 You probably already write almost everything in C or in C++. MIPS’s lack of special I/O instructions means that I/O register accesses are just normal loads and stores with appropriately chosen addresses; that’s convenient, but I/O register accesses are usually somewhat constrained, so you need to make sure the compiler doesn’t get too clever. MIPS’s use of large numbers of CP0 registers also means that OS code can benefit from well-chosen use of C asm() operations.
 
-#### 5.1 Wrapping Assembly Code with the GNU C Compiler
+## 5.1 Wrapping Assembly Code with the GNU C Compiler
 
 
 TheGNUC Compiler (“GCC”) allows you to enclose snippets of assembly code within C source files. GCC’s feature is particularly powerful, but other modern compilers probably could support the example here. But their syntax is probably quite different, so we’ll just discuss GCC here. If you want low-level control over something that extends beyond a handful of machine instructions, such as a library function that carries out some clever computation, you’ll really need to get to gripswithwriting pure MIPS assembly; but if you just want to insert a short sequence that consists of one or a few specific MIPS instructions, the asm() directive can achieve the desired result quite simply. Better still, you can leave it to the compiler to manage the selection of registers according to its own conventions.
@@ -628,7 +686,7 @@ At the end of the example function, the result we obtained from the multiply ins
 
 GCC allows considerable control over the specification of the operands; you can tell it that certain values are both read and written and that certain hardware registers are left with meaningless values as a side effect of a particular assembly sequence.You can dig out the details fromthe MIPS-specific sections of the GCC manual.
 
-#### 5.2 Memory-Mapped I/O Registers and “Volatile”
+## 5.2 Memory-Mapped I/O Registers and “Volatile”
 
 Most of you will be writing code that accesses I/O registers in C—you certainly shouldn’t be using assembly code in the absence of any pressing need to do so, and since all I/O registers in MIPSmust be memory-mapped, it is never difficult to access them from C. Having said that, you should keep in mind that as compilers advance, or if you make significant use of C++, it can become harder to predict exactly the low-level instruction sequences that’ll end up in your code. Here are some well-worn hints.
 
@@ -676,7 +734,7 @@ Once you’ve dealt with this, the most common reason that optimized code breaks
 
 What’s the main lesson of this section? While it’s easier to write and maintain hardware driver code in C than in assembly, it’s important to use this option responsibly. In particular, you’ll need to understand enough about the way the toolchain converts your high-level source code into lowlevel machine instructions to make sure you get the system behavior that you intended.
 
-#### 5.3 Miscellaneous Issues When Writing C for MIPS Applications
+## 5.3 Miscellaneous Issues When Writing C for MIPS Applications
 
 * Negative pointers:When running simpleunmappedcode on a MIPS CPU, all pointers are in the kseg0 or kseg1 areas, so any data pointer’s 32-bit value has the top bit set and looks “negative.” Unmapped programs on most other architectures are dealing with physical addresses, which are usually a lot smaller than 2 GB! Such pointer values could cause trouble when pointer values are being compared, if the pointer were implicitly converted to a signed integer type. Any implicit conversions between integer and pointer types (quite common in C) should be made explicit and should specify an unsigned integer type (you should use unsigned long for this). Most compilers will warn about pointer-to-integer conversions, though you may have to specify an option.
 
