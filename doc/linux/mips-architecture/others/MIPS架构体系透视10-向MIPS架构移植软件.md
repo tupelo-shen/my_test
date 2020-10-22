@@ -640,26 +640,40 @@ Most of the time the operation of the write buffer is completely transparent to 
 
     有些写缓存会汇集不足WORD大小的write操作，凑成一个WORD大小的write操作，然后再执行（有些写缓存甚至会攒一个Cache行，然后再写入）。所以，为了避免对于非Cache的内存区也做相同的操作，最好的办法就是把I/O寄存器（比如，一个8位的寄存器）映射到一个单独的WORD大小的地址上。
 
-## 4.2 实现wb flush
+## 4.2 写缓存的flush
 
 Most write queues can be emptied out by performing an uncached store to any location and then performing an operation that reads the same data back. A write queue certainly can’t permit the read to overtake the write—it would return stale data. Put a sync instruction between the write and the read, and that should be effective on any system compliant with MIPS32/64.
 
+通过对非Cache内存区的任意位置执行write操作，然后再read，可以清空写缓存（大部分都是这样实现的）。当然，写缓存不允许read操作发生在write之前，这样导致返回旧值。所以，必须在write和read操作之间，插入sync指令。对于兼容`MIPS32/64`规范的任何系统，这应该都是有效的。
+
 This is effective, but not necessarily efficient; you can minimize the overhead by loading from the fastest memory available. Perhaps your system offers something system-specific but faster. Use it after reading the following note!
+
+但是，有效不等于高效。通过提高内存的读写速度也可以降低整体的负荷。有些特定的系统可能会提供更快的内存或者写缓存。
+
+任何具有回写功能的处理器或者内存接口，都引入了写缓存。只是，有的在CPU内部实现，有的在CPU外部实现。不管是在CPU内部，还是在CPU外部，麻烦是相同的。在编程的时候，一定要仔细确认你的系统中，写缓存的位置，善加利用。
 
 > Write buffers are often implemented within the CPU, but may also be implemented outside it; any system controller or memory interface that boasts of a write-posting feature introduces another level of write buffering to your system. Write buffers outside the CPU can give you just the same sort of trouble as those inside it. Take care to find out where all the write buffers are located in your system, and to allow for them in your programming.
 
-# 5 Writing it in C
+# 5 如何使用C语言调用汇编指令
 
 You probably already write almost everything in C or in C++. MIPS’s lack of special I/O instructions means that I/O register accesses are just normal loads and stores with appropriately chosen addresses; that’s convenient, but I/O register accesses are usually somewhat constrained, so you need to make sure the compiler doesn’t get too clever. MIPS’s use of large numbers of CP0 registers also means that OS code can benefit from well-chosen use of C asm() operations.
 
-## 5.1 Wrapping Assembly Code with the GNU C Compiler
+你可能习惯了C或C++语言。MIPS架构缺乏特殊的I/O操作指令，这意味着，要想访问I/O寄存器，只能使用load或者store之类的指令，通过恰当的操作来实现。但是，I/O寄存器的访问有一些限制，因此，必须确保编译器不能太聪明，编译出了违背我们意愿的结果。另外，MIPS架构使用了大量的CP0寄存器，我们也可以使用C语言的伪汇编`asm()`方法进行操作。
+
+## 5.1 封装汇编代码
 
 
-TheGNUC Compiler (“GCC”) allows you to enclose snippets of assembly code within C source files. GCC’s feature is particularly powerful, but other modern compilers probably could support the example here. But their syntax is probably quite different, so we’ll just discuss GCC here. If you want low-level control over something that extends beyond a handful of machine instructions, such as a library function that carries out some clever computation, you’ll really need to get to gripswithwriting pure MIPS assembly; but if you just want to insert a short sequence that consists of one or a few specific MIPS instructions, the asm() directive can achieve the desired result quite simply. Better still, you can leave it to the compiler to manage the selection of registers according to its own conventions.
+TheGNUC Compiler (“GCC”) allows you to enclose snippets of assembly code within C source files. GCC’s feature is particularly powerful, but other modern compilers probably could support the example here. But their syntax is probably quite different, so we’ll just discuss GCC here. If you want low-level control over something that extends beyond a handful of machine instructions, such as a library function that carries out some clever computation, you’ll really need to get to grips with writing pure MIPS assembly; but if you just want to insert a short sequence that consists of one or a few specific MIPS instructions, the asm() directive can achieve the desired result quite simply. Better still, you can leave it to the compiler to manage the selection of registers according to its own conventions.
 
-As an example, the following code makes GCC use the three-operand form of multiply, available on more recent MIPS CPUs. If you just use the normal C language * multiplication operator, the work could end up being done by the original formof themultiply instruction that accepts only two source operands, implicitly sending its double-length result to the hi/lo register pair.5
+对于GCC编译器，几乎是家喻户晓，其允许在C文件中封装汇编代码。当然了，其它编译器也支持，只是语法上不同罢了。在这儿，我们只以GCC进行举例；至于其它的编译器，请自行google或者baidu。如果，想要写一个高效计算的库函数之类的，可以使用纯MIPS汇编语言进行编写；但是，如果只是想在某个C文件中，插入一小段汇编语言，可以使用`asm()`伪指令实现。甚至，你可以让编译器根据一些约定，自行选择使用的寄存器。
+
+As an example, the following code makes GCC use the three-operand form of multiply, available on more recent MIPS CPUs. If you just use the normal C language * multiplication operator, the work could end up being done by the original form of the multiply instruction that accepts only two source operands, implicitly sending its double-length result to the hi/lo register pair.5
+
+比如说，下面的这段代码，调用乘法指令`mul`，就可以在绝大数的MIPS架构CPU上运行。我们可以注意到，`mul`指令后面跟着三个源操作数。如果我们直接使用C语言的`*`乘法操作符，生成的乘法汇编指令一般只使用两个操作数，而且隐含地将生成的double类型的结果保存到`hi/lo`寄存器中。
 
 The C function mymul() is exactly like the three-operand mul and delivers the less significant half of the double-length result; the more significant half is simply discarded, and it’s up to you to ensure that overflows are either avoided or irrelevant.
+
+下面这段伪汇编代码实现的`mymul`乘法函数，使用了三目乘法指令`mul`，只保存double型结果的低有效部分到p变量中，高有效部分被抛弃。由我们自己决定如何避免溢出或者其它不相干的事情。
 
     static int __inline__ mymul(int a, int b)
     {
@@ -676,21 +690,37 @@ The C function mymul() is exactly like the three-operand mul and delivers the le
 
 The function itself is declared inline, which instructs the compiler that a use of this function should be replaced by a copy of its logic (which permits local register optimization to apply). Adding static means that the function need not be published for other modules to use, so no binary of the function itself will be generated. It very often makes sense to wrap an asm() like this: You’d probably usually then put the whole definition in an include file. You could use a C preprocessor macro, but the inlined function is a bit cleaner.
 
-The declarations inside the asm() parentheses tell GCC to emit a MIPS mul line to the assemblerwith three operands on the command line—onewill be the output and two will be inputs.
+函数本身被声明为inline内联函数，这意味着应该使用该函数逻辑代码的拷贝去替代调用这个函数的地方的代码（这允许局部寄存器优化）。使用static进行限定，不允许其它模块文件调用该函数，所以，不会生成这个函数本身的二进制代码。封装asm()代码时，经常会这样干。然后，将这个伪汇编代码放到某个include文件中。当然，也可以使用C语言预处理宏来进行定义，但是，使用inline函数更简洁一些。
 
-Onthe line below,we tellGCCabout operand %0, the product: first, that this value will be write-only (meaning that there’s no need to preserve its original value) with the “=” modifier; the “r” tells GCC that it’s free to choose any of the general-purpose registers to hold this value. Finally, we tell GCC that the operand we wrote as %0 corresponds to the C variable p.
+The declarations inside the asm() parentheses tell GCC to emit a MIPS mul line to the assembler with three operands on the command line—one will be the output and two will be inputs.
+
+上面的代码，告知GCC，传递给汇编器一个MIPS的`mul`指令，具有三个操作数，一个是输出，两个是输入。
+
+On the line below,we tell GCC about operand %0, the product: first, that this value will be write-only (meaning that there’s no need to preserve its original value) with the “=” modifier; the “r” tells GCC that it’s free to choose any of the general-purpose registers to hold this value. Finally, we tell GCC that the operand we wrote as %0 corresponds to the C variable p.
+
+`%0`的意思就是指向索引为0的变量，也就是`p`。首先，我们使用`=`修改符指明这个值是`write-only`的；其次，通过符号`r`告诉GCC，可以自由选择任何一个通用寄存器保存这个值。
 
 On the third line of the asm() construct, we tell GCC about operands %1 and %2.Again,we allowGCCto put these in any of the general-purpose registers, and tell it that they correspond to the C variables a and b.
 
+`asm()`中的第3行代码，告诉GCC，操作数`%1`和`%2`分别是`a`和`b`，并且允许GCC将其保存到任何通用目的寄存器中。
+
 At the end of the example function, the result we obtained from the multiply instruction is returned to the C caller.
+
+示例函数的最后，就是表明，把结果返回给调用者。
 
 GCC allows considerable control over the specification of the operands; you can tell it that certain values are both read and written and that certain hardware registers are left with meaningless values as a side effect of a particular assembly sequence.You can dig out the details fromthe MIPS-specific sections of the GCC manual.
 
-## 5.2 Memory-Mapped I/O Registers and “Volatile”
+从上面的示例可以看出，GCC允许对操作数进行相当自由的控制。你可以告诉某个值可读可写，某些寄存器可能会留下毫无意义的值等。详细的使用方法可以参考GCC手册中关于MIPS架构的部分章节内容。
 
-Most of you will be writing code that accesses I/O registers in C—you certainly shouldn’t be using assembly code in the absence of any pressing need to do so, and since all I/O registers in MIPSmust be memory-mapped, it is never difficult to access them from C. Having said that, you should keep in mind that as compilers advance, or if you make significant use of C++, it can become harder to predict exactly the low-level instruction sequences that’ll end up in your code. Here are some well-worn hints.
+## 5.2 内存映射的I/O寄存器和volatile
+
+Most of you will be writing code that accesses I/O registers in C—you certainly shouldn’t be using assembly code in the absence of any pressing need to do so, and since all I/O registers in MIPS must be memory-mapped, it is never difficult to access them from C. Having said that, you should keep in mind that as compilers advance, or if you make significant use of C++, it can become harder to predict exactly the low-level instruction sequences that’ll end up in your code. Here are some well-worn hints.
+
+因为在MIPS架构中，将所有的I/O寄存器映射到内存上，可以很容易使用C语言编写代码进行访问。所以，不到迫不得已，不要使用汇编语言操作这些I/O寄存器。我们已经说过，随着编译器的发展，或者在你的代码中使用了大量的C++代码，很难预测最终生成的汇编指令的顺序。下面我们将再谈论一些老生常谈的问题。
 
 I might write a piece of code that is intended to poll the status register of a serial port and to send a character when it’s ready:
+
+下面是一段代码，用来轮询串口的状态寄存器。如果准备就绪，就发送一个字符：
 
     unsigned char *usart_sr = (unsigned char *) 0xBFF00000;
     unsigned char *usart_data = (unsigned char *) 0xBFF20000;
@@ -703,7 +733,9 @@ I might write a piece of code that is intended to poll the status register of a 
     }
 
 
-I’d be upset if this sent two characters and then looped forever, but that would be quite likely to happen. The compiler sees the memory-mapped I/O reference implied by *usart sr as a loop-invariant fetch; there are no stores in the while loop so it seems safe to pull the load out of the loop. Your compiler has recognized that your C program is equivalent to:
+I’d be upset if this sent two characters and then looped forever, but that would be quite likely to happen. The compiler sees the memory-mapped I/O reference implied by *usart_sr as a loop-invariant fetch; there are no stores in the while loop so it seems safe to pull the load out of the loop. Your compiler has recognized that your C program is equivalent to:
+
+这段代码，编译器很可能将映射到内存上的寄存器变量`usart_sr`，视作一个不变的变量；而在while循环中也没有存储按位与表达式的结果的地方，编译器可能会自作主张的将其保存到一个临时变量中。最终，上面的代码可能等效于下面的代码。结果可能就是一直发送某个字符，也可能一直无法输出。
 
     void putc(ch)
     char ch;
@@ -715,6 +747,8 @@ I’d be upset if this sent two characters and then looped forever, but that wou
 
 You could prevent this particular problem by defining your registers as follows:
 
+为了避免这种情况，我们必须让编译器意识到，`usart_sr`是一个随时变化的值的指针，不能被优化。方法就是添加限定符`volatile`，如下所示：
+
     volatile unsigned char *usart_sr =
     (unsigned char *) 0xBFF00000;
     volatile unsigned char *usart_data =
@@ -722,10 +756,14 @@ You could prevent this particular problem by defining your registers as follows:
 
 A similar situation can exist if you examine a variable that is modified by an interrupt or other exception handler.Again, declaring the variable as volatile should fix the problem. I won’t guarantee that this will always work: The C bible describes the operation of volatile as implementation dependent. I suspect, though, that compilers that ignore the volatile keyword are implicitly not allowed to optimize away loads. Many programmers have trouble using volatile. The thing to remember is that it behaves just like any other C type modifier—just like unsigned in the example above. You need to avoid syndromes like this:
 
+相似的情况，也可能发生在中断或者异常处理程序中要修改的变量身上。同样的，可以使用`volatile`进行限定。但是，你需要避免像下面的代码那样使用`volatile`：
+
     typedef char * devptr;
     volatile devptr mypointer;
 
 You’ve now told the compiler that it must keep loading the pointer value from the variable devptr, but you’ve said nothing about the behavior of the register you’re using it to point at. It would be more useful to write the code like this:
+
+本意是想告诉编译器，重新从`char *`类型的指针处加载数值，但是使用上面的方式，没有起到任何作用。应该如下所示，进行声明：
 
     typedef volatile char * devptr;
     devptr mypointer;
@@ -734,17 +772,43 @@ Once you’ve dealt with this, the most common reason that optimized code breaks
 
 What’s the main lesson of this section? While it’s easier to write and maintain hardware driver code in C than in assembly, it’s important to use this option responsibly. In particular, you’ll need to understand enough about the way the toolchain converts your high-level source code into lowlevel machine instructions to make sure you get the system behavior that you intended.
 
-## 5.3 Miscellaneous Issues When Writing C for MIPS Applications
+通过上面的讨论过程，我们可以看出使用C编写驱动程序要更容易一些，代码的阅读性也更好。但是，你需要充分理解硬件行为和工具链生成机器指令的方式，保证系统按照想要的行为进行工作。
 
-* Negative pointers:When running simpleunmappedcode on a MIPS CPU, all pointers are in the kseg0 or kseg1 areas, so any data pointer’s 32-bit value has the top bit set and looks “negative.” Unmapped programs on most other architectures are dealing with physical addresses, which are usually a lot smaller than 2 GB! Such pointer values could cause trouble when pointer values are being compared, if the pointer were implicitly converted to a signed integer type. Any implicit conversions between integer and pointer types (quite common in C) should be made explicit and should specify an unsigned integer type (you should use unsigned long for this). Most compilers will warn about pointer-to-integer conversions, though you may have to specify an option.
+## 5.3 在MIPS架构上使用C编写程序时的一些其它问题
 
-* Signed versus unsigned characters: In early C compilers, the char type used for strings was usually equivalent to signed char; this is consistent with the convention for larger integer values. However, as soon as you have to deal with character encodings using more than 7-bit values, this is dangerous when converting or comparing. Modern compilers usually make char equivalent to unsigned char instead. If you discover that your old program depends on the default signextension of char types, good compilers offer an option that will restore the traditional convention.
+* 负指针
 
-* Moving from 16-bit int: A significant number of programs are being moved up from 16-bit x86 or other CPUs where the standard int is a 16-bit value. Such programs may rely, much more subtly than you think, on the limited size and overflow characteristics of 16-bit values. Although you can get correct operation by translating such types into short, that will be inefficient. In most cases you can let variables quietly pick up the MIPS int size of 32 bits, but you should be particularly aware of places where signed comparisons are used to catch 16-bit overflow.
+    When running simple unmapped code on a MIPS CPU, all pointers are in the kseg0 or kseg1 areas, so any data pointer’s 32-bit value has the top bit set and looks “negative.” Unmapped programs on most other architectures are dealing with physical addresses, which are usually a lot smaller than 2 GB! Such pointer values could cause trouble when pointer values are being compared, if the pointer were implicitly converted to a signed integer type. Any implicit conversions between integer and pointer types (quite common in C) should be made explicit and should specify an unsigned integer type (you should use unsigned long for this). Most compilers will warn about pointer-to-integer conversions, though you may have to specify an option.
 
-* Programming that depends on the stack: Some kind of function invocation stack and data stack are implicit in C’s block structure. Despite the MIPS hardware’s complete lack of stack support, MIPS C compilers implement a fairly conventional stack structure. Even so, if your program thinks it knows what the stack looks like, it won’t be portable. If possible, don’t just replace the old assumptions with new ones: Two of the most common motivations for stack abuse are now satisfied with respectable and standards-conforming macro/library operations, which may tackle what your software was trying to do before:
+    当在MIPS架构上运行比较简单的程序时，一般直接运行在非映射内存区，也就是`kseg0`或`kseg1`区域时，所有32位数据指针的最高位都置1，看起来像是一个负数。而在其它架构上，运行这种程序一般都在低于2G的内存地址上，也就是直接对应物理地址。所以，MIPS架构的这种负指针，如果对其进行比较运算的话，指针可能会隐式地被转为一个有符号的整数类型。所以，在进行指针和某个整数进行比较的时候，一定要显式地指定为无符号整数类型，比如`unsigned long`。大部分的编译器都会对指针向integer类型进行转换时给出警告。
+
+* 有符号与无符号字符类型
+
+    In early C compilers, the char type used for strings was usually equivalent to signed char; this is consistent with the convention for larger integer values. However, as soon as you have to deal with character encodings using more than 7-bit values, this is dangerous when converting or comparing. Modern compilers usually make char equivalent to unsigned char instead. If you discover that your old program depends on the default sign extension of char types, good compilers offer an option that will restore the traditional convention.
+
+    早期的C编译器，char类型一般用于string，通常是signed char类型；这与为了获取更大整数值的约定是一致的。但是，当处理超过127的字符编码时，比如转换或者比较，就会很危险。现代编译器一般都将char型等同于unsigned char类型。如果发现你的旧代码依赖于char类型的默认符号扩展，一定检查编译器是否有选项，恢复这个传统的约定。
+
+* 16位int类型数据的使用 
+
+    A significant number of programs are being moved up from 16-bit x86 or other CPUs where the standard int is a 16-bit value. Such programs may rely, much more subtly than you think, on the limited size and overflow characteristics of 16-bit values. Although you can get correct operation by translating such types into short, that will be inefficient. In most cases you can let variables quietly pick up the MIPS int size of 32 bits, but you should be particularly aware of places where signed comparisons are used to catch 16-bit overflow.
+
+    当我们从16位的机器架构的程序，比如x86或者ARM等，移植到MIPS架构上时，一定要注意最大值、溢出和符号位扩展。笨方法就是，直接将这些程序的int型替换成short类型，但这需要时间和耐心😊。大部分时候，可以直接使用MIPS架构的32位int类型替换。但是，需要特别注意的是signed类型比较时的bit16的溢出问题。
+
+    还有就是，使用两个16位整型数拼凑成一个32位整型数时，一定要使用无符号16位整型数。笔者在移植ARM架构的操作系统到MIPS架构上时，就是使用了`signed short`类型的2个变量拼接成一个32位整数时，由于符号位扩展的原因（高16位全部被填充为1）导致高位数一直无法生效。
+
+* 堆栈的使用
+
+    Some kind of function invocation stack and data stack are implicit in C’s block structure. Despite the MIPS hardware’s complete lack of stack support, MIPS C compilers implement a fairly conventional stack structure. Even so, if your program thinks it knows what the stack looks like, it won’t be portable. If possible, don’t just replace the old assumptions with new ones: Two of the most common motivations for stack abuse are now satisfied with respectable and standards-conforming macro/library operations, which may tackle what your software was trying to do before:
+
+    尽管MIPS架构缺乏对堆栈的支持，但是MIPS-C编译器还是实现了一个常规的栈结构，主要就是按照某种约定，指定通用寄存器作一些特殊的用途，比如使用哪几个寄存器传递函数参数，使用哪个寄存器作为stack指针寄存器等等。话虽如此，不要想当然的认为，堆栈就可以安全的移植了。必要的时候，使用下面的2个方法-宏和库函数-解决堆栈的问题：
 
     - stdargs: Use this include-file-based macro package to implement routines with a variable number of parameters whose type need not be predefined at compile time.
 
-    - alloca(): To allocate memory at run time, use this library function, which is “on the stack” in the sense that it will be automatically freed when the function allocating thememory returns. Some compilers implement alloca() as a built-in function that actually extends the stack; otherwise, there are pure-library implementations available. But don’t assume that suchmemory is actually at an address with some connection with the stack.
+        使用头文件，定义宏，允许函数接收可变参数。
+
+    - alloca(): 
+
+        To allocate memory at run time, use this library function, which is “on the stack” in the sense that it will be automatically freed when the function allocating thememory returns. Some compilers implement alloca() as a built-in function that actually extends the stack; otherwise, there are pure-library implementations available. But don’t assume that such memory is actually at an address with some connection with the stack.
+
+        使用这个函数动态分配内存。有些编译器实现alloca()为内嵌函数，来扩展堆栈；也可以使用单纯的库函数实现。但是，不要假设堆栈和其分配的内存有什么关系。
 
