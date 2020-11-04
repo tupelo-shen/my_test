@@ -1,32 +1,30 @@
-WARNING: Before changing networking, be sure that you have non-network access to the target system in case something goes wrong.
-
-First, find your main network device:
+查找网络设备：
 
     ip route show | grep 'default' | awk '{print $5}'
 
-This will normally be `eth0`. The rest of this guide will assume you want to make a bridge named `xenbr0` and set `eth0` as its slave.
+通常是`eth0`，如果是使用的VirtualBox搭建的虚拟机，应该是'enp0s3'之类的。本文中，我们把网桥命名为`xenbr0`，设置`eth0`为slave设备。
 
-First, create `xenbr0`, giving it reasonable defaults:
+首先，创建`xenbr0`，并设置合理的默认值：
 
     nmcli con add type bridge con-name xenbr0 ifname xenbr0
     nmcli con modify xenbr0 bridge.stp no
     nmcli con modify xenbr0 bridge.hello-time 0
 
-Then find out the connection name for `eth0`. This will normally be "System eth0":
+显示设备：
 
     # nmcli con show
     NAME         UUID                                  TYPE            DEVICE 
     System eth0  1619a4a0-518e-4547-9ade-31dff5ef8f5e  802-3-ethernet  eth0  
 
-Finally, set "System eth0" as a slave to xenbr0:
+设置`System eth0`为`xenbr0`的从设备：
 
     nmcli con modify "System eth0" connection.master xenbr0 connection.slave-type bridge
 
-And restart networking:
+重启网络：
 
     systemctl restart network
 
-Check to see if it worked:
+查看是否正常设置：
 
     # ip addr
     1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN 

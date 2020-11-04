@@ -1,12 +1,10 @@
-WARNING: Before changing networking, be sure that you have non-network access to the target system in case something goes wrong.
-
-Find your main network device:
+查找网络设备：
 
     ip route show | grep 'default' | awk '{print $5}'
 
-Normally this will be `eth0`. The rest of this guide will assume you want to make a bridge named `xenbr0` and set `eth0` as its slave.
+通常是`eth0`，如果是使用的VirtualBox搭建的虚拟机，应该是'enp0s3'之类的。本文中，我们把网桥命名为`xenbr0`，设置`eth0`为slave设备。
 
-Now go to the `/etc/sysconfig/network-scripts` directory, and make a file called `ifcfg-xenbr0` based on `ifcfg-eth0`:
+进入`/etc/sysconfig/network-scripts`目录，基于`ifcfg-eth0`创建一个新的文件，命名为`ifcfg-xenbr0`。
 
     cat ifcfg-eth0 |
             sed "s/TYPE=.*$/TYPE=Bridge/" |
@@ -15,7 +13,7 @@ Now go to the `/etc/sysconfig/network-scripts` directory, and make a file called
             sed "/UUID=/d" > ifcfg-xenbr0
     echo " DELAY=0" >> ifcfg-xenbr0
 
-The resulting file should look something like this:
+结果看起来像是：
 
     TYPE=Bridge
     DEVICE=xenbr0
@@ -30,16 +28,16 @@ The resulting file should look something like this:
     NAME=xenbr0
      DELAY=0
 
-Now configure eth0 as xenbr0's slave:
+配置`eth0`作为`xenbr0`的slave设备：
 
     sed -i --follow-symlinks "s/BOOTPROTO=.*$/BOOTPROTO=none/;" ifcfg-eth0
     echo " BRIDGE=xenbr0" >> ifcfg-eth0
 
-Finally, restart networking:
+重启网络：
 
     service network restart
 
-And verify that you have the bridge set up properly by running `ifconfig -a`:
+也可以通过命令`ifconfig -a`查看网卡和IP情况：
 
     eth0      Link encap:Ethernet  HWaddr 30:5B:D6:F1:D6:F8  
               inet6 addr: fe80::325b:d6ff:fef1:d6f8/64 Scope:Link

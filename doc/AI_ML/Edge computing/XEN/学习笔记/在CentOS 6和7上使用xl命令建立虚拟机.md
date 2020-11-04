@@ -1,29 +1,27 @@
 [TOC]
 
-# 1 Xen基本知识点
+本文假设已经安装完成Xen，且建立好了桥接网络，默认的桥接网卡名称为`xenbr0`。[TODO]
 
-Once you have set up a basic install Xen4QuickStart and have bridging ( CentOS6 or CentOS7) (the default bridge name is xenbr0 .. but you can do anything you want), you are ready to do some things with xen. One way is to use the normal VM tools in CentOS via libvirt (see Xen4Libvirt). But the built in libvirt is not extremely xen friendly and it limits what you can do to only the things virsh, virt-manager and virt-install understand. This is not very robust with respect to Xen.
+本文提供了一种基于xl命令行工具创建、管理虚拟机的方法（xm不再支持）。另外一种基于libvirt建立虚拟机的方法请参考[TODO]。
 
-另一种方法是使用`xl`工具创建、管理虚拟机（`xm`不再支持）。
+下面介绍使用xl工具，在一个运行CentOS 6的Dom0上，分别创建一个运行`CentOS 6`和`CentOS 7`的DomU域。
 
-This page is a basic example for creating a CentOS-6 and CentOS-7 DomU on a CentOS-6 Dom0 machine using xl.
+# 1 获取Xen信息-xl命令
 
-1. 获取信息-xl命令
+使用xl命令获取一些关于Xen地安装信息，如下所示：
 
-    使用xl命令获取一些关于Xen地安装信息，如下所示：
+    [root@c6-xen-dom0 ~]# xl info
 
-        [root@c6-xen-dom0 ~]# xl info
+    host                   : c6-xen-dom0
+    release                : 4.9.13-22.el6.x86_64
+    ....(省略)
+    cc_compiler            : gcc (GCC) 4.4.7 20120313 (Red Hat 4.4.7-17)
+    cc_compile_by          : mockbuild
+    cc_compile_domain      : centos.org
+    cc_compile_date        : Tue Feb 28 14:18:26 UTC 2017
+    xend_config_format     : 4
 
-        host                   : c6-xen-dom0
-        release                : 4.9.13-22.el6.x86_64
-        ....(省略)
-        cc_compiler            : gcc (GCC) 4.4.7 20120313 (Red Hat 4.4.7-17)
-        cc_compile_by          : mockbuild
-        cc_compile_domain      : centos.org
-        cc_compile_date        : Tue Feb 28 14:18:26 UTC 2017
-        xend_config_format     : 4
-
-In this example, we will assume a bridge name of xenbr0. All the VMs will use this bridge. Here are the config files being used in this setup on CentOS-6:
+在本示例中，我们假定网桥名为`xenbr0`。所有的虚拟机都是用这个网桥。下面是Dom0下设置的网卡配置文件：
 
     [root@c6-xen-dom0 ~]# cat /etc/sysconfig/network-scripts/ifcfg-eth0 
     DEVICE="eth0"
@@ -48,7 +46,7 @@ In this example, we will assume a bridge name of xenbr0. All the VMs will use th
     DEFROUTE=yes
     IPV6INIT=no
 
-Here is what it looks like on the example machine with IPv4 only:
+使用`ifconfig -a`查看网卡及IP相关信息（IPv4）：
 
     [root@c6-xen-dom0 ~]# ifconfig -a
     eth0      Link encap:Ethernet  HWaddr D0:50:99:62:6C:43  
@@ -74,13 +72,15 @@ Here is what it looks like on the example machine with IPv4 only:
               collisions:0 txqueuelen:1000 
               RX bytes:102780 (100.3 KiB)  TX bytes:558321 (545.2 KiB)
 
-You will also need some storage for your DomU VMs. You can also create image files if you prefer for your disks, but this example will use Logical Volumes (LVs) on LVM.
+# 2 为虚拟机建立存储设备
 
-I personally like to use LVs for my machine drives because you can easily mount them and look at them from the Dom0 machine if there is a problem and it is easy to expand them later if need to. It is also used by default on almost all Linux distributions for the installed file system.
+我们必须为我们的DomU虚拟机建立存储设备。可以创建镜像文件，也可以基于LVM创建逻辑卷（LV-本文采用这个方法）。
 
-CentOS-6 and CentOS-7 will create a huge LV for /home by default. If you have a large drive it is easy to recover some space there to use LVs for xen drives. You can also use a second disk drive and create a new Physical Volume and a new Volume Group for your LVs. Here is a really good reference for creating some space in your Volume Group for creating blank Logical Volumes（关于LVM，请参考[LVM管理](https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/6/html/Logical_Volume_Manager_Administration/index.html)）
+我个人喜欢使用LV，是因为很容易从Dom0上挂载并查看它们；也很容易进行扩展。
 
-For this example, I am using the default VG that was installed by the CentOS installer for CentOS-6, I have some free space to create new logical volumes as shown here:
+默认情况下，CentOS 6和7将为/home目录创建一个很大的LV卷。如果没有很大的硬盘空间，可以挂载一个硬盘，为lv创建一个新的物理卷和一个新的卷组。具体方法可以参考（[LVM管理](https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/6/html/Logical_Volume_Manager_Administration/index.html)）。
+
+本文中，使用安装CentOS 6的过程中，默认安装的卷组（VG）。使用命令`vgdisplay`可以查看相关信息：
 
     [root@c6-xen-dom0 ~]# vgdisplay
       --- Volume group ---
@@ -104,7 +104,9 @@ For this example, I am using the default VG that was installed by the CentOS ins
       Free  PE / Size       374800 / 1.43 TiB
       VG UUID               vqWRX0-SZOy-pxRx-R3oN-O61F-vt1B-xLdgjT
 
-So I have a VG (named vg_c6xendom0) that has 1.43 TB of free space.
+> CentOS 7会提示`-bash: pvdisplay: command not found`错误，运行命令`yum install lvm2`安装相关工具命令。
+
+通过上面的信息，可以看出，默认创建了一个1.43T大小的VG，名称为`vg_c6xendom0`。
 
 使用`lvcreate`命令创建两个`20GB`的逻辑卷LV：
 
@@ -154,21 +156,23 @@ So I have a VG (named vg_c6xendom0) that has 1.43 TB of free space.
       - currently set to     1024
       Block device           253:4
 
-我们打算从ISO镜像中加载CentOS，所以，在Dom0上创建一个目录`/opt/isos/`，用来保存下载的CentOS 6和7的镜像。下载地址：[`CentOS 6`](http://isoredirect.centos.org/centos/6/isos/x86_64/)和[`CentOS 7`](http://isoredirect.centos.org/centos/7/isos/x86_64/)镜像。
+我们打算从ISO镜像中加载CentOS。所以，在Dom0上创建一个目录`/opt/isos/`，用来保存下载的CentOS 6和7的镜像。下载地址：[`CentOS 6`](http://isoredirect.centos.org/centos/6/isos/x86_64/)和[`CentOS 7`](http://isoredirect.centos.org/centos/7/isos/x86_64/)镜像。
 
-# Xen虚拟机类型
+    wget http://mirrors.aliyun.com/centos/6.10/isos/x86_64/CentOS-6.10-x86_64-minimal.iso
 
-There are 2 major VM types, PV (paravirtualized) and HVM (fully virtualized). There are also hybrid options. Here is am overview of Xen that discusses these: Xen Overview. In this simple example, we will create an HVM (fully virtualized) install, as that is the easiest type.
+# 3 Xen虚拟机类型
 
-# 使用xl工具
+主要有两种虚拟机类型：半虚拟化（PV）和全虚拟化（HVM）。也可能混合使用。在本示例中，我们将创建一个HVM虚拟机，因为它是最简单的类型。
 
-Here is the documentation for xl from the Xen man pages :[xl(1)](http://xenbits.xen.org/docs/4.6-testing/man/xl.1.html).
+# 4 使用xl工具
 
-We will be creating a CentOS-6 and a CentOS-7 HVM.
+`xl`的官方文档请参考：[xl(1)](http://xenbits.xen.org/docs/4.6-testing/man/xl.1.html).
 
-First we need config files for the VMs .. one for each. There is an example HVM config file in the xen package called `/etc/xen/xlexample.hvm`. You can look at the file and at this HVM doc: [xl.cfg(5)](http://xenbits.xen.org/docs/4.6-testing/man/xl.cfg.5.html#Fully-virtualised-HVM-Guest-Specific-Options)。
+我们将分别创建运行CentOS-6和CentOS-7系统的HVM虚拟机。
 
-Here are our config files .. I created a directory in `/etc/xen/` called `config.d` where I keep config files.
+首先，我们需要为每个虚拟机建立配置文件。可以参考xen自带的配置文件示例`/etc/xen/xlexample.hvm`。你也可以参考[xl.cfg(5)](http://xenbits.xen.org/docs/4.6-testing/man/xl.cfg.5.html#Fully-virtualised-HVM-Guest-Specific-Options)。
+
+在`/etc/xen/`目录下创建名为`config.d`的目录，在这儿，保存自定义的配置文件。
 
 * 首先，创建`/etc/xen/config.d/c6-x8664.hvm.cfg`
 
@@ -176,7 +180,7 @@ Here are our config files .. I created a directory in `/etc/xen/` called `config
         name = "c6-x8664.hvm"
         memory = 4096
         vcpus = 2
-        serial='pty'
+        # serial='pty'
         vif = [ 'mac=00:16:3E:29:00:00,bridge=xenbr0' ]
         disk = [ 'phy:/dev/vg_c6xendom0/c68-x8664-hvm,xvda,rw', 'file:/opt/isos/CentOS-6.8-x86_64-minimal.iso,xvdb:cdrom,r' ]
         boot = "dc"
@@ -206,16 +210,18 @@ Here are our config files .. I created a directory in `/etc/xen/` called `config
         stdvga=1
         videoram = 64
 
-See the above link in xl.cfg(5) for what each option means, but some important points are:
+每一项的意义可以参考[xl.cfg(5)](http://xenbits.xen.org/docs/4.6-testing/man/xl.cfg.5.html#Fully-virtualised-HVM-Guest-Specific-Options)，这儿，只对重要的项进行说明：
 
-* the IP address for vnc listen is the IP of the bridge, in this example, 192.168.0.9.
-* boot on floppy (a), hard disk (c), Network (n) or CD-ROM (d) .. so 'dc' means boot on CD then Disk We will edit it to only boot="c" once we are done.
-* we would use a vnc client to connect to 192.168.0.9:5900 (centos-6) and 192.168.0.9:5901 (centos-7).
+* vnclisten的IP地址指的是网桥的地址，比如`192.168.0.9`；
+
+* boot选项，分别对应`floppy(a)`、`hard disk (c)`、`Network (n)`或`CD-ROM (d)`。所以，`dc`代表先从CD，其次从硬盘。一旦完成后，我们修改它，`c`，让其只从CD启动。
+
+* 我们将使用`vnc`客户端远程连接到`192.168.0.9:5900`(centos-6)和`192.168.0.9:5901 (centos-7)`。
 
 We will just do a normal CentOS install of each version from the ISO.
 
 
-# xl create
+# 5 xl create
 
 The command to start the CentOS-6 VM is:
 
@@ -237,19 +243,17 @@ You would connect to that install via:
 
 Once the installs are complete, you would edit the /etc/xen/config.d/c6-x8664.hvm.cfg (and c7-x8664.hvm.cfg) and change boot to boot="c", to boot from the disk and not the CD.
 
-# 半虚拟化
+# 6 半虚拟化
 
-# Using Para-Virtualization (PV) or PV-on-HVM (PVHVM) instead
-
-# PV-on-HVM (PVHVM)
+## 6.1 PV-on-HVM (PVHVM)
 
 PV-on-HVM is discussed here in detail ([LINK](https://wiki.xen.org/wiki/PV_on_HVM)), and actual examples here ([LINK](https://wiki.xen.org/wiki/Xen_Linux_PV_on_HVM_drivers)). Basically, all you need to do is to add xen_platform_pci=1 to your HVM config files above to use PVHVM.
 
-# Para-Virtualization (PV)
+## 6.2 半虚拟化(PV)
 
-Para-Virtualization no longer works by default on the CentOS-6 or CentOS-7 kernels. You could use the Dom0 kernels in your DomU and turn on PV after the install by modifying your config file.
+默认情况下，CentOS-6和CentOS-7内核不再支持半虚拟化。您可以在DomU中使用Dom0内核，并在安装后通过修改配置文件来打开PV。
 
-If you would like to try to do it, here are some notes:
+如果想要尝试半虚拟化，下面是一些注意事项：
 
 1. You can NOT use the default install as the boot partition in Xen PV machines can not be the XFS file system .. the default used by CentOS. Manually setup a /boot partition as ext4 instead in the CentOS installer.
 
@@ -270,4 +274,6 @@ If you have followed all the rules (the xen dom0 kernel replacing the CentOS-7 i
 To start your PV DomU, use this command:
 
     xl create /etc/xen/config.d/c7-x8664.pv.cfg
+
+
 
