@@ -1,0 +1,1 @@
+[centos7配置IP地址](https://www.cnblogs.com/yhongji/p/9336247.html)
