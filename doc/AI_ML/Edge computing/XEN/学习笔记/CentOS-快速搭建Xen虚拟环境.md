@@ -14,7 +14,8 @@
 
 * Read the Release Notes at http://wiki.centos.org/Manuals/ReleaseNotes/Xen4-01 ; they cover important notes, known issues, workarounds and details on where to get help, should you need it.
 * The machine hosting the Xen hypervisor should be a CentOS-6/x86_64 minimal install; before going any further, you should ensure that only the CentOS repos are enabled for yum, and that you have the latest updates applied. The Xen4 stack for CentOS has only been tested and verified on CentOS-6.4 and newer.
-* We assume that the machine has 1.5GB or more RAM and more than 10GB of disk space for the root filesystem under /
+
+* 假设机器具有至少`1.5GB`的RAM，超过10GB的硬盘空间，留给挂载到root目录`/`节点下的文件系统。
 
 # 3 安装Xen4软件包
 
