@@ -159,6 +159,7 @@
 我们打算从ISO镜像中加载CentOS。所以，在Dom0上创建一个目录`/opt/isos/`，用来保存下载的CentOS 6和7的镜像。下载地址：[`CentOS 6`](http://isoredirect.centos.org/centos/6/isos/x86_64/)和[`CentOS 7`](http://isoredirect.centos.org/centos/7/isos/x86_64/)镜像。
 
     wget http://mirrors.aliyun.com/centos/6.10/isos/x86_64/CentOS-6.10-x86_64-minimal.iso
+    wget https://mirrors.aliyun.com/centos/7.8.2003/isos/x86_64/CentOS-7-x86_64-Minimal-2003.iso
 
 # 3 Xen虚拟机类型
 

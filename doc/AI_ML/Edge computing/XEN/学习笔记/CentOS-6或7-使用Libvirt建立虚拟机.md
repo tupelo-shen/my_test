@@ -1,16 +1,16 @@
 [TOC]
 
-# 1 Libvirt and Xen Basics
+# 1 关于Libvirt和Xen
 
-The HostOS install in Xen is known as Dom0. Virtual Machines (VMs) running via Xen are known as DomU's.
+在Xen中安装的主机OS称为Dom0。通过Xen运行的虚拟机称为DomU。
 
-By default, libvirt creates a Network Address Translation (NATed) 192.168.122.0/24 network behind the default network card (normally eth0).
+默认情况下，`libvirt`创建NAT网络连接方式（192.168.122.0/24），默认网卡通常是`eth0`。
 
-The DomU VMs running on this NATed network can connect to each other and connect outbound from the Dom0 network, but your only connection to them is via libvirt (or xen) on the Dom0. You can modify the default network to become a Bridged network instead of a NATed network, which will allow you to connect to the DomU VMs as if they where on the same physical network as the Dom0. Bridging is discussed below (Section 7).
+通过这种NAT网络连接方式，DomU上的虚拟机可以互相连接，也可通过Dom0与外界进行通信（但是，只能通过Dom0上的libvirt（或Xen）。当然，如果你喜欢，可以将`NAT`连接方式改为`bridge`桥接方式。至于桥接方式怎么修改，本文的第7段文字会进行阐述。
 
-# 2 Prerequisites
+# 2 先决条件
 
-This page assumes you have followed the Xen4QuickStart guide and have a Xen kernel installed and the command xl info looks something like this:
+本文的前提条件是已经按照前面讲过的[CentOS-快速搭建Xen虚拟环境](TODO)指导手册，已经安装好了Xen。比如，调用`xl info`命令能有如下输出：
 
     [root@xentest1 ~]# xl info
     host                   : immortal
@@ -47,27 +47,35 @@ This page assumes you have followed the Xen4QuickStart guide and have a Xen kern
     cc_compile_date        : Mon Dec 15 17:54:14 UTC 2014
     xend_config_format     : 4
 
-Unless otherwise noted, all instructions should be done as the root user on the Dom0 machine.
+> 除非特别注明：所有的指令都是在Dom0的root用户下完成的。
 
-I normally like to add a couple of packages to every minimal install, and some things later may need these packages. Install them via this command:
+因为本文的安装都是在CentOS的mini版上进行的，所以，可能需要安装下面这些小工具，方便使用。
 
     yum install rsync wget vim-enhanced openssh-clients
 
-# 3 Installing libvirt (on the Dom0 machine)
+# 3 安装libvirt（在Dom0上）
 
-First we need to install the basic packages required for libvirt:
+首先，我们需要安装libvirt所需的基本包:
 
-on a CentOS 6 hypervisor :
+如果是`CentOS-6 hypervisor`：
 
     yum install libvirt python-virtinst libvirt-daemon-xen
 
-on a CentOS 7 hypervisor :
+如果是`CentOS-7 hypervisor`：
 
     yum install libvirt libvirt-daemon-xen
 
-After the install, restart your Dom0 machine.
+完成安装后，重启Dom0。
 
-# 4 Remote LibVirt Access
+> 如果在执行`# virt-install `命令时，报`bash: virt-install: 未找到命令...`的错误：
+> 
+> 请执行下面两条指令：
+> 
+>       yum install libguestfs-tools
+>       yum install virt-install.noarch
+
+
+# 4 远程LibVirt访问
 
 Most of the time, we do not recommend installing a full GUI system on Dom0 servers, so most people will be accessing/controlling the Dom0 libvirt remotely.
 
@@ -159,7 +167,7 @@ For more information on virsh, see this [guide](https://access.redhat.com/site/d
 if you're installing CentOS 7 DomU as a paravirt guest, you have to remember that /boot in your VM can't be xfs - see https://wiki.xen.org/wiki/PyGrub. So either you use a kickstart or you have to install it with vnc so that you can specificy something else than the default. You can add those options in 'extra-args'
 
 
-## 5.1 Using virt-manager to install a DomU
+## 5.1 使用virt-manager安装DomU
 
 Now you can highlight the new hostname/IP in virt-manager and either **right-click** and pick **New** or click the **Create a new Virtual Machine** icon and then follow the wizard to add a new machine.
 
@@ -169,36 +177,44 @@ The new machine install will be very similar to [this guide](https://access.redh
 
 
 
-## 5.2 Using virt-install to install a DomU via SSH
+## 5.2 virt-install安装DomU（通过SSH） 
 
-Another method for a remote install is to connect to the Dom0 machine via ssh and become the root user, and then use virt-install and the console to do an install. This command (as root, from the command line) will allow a text install remotely:
+使用ssh连接Dom0的客户机，切换到root用户，然后使用命令`virt-install`和命令行进行安装。这个命令允许root用户远程使用文本命令进行安装。
 
 
-    virt-install -d -n TestVM1 -r 2048 --vcpus=1 --disk /var/lib/libvirt/images/TestVM1.img,size=8 --nographics -p -l "http://192.168.0.10/centos/6.4/os/x86_64" --extra-args="text console=com1 utf8 console=hvc0"
+    virt-install -d -n TestVM1 -r 2048 --vcpus=1 --disk /var/lib/libvirt/images/TestVM1.img,size=8 \
+    --nographics -p -l "http://192.168.0.10/centos/6.4/os/x86_64" \
+    --extra-args="text console=com1 utf8 console=hvc0"
 
-In the above example, the meanings are:
+下面的命令已经成功：
 
--d - Debug mode, lots of text and full config files printed for debuging
+    virt-install -d -n TestVM1 -r 2048 --vcpus=1 --disk /dev/centos/c6-x8664-hvm,size=30 \
+    --nographics -p -l "http://mirror.centos.org/centos/6/os/x86_64/" \
+    --extra-args="text console=com1 utf8 console=hvc0"
 
--n TestVM1 - The name of the VM
+各个选项的意义：
 
--r 2048 - Ram size (2048 MB or 2 GB)
+* -d - 调试模式，打印大量的文本信息和配置文件内容，方便调试
 
---vcpus=1 - Number of Virtual CPUS
+* -n TestVM1 - 指定VM的名称
 
---disk=/var/lib/libvirt/images/TestVM1.img,size=8 - disk image location and size in GB ... this can also point to LVM, etc
+* -r 2048 - 指定RAM大小（2GB）
 
---nographics - since we do not have GUI installed on our Dom0, do not use VNC, etc.
+* --vcpus=1 - 指定虚拟CPU的数量
 
--p - use para-virtualization
+* --disk=/var/lib/libvirt/images/TestVM1.img,size=8 - 指定硬盘的位置，size指定大小，单位是GB。当然了，这个也可以指向LVM
 
--l "http://192.168.0.10/centos/6.4/os/x86_64" - Location of a centos tree, can also use http://mirror.centos.org/centos/6/os/x86_64/ or other mirrors.
+* --nographics - 由于我们没有在Dom0上安装GUI，不要使用VNC等
 
---extra-args="text console=com1 utf8 console=hvc0" - this tells linux to use com1 and xen to use hvc0 so that you can do a text install via the console
+* -p - 指定半虚拟化。如果是全虚拟化，需要使用`-v`选项
 
-Note: This type of install is only console based, so only a text install can be done this way. The virt-manager install (previous section) above will allow fully graphical installs as well.
+* -l "http://192.168.0.10/centos/6.4/os/x86_64" - 指定安装镜像的位置，也可以使用 http://mirror.centos.org/centos/6/os/x86_64/ 或者其它镜像网站
 
-For more information on doing installs via virt-install, see this [guide](https://access.redhat.com/site/documentation//en-US/Red_Hat_Enterprise_Linux/6/html/Virtualization_Host_Configuration_and_Guest_Installation_Guide/sect-Virtualization_Host_Configuration_and_Guest_Installation_Guide-Guest_Installation-Creating_guests_with_virt_install.html).
+* --extra-args="text console=com1 utf8 console=hvc0" - 这告诉linux使用com1和xen来使用hvc0，这样您就可以通过控制台进行文本安装
+
+> 这种方式的安装只适用于文本方式。virt-manager可以允许图形化方式安装。
+
+更多关于`virt-install`的使用方式，请参考该[指导手册](https://access.redhat.com/site/documentation//en-US/Red_Hat_Enterprise_Linux/6/html/Virtualization_Host_Configuration_and_Guest_Installation_Guide/sect-Virtualization_Host_Configuration_and_Guest_Installation_Guide-Guest_Installation-Creating_guests_with_virt_install.html).
 
 
 
@@ -216,39 +232,35 @@ Please see these instructions for remote virt-manager or remote virsh connection
 Please see this guide for using virsh and this guide for using virt-manager.
 
 
-# 7 Example Bridge Setup
+# 7 桥接网络设置
 
-Here is another example bridge setup:
-
-You must have bridge-utils installed to configure bridges. You can install it on CentOS with this command:
+要想配置`bridge`，必须安装`bridge-utils`工具。CentOS的安装方式：
 
     yum install bridge-utils
 
-The below files are in /etc/sysconfig/network-scripts/ and must be edited.
+修改`/etc/sysconfig/network-scripts/`目录下的文件。下面是建立一个名为`br1`的桥接网卡的最小设置
 
-Minimal Example with a br1
+1. 修改`ifcfg-eth0`文件：
 
-ifcfg-eth0
+        DEVICE=eth0
+        NM_CONTROLLED=no
+        ONBOOT=yes
+        TYPE=Ethernet
+        BRIDGE="br1"
+        USERCTL=no
 
-    DEVICE=eth0
-    NM_CONTROLLED=no
-    ONBOOT=yes
-    TYPE=Ethernet
-    BRIDGE="br1"
-    USERCTL=no
+2. 添加`ifcfg-br1`文件，填入如下内容：
 
-ifcfg-br1
+        DEVICE=br1
+        BOOTPROTO=none
+        NM_CONTROLLED=no
+        ONBOOT=yes
+        TYPE=Bridge
+        IPADDR=192.168.0.5
+        PREFIX=24
+        GATEWAY=192.168.0.1
+        DNS1=8.8.8.8
+        DNS2=8.8.4.4
+        USERCTL=no
 
-    DEVICE=br1
-    BOOTPROTO=none
-    NM_CONTROLLED=no
-    ONBOOT=yes
-    TYPE=Bridge
-    IPADDR=192.168.0.5
-    PREFIX=24
-    GATEWAY=192.168.0.1
-    DNS1=8.8.8.8
-    DNS2=8.8.4.4
-    USERCTL=no
-
-Other examples of bridge setups are discussed [here](http://wiki.xen.org/wiki/Network_Configuration_Examples_%28Xen_4.1%2B%29#Red_Hat-style_bridge_configuration_.28e.g._RHEL.2C_Fedora.2C_CentOS.29) and [here](https://sites.google.com/site/ghidit/how-to-2/configure-bridging-on-centos). Also, Google is your friend 
+更多关于桥接的设置，请参考[这儿](http://wiki.xen.org/wiki/Network_Configuration_Examples_%28Xen_4.1%2B%29#Red_Hat-style_bridge_configuration_.28e.g._RHEL.2C_Fedora.2C_CentOS.29)还有[这儿](https://sites.google.com/site/ghidit/how-to-2/configure-bridging-on-centos)。当然，也可以baidu 

@@ -1,8 +1,6 @@
 [TOC]
 
-Throughout this book, so far, we’ve talked
-
-about Xen mostly as an integrated whole, a complete virtualization solution, to use marketing’s word. The reality is a bit more complex than that. Xen itself is only one component of a platform that aims to free users from having to work with real hardware. The Xen hypervisor virtualizes a processor (along with several other basic components, as outlined in Chapter 2), but it relies on several underlying technologies to provide seamless abstractions of the resources a computer needs. This distinction is clearest in the realm of storage, where Xen has to work closely with a virtualized storage layer to provide the capabilities we expect of a virtual machine.
+Throughout this book, so far, we’ve talked about Xen mostly as an integrated whole, a complete virtualization solution, to use marketing’s word. The reality is a bit more complex than that. Xen itself is only one component of a platform that aims to free users from having to work with real hardware. The Xen hypervisor virtualizes a processor (along with several other basic components, as outlined in Chapter 2), but it relies on several underlying technologies to provide seamless abstractions of the resources a computer needs. This distinction is clearest in the realm of storage, where Xen has to work closely with a virtualized storage layer to provide the capabilities we expect of a virtual machine.
 
 By that we mean that Xen, combined with appropriate storage mechanisms, provides near total hardware independence. The user can run the Xen machine anywhere, move the instance about almost at will, add storage freely, save the filesystem state cleanly, and remove it easily after it’s done.
 
