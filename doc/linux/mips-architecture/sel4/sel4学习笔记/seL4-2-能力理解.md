@@ -1,0 +1,62 @@
+[TOC]
+
+This tutorial provides a basic introduction to seL4 capabilities.
+
+# 1 Prerequisites
+
+1. [Set up your machine](https://docs.sel4.systems/HostDependencies).
+2. [Hello world](https://docs.sel4.systems/Tutorials/hello-world)
+
+# 2 Initialising
+
+    # 有关获取教程源代码的说明，请参考：https://docs.sel4.systems/Tutorials/#get-the-code
+    #
+    # 按照这些说明初始化教程
+    # initialising the build directory with a tutorial exercise
+    ./init --tut capabilities
+    # building the tutorial exercise
+    cd capabilities_build
+    ninja
+
+# 3 Outcomes
+
+By the end of this tutorial, you should be familiar with:
+
+1. The jargon CNode, CSpace, CSlot.
+2. Know how to invoke a capability.
+3. Know how to delete and copy CSlots.
+
+# 4  什么是能力（capability）？
+
+A capability is a unique, unforgeable token that gives the possessor permission to access an entity or object in system. In seL4, capabilities to all resources controlled by seL4 are given to the root task on initialisation.To change the state of any resources, users use the kernel API, available in `libsel4` to request an operation on a specific capability. 
+
+For example, the root task is provided with a capability to its own thread control block (TCB), `seL4_CapInitThreadTCB`, a constant defined by `libsel4`. To change the properties of the initial TCB, one can use any of the TCB API methods on this capability. Below is an example which changes the stack pointer of the root task’s TCB, a common operation in the root task if a larger stack is needed:
+
+    seL4_UserContext registers;
+    seL4_Word num_registers = sizeof(seL4_UserContext)/sizeof(seL4_Word);
+    
+    /* Read the registers of the TCB that the capability in seL4_CapInitThreadTCB grants access to. */
+    seL4_Error error = seL4_TCB_ReadRegisters(seL4_CapInitThreadTCB, 0, 0, num_registers, &registers);
+    assert(error == seL4_NoError);
+    
+    /* set new register values */
+    registers.sp = new_sp;      // the new stack pointer, derived by prior code.
+    
+    /* Write new values */
+    error = seL4_TCB_WriteRegisters(seL4_CapInitThreadTCB, 0, 0, num_registers, registers);
+    assert(error == seL4_NoError);
+
+Further documentation is available on [TCB_ReadRegisters](https://docs.sel4.systems/ApiDoc.html#read-registers) and [TCB_WriteRegisters](https://docs.sel4.systems/ApiDoc.html#write-registers).
+
+# 5 什么是能力节点（CNode）？
+
+A CNode (capability-node) is an object full of capabilities: you can think of a CNode as an array of capabilities. We refer to slots as CSlots (capability-slots). In the example above, `seL4_CapInitThreadTCB` is the slot in the root task’s CNode that contains the capability to the root task’s TCB. Each CSlot in a CNode can be in the following state:
+
+* empty: the CNode slot contains a null capability,
+* full: the slot contains a capability to a kernel resource.
+
+By convention the 0th CSlot is kept empty, for the same reasons as keeping NULL unmapped in process virtual address spaces: to avoid errors when uninitialised slots are used unintentionally.
+
+CSlots are `1u << seL4_SlotBits` in size, and as a result the number of slots in a CNode can be calculated by `CNodeSize / (1u << seL4_SlotBits)`.
+
+
