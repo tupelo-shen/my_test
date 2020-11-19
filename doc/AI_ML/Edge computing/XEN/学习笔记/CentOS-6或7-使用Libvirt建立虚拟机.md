@@ -218,8 +218,37 @@ The new machine install will be very similar to [this guide](https://access.redh
 
 
 
-# 6 Controlling DomU Virtual Machines
+# 6 配置DomU虚拟机
 
+使用，其默认配置文件的位置位于`/etc/libvirt/libxl/虚拟机名称.xml`。
+
+复制配置文件：
+
+    # virsh dumpxml 虚拟机名称 > /etc/libvirt/qemu/虚拟机名称-1.xml
+
+通过新创建的配置文件创建虚拟机系统：
+
+    # virsh create /etc/libvirt/qemu/虚拟机名称-1.xml --console
+
+virsh常用命令： 
+
+    virsh start x               启动名字为x的非活动虚拟机  
+    virsh list   --all          列出虚拟机  
+    virsh create x.xml          创建虚拟机（创建后，虚拟机立即执行，成为活动主机）  
+    virsh suspend x             暂停虚拟机  
+    virsh resume x              启动暂停的虚拟机  
+    virsh shutdown x            正常关闭虚拟机  
+    virsh destroy x             强制关闭虚拟机  
+    virsh undefine x            删除虚拟机  
+    virsh dominfo x             显示虚拟机的基本信息  
+    virsh domname 2             显示id号为2的虚拟机名  
+    virsh domid x               显示虚拟机id号  
+    virsh domuuid x             显示虚拟机的uuid  
+    virsh domstate x            显示虚拟机的当前状态  
+    virsh dumpxml x             示虚拟机的当前配置文件（可能和定义虚拟机时的配置不同，
+                                因为当虚拟机启动时，需要给虚拟机 分配id号、uuid、vnc端口号等等）  
+    virsh setmem x 512000       给不活动虚拟机设置内存大小  
+    virsh edit x                编辑配置文件（一般是在刚定义完虚拟机之后） 
 
 DomU VMs can be controlled using libvirt either by a graphical application (virt-manager) or a console application (virsh).
 
