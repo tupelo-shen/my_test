@@ -12,24 +12,26 @@
     vif = ['']
     disk = ['phy:/dev/targetvg/lv,sda,w']
 
-This specifies a kernel, a network interface, and a disk, and lets Xen use defaults for everything else. Tailor the variables, such as volume group and kernel name, to your site. As we mention elsewhere, we recommend including other variables, such as a MAC and IP address, but we’ll omit them during this chapter for clarity so we can focus on creating domU images.
+上面的配置文件指定了内核，网络接口和硬盘，其余的则由Xen使用默认值。当然了，你也可以指定其它变量，比如MAC、IP等。但是，本文专注于DomU上的镜像创建，为了清晰起见，其余的变量不做介绍。
 
 > NOTE: This doesn’t include a ramdisk. Either add a ramdisk= line or include xenblk (and xennet if you plan on accessing the network before modules are available) in your kernel. When we compile our own kernels, we usually include the xenblk and xennet drivers directly in the kernel. We only use a ramdisk to satisfy the requirements of the distro kernels.
+> 
+> 需要注意的是，这儿没有包含ramdisk行。实际中，可能还需要包含它，为了加载文件系统。
 
-If you’re using a modular kernel, which is very likely, you’ll also need to ensure that the kernel has a matching set of modules that it can load from the domU filesystem. If you’re booting the domU using the same kernel as the dom0, you can copy over the modules like this (if the domU image is mounted on /mnt):
+很可能我们使用的是模块化内核，还需要保证内核具有一组能够从DomU文件系统中加载的模块。如果DomU使用的内核与Dom0相同的话，可以直接从Dom0拷贝（假设DomU的镜像挂载在/mnt目录下）：
 
     # mkdir -p /mnt/lib/modules
     # cp -a /lib/modules/`uname -r` /mnt
 
-Note that this command only works if the domU kernel is the same as the dom0 kernel! Some install procedures will install the correct modules automatically; others won’t. No matter how you create the domU, remember that modules need to be accessible from the domU, even if the kernel lives in the dom0. If you have trouble, make sure that the kernel and module versions match, either by booting from a different kernel or copying in different modules.
+再次声明，上面的命令必须是DomU和Dom0的内核镜像相同。无论如何创建DomU，都要记住保证模块可以从DomU访问。
 
 # 2 选择内核
 
-Traditionally, one boots a domU image using a kernel stored in the dom0 filesystem, as in the sample config file in the last section. In this case, it’s common to use the same kernel for domUs and the dom0. However, this can lead to trouble—one distro’s kernels may be too specialized to work properly with another distro. We recommend either using the proper distro kernel, copying it into the dom0 filesystem so the domain builder can find it, or compiling your own generic kernel.
+通常DomU上启动的内核都位于Dom0的文件系统中。这种情况下，DomU和Dom0一般会使用相同的内核。
 
-Another possible choice is to download Xen’s binary distribution, which includes precompiled domU kernels, and extracting an appropriate domU kernel from that.
+另一种选择就是下载Xen发行版，其中会包含预编译好的DomU内核。可以从中选择合适的内核。
 
-Alternatively (and this is the option that we usually use when dealing with distros that ship Xen-aware kernels), you can bypass the entire problem of kernel selection and use PyGRUB to boot the distro’s own kernel from within the domU filesystem. For more details on PyGRUB, see Chapter 7. PyGRUB also makes it more intuitive to match modules to kernels by keeping both the domU kernel and its corresponding modules in the domU.
+再者，可以使用PyGRUB从DomU文件系统中引导自己的内核。至于[PyGRUB]，请参考[第7章](https://wiki.prgmr.com/mediawiki/index.php/Chapter_7:_Hosting_Untrusted_Users_Under_Xen:_Lessons_from_the_Trenches)，使用PyGRUB可以更好的保证模块的匹配性。
 
 # 3 通过tar快速安装
 
