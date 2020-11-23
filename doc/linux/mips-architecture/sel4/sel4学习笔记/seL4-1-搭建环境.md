@@ -4,25 +4,23 @@
 
 This page describes how to set up your host machine to build and run seL4 and its supported projects. To compile and use seL4 you can either:
 
-* Recommended: Use Docker to isolate the dependencies from your machine. Detailed instructions for using Docker for building seL4, Camkes, and L4v can be found [here](https://docs.sel4.systems/projects/dockerfiles/).
+* 推荐使用Docker构建seL4，Camkes和L4v：具体请参考[https://docs.sel4.systems/projects/dockerfiles/](https://docs.sel4.systems/projects/dockerfiles/).
 
-* Install the following dependencies on your local OS
+* 直接在主机上安装。
 
-The following instructions describe how to set up the required dependencies on your local OS. This page assumes you are building in a Linux OS. We however encourage site [contributions](https://docs.sel4.systems/DocsContributing) for building in alternative OSes (e.g. macOS).
-
-# 2 Get Google’s Repo tool
+# 2 获取Google的Repo 工具
 
 The primary way of obtaining and managing seL4 project source is through the use of Google’s repo tool. To get repo, follow the instructions described in the section “Installing Repo” [here](https://source.android.com/setup/develop#installing-repo)
 
 See the [RepoCheatsheet](https://docs.sel4.systems/projects/buildsystem/repo-cheatsheet) page for a quick explanation of how we use Repo.
 
-# 3 seL4 Build Dependencies
+# 3 seL4构建所需依赖
 
-To build seL4-based projects, ensure you have installed the dependencies described in the [Base Build Dependencies](https://docs.sel4.systems/projects/buildsystem/host-dependencies.html#base-build-dependencies) and [Python Dependencies](https://docs.sel4.systems/projects/buildsystem/host-dependencies.html#python-dependencies) sections below.
+构建基于seL4的工程，需要下面两种依赖项：
 
-## 3.1 Base Build Dependencies
+## 3.1 基本的Build 依赖项
 
-To establish a usable development environment it is important to install your distributions basic build packages.
+为了构建一个可用的开发环境，基于使用的系统安装基本的build包是很重要的。
 
 ### 3.1.1 Ubuntu安装方法
 
@@ -30,12 +28,12 @@ To establish a usable development environment it is important to install your di
 
 > Note that we require a minimum CMake version of 3.12.0 while Ubuntu 18.04 contains 3.10.2. In order to correct this, a custom installation of CMake may be required which can be downloaded from: https://cmake.org/download/
 
-The basic build package on Ubuntu is the `build-essential` package. To install run:
+Ubuntu上基本的build包称为`build-essential`。运行下面的命令可以安装：
 
     sudo apt-get update
     sudo apt-get install build-essential
 
-Additional base dependencies for building seL4 projects on Ubuntu include installing:
+为了在Ubuntu上构建seL4工程还需要安装下面这些基本的依赖项：
 
     sudo apt-get install cmake ccache ninja-build cmake-curses-gui
     sudo apt-get install python-dev python-pip python3-dev python3-pip
@@ -44,21 +42,19 @@ Additional base dependencies for building seL4 projects on Ubuntu include instal
     sudo apt-get install u-boot-tools
     sudo apt-get install protobuf-compiler python-protobuf
 
-To build for ARM targets you will need a cross compiler. In addition, to run seL4 projects on a simulator you will need qemu. Installation of these additional base dependencies include running:
+为了构建ARM上运行的目标程序还需要安装交叉编译工具链。另外，为了在模拟器上运行seL4工程，还需要安装一个Qemu虚拟机程序。命令如下所示：
 
     sudo apt-get install gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
     sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
     sudo apt-get install qemu-system-arm qemu-system-x86 qemu-system-misc
 
-(you can install the hardware floating point versions as well if you wish”
+如果你对浮点数感兴趣，还可以安装支持浮点数编译的交叉编译工具：
 
     sudo apt-get install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
 
-### 3.1.2 Debian安装方法（略）
+## 3.2 Python依赖项
 
-## 3.2 Python Dependencies
-
-Regardless of your Linux distribution, python dependencies are required to build seL4, the manual and its proofs. To install you can run:
+为了构建seL4、手册和功能安全验证，还需要安装python依赖项。可以运行下面的命令：
 
     pip3 install --user setuptools
     pip3 install --user sel4-deps
@@ -66,7 +62,7 @@ Regardless of your Linux distribution, python dependencies are required to build
     pip install --user setuptools
     pip install --user sel4-deps
 
-(Some distributions use `pip` for python3 and `pip2` for python2; others uses `pip` for python2 and `pip3` for python3. Use the Python 3 version for your distribution)
+有些系统python3使用pip，python2使用pip2；而有些系统python3使用pip3，python2使用pip。
 
 # 4 CAmkES Build Dependencies
 
