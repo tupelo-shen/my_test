@@ -166,6 +166,9 @@ If you need to make any code modifications or commit things to git, use terminal
     jblogs@in-container:/host$ ../init-build.sh -DPLATFORM=x86_64 -DSIMULATION=TRUE
     jblogs@in-container:/host$ ninja
     # ... time passes...
+
+运行测试工程：
+
     jblogs@in-container:/host$ ./simulate
     ...
     Test VSPACE0002 passed
