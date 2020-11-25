@@ -16,10 +16,7 @@
 
 # 3 制作教程
 
-查看文件树`ls`：
-
-
-顶层目录包含kernel本身，教程可以在子目录`projects/sel4-tutorials`发现。本教程由一些预先编写的示例应用程序组成，它们故意被编写了一半。通过引导你来填写缺失的部分，从而熟悉seL4代码。但是，对于每一个示例应用程序都有一个完整的解决方案，其中显示了正确的答案，作为参考。完成教程后，将能够使用CMake初始化和构建你自己的解决方案。
+查看文件树（`ls`命令）。可以发现，顶层目录包含kernel本身，教程可以在子目录`projects/sel4-tutorials`发现。本教程由一些预先编写的示例应用程序组成，它们故意被编写了一半。通过引导你来填写缺失的部分，从而熟悉seL4代码。但是，对于每一个示例应用程序都有一个完整的解决方案，其中显示了正确的答案，作为参考。完成教程后，将能够使用CMake初始化和构建你自己的解决方案。
 
 创建教程示例的流程一般如下所示：
 
@@ -35,7 +32,7 @@
 
 这部分的练习作业就是根据教程的指导，完成tutorial目录下的应用程序。
 
-完整的教程示例可以通过在`init`命令后面添加`--solution`参数来获取。比如：`../init --plat <platform> --tut <tutorial exercise> --solution`。
+<font color="blue">`完整的教程示例`</font>可以通过在`init`命令后面添加`--solution`参数来获取。比如：`../init --plat <platform> --tut <tutorial exercise> --solution`。
 
 # 4 课程列表
 
@@ -54,7 +51,7 @@
 5. IPC - 学习线程间通信机制
 6. 通知 - 学习使用通知对象和信号
 7. 中断 - 中断处理
-8. Fault - 错误处理（例、虚拟内存错误）和错误端点
+8. Fault - 错误处理（如虚拟内存错误）和错误端点
 
 ## 4.3 库函数教程
 
@@ -77,14 +74,14 @@
 
 # 5 CAmkES课程
 
-These tutorials get you started with our component system CAmkES, which is allows you to configure static systems through components. CAmkES generates the glue code for interacting with seL4 and is designed for building high-assurance, static systems.
+这些课程介绍组件系统`CAmkES`，它允许使用组件配置一个静态系统。`CAmkES`生成用于与seL4交互的粘合代码，专门设计用于构建高保证的静态系统。
 
-These tutorials work similarly to the SEL4 tutorials in that they are guided by a slide presentation. There are half-completed sample applications, with a set of slides giving instructions, with TASK challenges once again. There are also completed sample solutions.
+这些课程和seL4的课程类似，包括半完成的示例程序，还有一些幻灯片指导说明，也有一些挑战任务。完成的示例程序请参考上面的获取方式获得。
 
-1. [Camkes](https://docs.sel4.systems/Tutorials/hello-camkes-0.html) an introduction to Camkes concepts.
-2. [Camkes 1](https://docs.sel4.systems/Tutorials/hello-camkes-1.html) an introduction to Camkes concepts.
-3. [Camkes 2](https://docs.sel4.systems/Tutorials/hello-camkes-2.html) an introduction to Camkes concepts.
-4. [Camkes 3](https://docs.sel4.systems/Tutorials/hello-camkes-timer.html) introduce Camkes hardware components.
+1. [Camkes](https://docs.sel4.systems/Tutorials/hello-camkes-0.html) - 介绍Camkes概念。
+2. [Camkes 1](https://docs.sel4.systems/Tutorials/hello-camkes-1.html) - 介绍Camkes概念。
+3. [Camkes 2](https://docs.sel4.systems/Tutorials/hello-camkes-2.html) - 介绍Camkes概念。
+4. [Camkes 3](https://docs.sel4.systems/Tutorials/hello-camkes-timer.html) - 介绍Camkes硬件组件。
 
 这部分的幻灯片教程位于：`projects/sel4-tutorials/docs/CAmkESTutorial.pdf`
 
@@ -104,7 +101,7 @@ MCS扩展是即将对seL4进行的API更改。
 
 # 8 后续内容
 
-尝试构建和运行[seL4test](https://docs.sel4.systems/seL4Test)。
+完成这些课程之后，可以尝试构建和运行[seL4test](https://docs.sel4.systems/seL4Test)。
 
-Next steps include working on one of our [suggested projects](https://docs.sel4.systems/SuggestedProjects.html) or helping to expand the collection of [libraries and components](https://docs.sel4.systems/projects/available-user-components.html) available to build seL4-based systems.
+接下来，可以学习[suggested projects](https://docs.sel4.systems/SuggestedProjects.html) 或者帮助我们扩展构建基于seL4所用的库和组件，请参考[libraries and components](https://docs.sel4.systems/projects/available-user-components.html)。
 
