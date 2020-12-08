@@ -1,0 +1,2 @@
+#define __KERNEL__
+

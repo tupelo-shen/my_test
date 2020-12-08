@@ -1,0 +1,96 @@
+# $Id: files.Bonito
+#
+# Bonito Target specific files
+#
+
+file	Targets/LS2K/pci/pci_machdep.c
+file	Targets/LS2K/ls2k/tgt_machdep.c 
+file	Targets/LS2K/ls2k/dc.c 
+file	Targets/LS2K/pci/ls2k_pci.c
+
+
+define  localbus { [base = -1 ] }
+device  localbus
+attach  localbus at mainbus
+file    Targets/LS2K/dev/localbus.c		localbus
+file    Targets/LS2K/dev/spi_w.c		
+file	Targets/LS2K/dev/nand_opt.c               
+file	Targets/LS2K/dev/set_cpu_ddr_freq.c
+file	Targets/LS2K/dev/set_vol.c
+file	Targets/LS2K/dev/rtc.c
+file	Targets/LS2K/dev/eeprom.c
+file	Targets/LS2K/dev/load_dtb.c		cmd_dtb
+
+#####added by lln_20201105
+file    Targets/LS2K/dev/spi_norflash.c
+file    Targets/LS2K/dev/timer.c
+
+# OHCI
+#device	lohci {[channel = -1]} :usbbus
+#attach	lohci at localbus
+# GMAC
+#file	sys/dev/gmac/synopGMAC_Host.c
+file	sys/dev/gmac/synopGMAC_Dev.c gmac
+file	sys/dev/gmac/synopGMAC_network_interface.c gmac
+file	sys/dev/gmac/synopGMAC_pci_bus_interface.c gmac
+file	sys/dev/gmac/synopGMAC_plat.c gmac
+file	sys/dev/nand/ls2k-nand.c nand
+file	sys/dev/nand/spinand_mt29f.c spinand_mt29f & nand needs-flag
+file	sys/dev/nand/spinand_lld.c spinand_lld & nand needs-flag
+file	sys/dev/nand/m25p80.c m25p80 & nand needs-flag
+file	Targets/LS2K/dev/i2c.c i2c
+file	Targets/LS2K/dev/9022a.c sii9022a needs-flag
+file	Targets/LS2K/dev/can_test.c can
+
+
+device	syn: ether, ifnet
+attach	syn at localbus
+file	sys/dev/gmac/if_gmac.c gmac
+
+
+# Ethernet driver for Discovery ethernet
+device  gt: ether, ifnet, ifmedia
+attach  gt at localbus
+file    sys/dev/ic/if_gt.c			gt
+
+device	sdcard
+attach	sdcard at localbus
+
+file 	Targets/LS2K/dev/sdio.c	 sdcard needs-flag
+
+# AHCI
+device	lahci {[channel = -1]} :ahcibus
+attach	lahci at localbus
+
+#
+# Media Indepedent Interface (mii)
+#
+include "sys/dev/mii/files.mii"
+
+# Various PCI bridges
+
+include "sys/dev/pci/files.pci"
+
+device	pcisyn: ether, ifnet
+attach	pcisyn at pci
+
+device	lohci {[channel = -1]} :usbbus
+attach	lohci at pci
+
+device	lehci {[channel = -1]} :usbbus
+attach	lehci at pci
+#
+# Machine-independent ATAPI drivers
+#
+
+include "sys/dev/ata/files.ata"
+
+#
+#  SCSI framework
+#
+include "sys/scsi/files.scsi"
+
+#
+# Custom application files
+#
+include "pmon/custom/files.custom"
