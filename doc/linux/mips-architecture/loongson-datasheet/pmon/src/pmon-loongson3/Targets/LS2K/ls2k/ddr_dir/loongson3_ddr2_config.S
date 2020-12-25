@@ -555,8 +555,17 @@ t0,t2 shouldn't be changed to the end of this file.
     PRINTSTR("MC0 pace open : 0x100000000 - 0x11FFFFFFF\r\n")
     b       81f
     nop
-
-
+/*
+#define XBAR_CONFIG_NODE_a0(OFFSET, BASE, MASK, MMAP) \
+                        daddiu  v0, t0, OFFSET;       \
+                        dli     v1, BASE;             \
+                        or      v1, v1, a0;           \
+                        sd      v1, 0x00(v0);         \
+                        dli     v1, MASK;             \
+                        sd      v1, 0x40(v0);         \
+                        dli     v1, MMAP;             \
+                        sd      v1, 0x80(v0);
+*/
 // 2:     //ddr_1GB_MC:
 //     GET_NODE_ID_a0;
 //     XBAR_CONFIG_NODE_a0(0x20, \
@@ -567,7 +576,7 @@ t0,t2 shouldn't be changed to the end of this file.
 //     b       81f
 //     nop
 2:     //ddr_1GB_MC:
-    GET_NODE_ID_a0;
+    GET_NODE_ID_a0;         /* dli a0, 0x00000003; and a0, s1, a0; dsll a0, 44; 
     li  t0,0xbfe10000
 	li  t1,0x80000000
 	sw  t1,0x18(t0)
