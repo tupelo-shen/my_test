@@ -87,3 +87,9 @@ TFTP引导启动方式：
     cd zloader.ls2k
     make cfg all tgt=rom ARCH=mips CROSS_COMPILE=mipsel-linux- DEBUG=-g
     cp gzrom.bin /tmp/
+
+#### 11. pmon最新源码地址
+
+```
+http://ftp.loongnix.org/embedd/ls2k/pmon-loongson3.tar.gz
+```

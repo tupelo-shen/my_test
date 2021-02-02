@@ -3,3 +3,4 @@
 3. [龙芯线上review代码平台](http://gerrit.loongnix.org:8081/#/q/status:open)
 4. [龙芯官网](http://www.loongson.cn/index.html)
 5. [龙芯员工唐刚个人网站](http://xenyinzen.wikidot.com/start)
+6. [龙芯编译内核的视频网站](https://www.bilibili.com/video/BV1wE411F7Hx/?spm_id_from=trigger_reload)
