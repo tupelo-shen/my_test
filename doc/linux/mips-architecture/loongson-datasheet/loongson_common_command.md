@@ -22,6 +22,8 @@ TFTP引导启动方式：
     KER____Hello World____2020_0403_TFS____
     KER____Hello World____2019_1115_TFS____SleepOK_1203.E
 
+    flash -e 0xbe200000 0x100000
+
     /*****************************************************************************
      * 函数名称: ls2k_gpio_int_en
      * 作    者: shenwanjiang   
