@@ -4,7 +4,7 @@
 
 发现系统中内存使用量随着时间的流逝，消耗的越来越多，例如下图所示：
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-1.png">
 
 接下来的排查思路是:
 
@@ -18,10 +18,12 @@
 
 以上排查思路分别对应下图中的1,2,3 :
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-2.png">
 
 在排查的过程中发现系统非常空闲，都没有跑任何用户业务进程。
 其中在使用slabtop监控slab的使用情况时发现size-4096 不停增长
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-3.png">
 
 通过监控/proc/slabinfo也发现SReclaimable 的使用量不停增长
 
@@ -54,7 +56,7 @@ done
 
 以上步骤相当于：
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-4.png">
 
 等待几分钟之后…
 
@@ -63,6 +65,8 @@ done
 ```
 
 从trace-cmd report的输出结果来看，很多kmalloc 对应的ptr值都没有kfree与之对应的ptr值
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-5.png">
 
 这就说明了cat进程在内核空间使用size-4096之后并没有释放，造成了内存泄漏。为了进一步精确定位到是使用哪个内核函数造成的问题，此时手动触发vmcore
 
@@ -78,15 +82,17 @@ done
 
 读出上面kmalloc申请的ptr内存信息
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-6.png">
 
 (读取0xffff880423744000内存开始的4096个字节，并以字符形式显示)
+
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-7.png">
 
 发现从上面几个ptr内存中读出的内容都是非常相似，仔细看一下发现都是/proc/schedstat 的输出内容。
 
 通过阅读相关代码发现，当读出/proc/schedstat内容之后，确实没有释放内存
 
-<img src="">
+<img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/%E5%86%85%E5%AD%98/image/1-8.png">
 
 然后发现kernel上游已经有patch解决了这个问题：
 
