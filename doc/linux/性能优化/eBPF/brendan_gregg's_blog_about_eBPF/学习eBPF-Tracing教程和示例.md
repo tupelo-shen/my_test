@@ -2,15 +2,19 @@
 
 At the Linux Plumber's conference there were at least 24 talks on eBPF. It has quickly become not just an invaluable technology, but also an in-demand skill. Perhaps you'd like a new year's resolution: learn eBPF!
 
+在`Linux Plumber`会议上，至少有24个关于eBPF的演讲。它不仅迅速成为一项无价的技术，而且成为一项急需的技能。也许，是时候下定决心学习eBPF这门技术了。
+
 eBPF should stand for something meaningful, like Virtual Kernel Instruction Set (VKIS), but due to its origins it is extended Berkeley Packet Filter. It can be used for many things: network performance, firewalls, security, tracing, and device drivers. Some of these have plenty of free documentation online, like for tracing, and others not yet. The term tracing refers to performance analysis and observability tools that can produce per-event info. You may have already use a tracer: tcpdump and strace are specialized tracers.
+
+eBPF代表一种虚拟内核指令集（VKIS），起源于`Berkeley`包过滤器。可以用来做许多事情：网络性能、防火墙、安全、追踪和设备驱动。其中，像追踪等可能有许多免费的在线文档供参考，但是，其它的还没有。术语追踪（tracing）指的是性能分析和观察工具，它可以产生事件信息。也许，你已经用过此类工具：tcpdump和strace，它们是特殊的追踪器。
 
 In this post I'll cover learning eBPF for tracing, grouped into content for beginner, intermediate, and advanced users. In summary:
 
-* Beginner: run [bcc](https://github.com/iovisor/bcc) tools
-* Intermediate: develop [bpftrace](https://github.com/iovisor/bpftrace) tools
-* Advanced: develop [bcc](https://github.com/iovisor/bcc) tools, contribute to bcc & bpftrace
+在本文中，我们主要阐述eBPF用于追踪的内容，分为初级、中级和高级用户。如下所示：
 
-Update: I have a new book about eBPF tracing, published by Addison Wesley: BPF Performance Tools: [Linux System and Application Observability](http://www.brendangregg.com/bpf-performance-tools-book.html).
+* 初级：运行[bcc](https://github.com/iovisor/bcc)工具
+* 中级：开发[bpftrace](https://github.com/iovisor/bpftrace)工具
+* 高级：开发[bcc](https://github.com/iovisor/bcc)工具，并能够为bcc&bpftrace提供贡献
 
 ## 1 初级人员
 
@@ -18,9 +22,13 @@ Update: I have a new book about eBPF tracing, published by Addison Wesley: BPF P
 
 eBPF does to Linux what JavaScript does to HTML. (Sort of.) So instead of a static HTML website, JavaScript lets you define mini programs that run on events like mouse clicks, which are run in a safe virtual machine in the browser. And with eBPF, instead of a fixed kernel, you can now write mini programs that run on events like disk I/O, which are run in a safe virtual machine in the kernel. In reality, eBPF is more like the v8 virtual machine that runs JavaScript, rather than JavaScript itself. eBPF is part of the Linux kernel.
 
+某种程度上，eBPF之于Linux就像JavaScript之于HTML。因此，与静态HTML网站不同，JavaScript允许你定义在鼠标点击等事件上运行的小程序，这些小程序运行在浏览器的安全虚拟机上。使用eBPF，可以编写在磁盘I/O等事件上运行的小程序，而不是固定的内核，这些事件运行在内核中的安全虚拟机中。实际上，eBPF更像是运行JavaScript的v8虚拟机，而不是JavaScript本身。eBPF是Linux内核的一部分。
+
 Programming in eBPF directly is incredibly hard, the same as coding in v8 bytecode. But no one codes in v8: they code in JavaScript, or often a framework on top of JavaScript (jQuery, Angular, React, etc). It's the same with eBPF. People will use it and code in it via frameworks. For tracing, the main ones are bcc and bpftrace.These don't live in the kernel code base, they live in a Linux Foundation project on github called iovisor.
 
-### 1.2 What is an example of eBPF tracing?
+直接用eBPF编程非常困难，就像用v8字节码编程一样。但没有人在v8中编码:他们用JavaScript编码，或者通常是JavaScript的框架（jQuery、Angular、React等）。eBPF也是一样，通过框架进行编码。在追踪方面，主要有bcc和bpftrace。它们并不存在于内核代码库中，而是存在于`github`上一个名为`iovisor`的Linux基金会项目中。
+
+### 1.2 eBPF追踪的一个示例
 
 This eBPF-based tool shows completed TCP sessions, with their process ID (PID) and command name (COMM), sent and received bytes (TX_KB, RX_KB), and duration in milliseconds (MS):
 
