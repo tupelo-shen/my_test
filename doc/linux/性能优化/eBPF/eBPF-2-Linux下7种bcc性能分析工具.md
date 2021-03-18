@@ -1,26 +1,24 @@
 [TOC]
 
-Look deeply into your Linux code with these Berkeley Packet Filter (BPF) Compiler Collection (bcc) tools.
+Linux中出现了一种新技术，可以为系统管理员和开发人员提供大量用于性能分析和故障排除的新工具和仪表板。这种技术称为增强型`Berkeley`包过滤器（简称`eBPF`或`BPF`）。这些增强的功能并不是由`Berkeley`开发的，它们的操作对象也不仅仅是数据包，或者对数据包的过滤。本文主要是讨论在`Fedora`和`Red Hat`家族系列的Linux发行版上使用BPF的方法，具体操作是在`Fedora 26`版本上。
 
-A new technology has arrived in Linux that can provide sysadmins and developers with a large number of new tools and dashboards for performance analysis and troubleshooting. It's called the enhanced Berkeley Packet Filter (eBPF, or just BPF), although these enhancements weren't developed in Berkeley, they operate on much more than just packets, and they do much more than just filtering. I'll discuss one way to use BPF on the Fedora and Red Hat family of Linux distributions, demonstrating on Fedora 26.
+BPF可以在内核中运行用户自定义的`沙箱程序`，以增加用户自定义功能。比如说：
 
-BPF can run user-defined sandboxed programs in the kernel to add new custom capabilities instantly. It's like adding superpowers to Linux, on demand. Examples of what you can use it for include:
+* **高级性能跟踪工具**：对文件系统操作、TCP事件、用户级事件等进行低开销检测。
+* **网络性能**：及早扔掉不必要的数据包，增强`DDOS`的弹性；或者在内核中重定向数据包提高网络性能。
+* **安全监控**：`24x7`全天候监控用户自定义的监控和记录可疑的内核态和用户态事件。
 
-* **Advanced performance tracing tools**: programmatic low-overhead instrumentation of filesystem operations, TCP events, user-level events, etc.
-* **Network performance**: dropping packets early on to improve DDOS resilience, or redirecting packets in-kernel to improve performance
-* Security monitoring: 24x7 custom monitoring and logging of suspicious kernel and userspace events
-
-BPF programs must pass an in-kernel verifier to ensure they are safe to run, making it a safer option, where possible, than writing custom kernel modules. I suspect most people won't write BPF programs themselves, but will use other people's. I've published many on GitHub as open source in the [BPF Compiler Collection (bcc)](https://github.com/iovisor/bcc) project. bcc provides different frontends for BPF development, including Python and Lua, and is currently the most active project for BPF tooling.
+BPF程序必须通过一个内核验证器进行运行，保证程序安全运行，这可能比编写内核模块更加安全。当然，大部分人根本无需编写BPF程序，而仅仅是使用。所以，`Brendan Gregg`大神，在Github的[bcc项目](https://github.com/iovisor/bcc)下面已经提交了很多开源的工具，我们可以直接使用。`bcc`为BPF开发提供了不同的前端工具，包括`Python`和`Lua`，现在已经成为基于BPF的工具中最活跃的项目。
 
 ## 7种新的bcc/BPF工具
 
-To understand the bcc/BPF tools and what they instrument, I created the following diagram and added it to the bcc project:
+为了理解`bcc/BPF`工具，作者`Brendan Gregg`大神创建了下面的图表，在bcc项目下可以找到：
 
 <div align="center">
     <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/eBPF/images/bcc_tracing_tools.png">
 </div>
 
-These are command-line interface (CLI) tools you can use over SSH (secure shell). Much analysis nowadays, including at my employer, is conducted using GUIs and dashboards. SSH is a last resort. But these CLI tools are still a good way to preview BPF capabilities, even if you ultimately intend to use them only through a GUI when available. I've began adding BPF capabilities to an open source GUI, but that's a topic for another article. Right now I'd like to share the CLI tools, which you can use today.
+这些是可以通过SSH使用的命令行工具。当然，也可以通过一些GUI工具进行访问。
 
 ## 1. execsnoop
 
