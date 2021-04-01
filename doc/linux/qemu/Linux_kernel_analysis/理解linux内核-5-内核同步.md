@@ -324,16 +324,18 @@ Linux内核系统中，自旋锁`spinlock_t`的实现主要使用了`raw_spinloc
 2. SMP版本的代码如下：
 
     `_raw_spin_lock`函数：
-
-        static inline void __raw_spin_lock(raw_spinlock_t *lock)
-        {
-            // 禁止内核抢占
-            preempt_disable();
-            // debug用
-            spin_acquire(&lock->dep_map, 0, 0, _RET_IP_);
-            // 真正申请锁的地方
-            LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
-        }
+    
+    ```c
+    static inline void __raw_spin_lock(raw_spinlock_t *lock)
+    {
+        // 禁止内核抢占
+        preempt_disable();
+        // debug用
+        spin_acquire(&lock->dep_map, 0, 0, _RET_IP_);
+        // 真正申请锁的地方
+        LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
+    }
+    ```
 
     `LOCK_CONTENDED`是一个通用的加锁流程。`do_raw_spin_trylock`和`do_raw_spin_lock`的实现依赖于具体的体系结构，以`x86`为例，`do_raw_spin_trylock`最终调用的是：
 
