@@ -151,7 +151,179 @@ Linux内核处理连续物理内存分配请求的子系统，我们称之为`Zo
 
 ## 7 高端内存的内核映射
 
-高端内存的开始地址，也就是直接映射的线性地址的结束位置。该线性地址存储在`high_memory`变量中，这个值等于`896M`。
+> 关于高端内存的概念，作用等请参考[【Linux】Linux的内核空间（低端内存、高端内存）](https://blog.csdn.net/qq_38410730/article/details/81105132)
+
+高端内存的开始地址，也就是直接映射的线性地址的结束位置。该线性地址存储在`high_memory`变量中，这个值等于`896M`。超过896M的物理内存通常不会被内核的线性地址直接映射（1G地址空间大小），所以，内核无法访问它们。
+
+假设，内核调用`__get_free_pages(GFP_HIGHMEM,0)`在高端内存中申请一个页帧。如果分配器在高端内存中分配了一个页帧，该函数也只能返回NULL，因为这样的线性地址不存在。反过来，内核也无法使用该页帧。更糟糕的是，该页帧还无法被释放，因为内核失去了对它的控制。
+
+高端内存的问题只存在于32位架构，64位架构不存在，其线性地址远远大于实际的RAM数量。也就是说，64位架构上，`ZONE_HIGHMEM`区都是空的。但是，在32位系统上，比如x86架构，内核设计人员就必须保证能够访问所有的内存空间（最大64G，使能PAE的情况下）。
+
+实现的方法是：
+
+* 使用`alloc_pages()`和`alloc_page()`函数，返回的不是申请的高端内存的第一个页帧的线性地址，而是返回该页帧的页描述符的线性地址。这些页描述符一般位于低端内存，内核初始化后，这些值是固定的。
+
+* 高端内存的页帧如果没有映射到内核的线性地址空间的话，内核是无法访问的。所以，内核预留了128M的内核线性地址空间专门映射高端内存。当然了，这种映射肯定是临时的，要不然也只能访问高端内存的128M空间。通过重复的映射128M线性地址空间，可以访问整个高端内存区域。
+
+内核映射高端内存的方式有三种：
+
+1. 永久内核映射
+
+2. 临时内核映射
+
+3. 非连续物理地址映射
+
+
+#### 7.1 永久内核映射
+
+永久内核映射允许内核为高端内存建立长期的内核地址空间映射关系。内核中，主内核页表中拥有一个专用的页表，用来管理这些永久内核映射关系。这个专用页表的地址存储在变量`pkmap_page_table`中。使用`LAST_PKMAP`可以得到页表数量。通常情况下，包含512项或1024项，取决于是否开启PAE功能。因此，内核一次最多可以访问2M或4M的高端内存。
+
+映射的线性地址起始位置是`PKMAP_BASE`。`pkmap_count`数组保存`LAST_PKMAP`计数器、以及`pkmap_page_table`页表的每一项的引用计数器。我们来考虑三种情况：
+
+1. 引用计数器为0
+
+    表明该页表项没有映射任何高端内存，是可用的。
+
+2. 引用计数器为1
+
+    表明该页表项没有映射任何高端内存，但是相应的TLB项还没有被刷新。
+
+3. 引用计数器为n（大于1）
+
+    表明该页表项被映射到一个高端内存的页帧上，同时被n-1个内核组件使用。
+
+为了记录高端内存的页帧和永久内核映射之间的映射关系，内核使用了一个`page_address_htable`哈希表。该表包含一个`page_address_map`数据结构，记录每一个映射的高端内存的页帧。而且，这个数据结构还包含指向该页帧对应的页描述符的指针和指派给该页帧的线性地址。
+
+`page_address()`函数可以返回某个页帧的对应的线性地址，如果该页帧在高端内存中，但是没有被映射，则返回NULL。这个函数接收页描述符指针`page`作为其参数，
+
+1. 如果对应的页帧不属于高端内存（标志PG_highmem清空），则线性地址总是存在，通过计算页帧的索引，将其转换为物理地址，最终得到与物理地址对应的线性地址。下面是可能的实现代码：
+
+```c
+    __va((unsigned long)(page - mem_map) << 12)
+
+```
+
+2. 如果页帧属于高端内存（标志PG_highmem被设置），则该函数遍历`page_address_htable`哈希表。如果在哈希表中发现该页帧，则返回对应的线性地址，否则返回NULL。
+
+`kmap()`函数负责建立永久内核映射。实现如下：
+
+```c
+void * kmap(struct page * page)
+{
+    if (!PageHighMem(page))
+        return page_address(page);
+    return kmap_high(page);
+}
+```
+
+`kmap_high()`函数处理页帧属于高端内存的情况。基本等于如下代码：
+
+```c
+void * kmap_high(struct page * page)
+{
+    unsigned long vaddr;
+    spin_lock(&kmap_lock);
+    vaddr = (unsigned long) page_address(page);
+    if (!vaddr)
+        vaddr = map_new_virtual(page);
+    pkmap_count[(vaddr-PKMAP_BASE) >> PAGE_SHIFT]++;
+    spin_unlock(&kmap_lock);
+    return (void *) vaddr;
+}
+```
+
+使用自旋锁`kmap_lock`是防止多核系统的并发情况。注意，这儿无需禁止中断，因为中断处理函数和可延时函数不会调用`kmap()`函数。接下俩，调用函数`page_address`判断该页帧是否已经被映射。如果没有，则调用`map_new_virtual`函数将该页帧的物理地址插入到`pkmap_page_table`表中，同时更新`page_address_htable`哈希表增加一个新元素。然后，增加对该线性地址的引用计数器，表示引用该线性地址的内核组件又多了一个。最后，释放自旋锁并返回映射的线性地址。
+
+`map_new_virtual()`函数实际上执行了两个嵌套循环：
+
+```c
+for (;;) {
+    int count;
+    DECLARE_WAITQUEUE(wait, current);
+    for (count = LAST_PKMAP; count > 0; --count) {
+        last_pkmap_nr = (last_pkmap_nr + 1) & (LAST_PKMAP - 1);
+        if (!last_pkmap_nr) {
+            flush_all_zero_pkmaps();
+            count = LAST_PKMAP;
+        }
+        if (!pkmap_count[last_pkmap_nr]) {
+            unsigned long vaddr = PKMAP_BASE +
+                                (last_pkmap_nr << PAGE_SHIFT);
+            set_pte(&(pkmap_page_table[last_pkmap_nr]),
+                    mk_pte(page, __pgprot(0x63)));
+            pkmap_count[last_pkmap_nr] = 1;
+            set_page_address(page, (void *) vaddr);
+            return vaddr;
+        }
+    }
+    current->state = TASK_UNINTERRUPTIBLE;
+    add_wait_queue(&pkmap_map_wait, &wait);
+    spin_unlock(&kmap_lock);
+    schedule();
+    remove_wait_queue(&pkmap_map_wait, &wait);
+    spin_lock(&kmap_lock);
+    if (page_address(page))
+        return (unsigned long) page_address(page);
+}  
+```
+
+内层的for循环，扫描`pkmap_count`数组中所有的计数器，直到找到一个null值。找到后，根据计数器的索引可以得到线性地址，并在`永久内核映射`表`pkmap_page_table`中创建一项，同时设置引用计数器为1，表示该页表项已经被使用；调用`set_page_address()`函数在`page_address_htable`哈希表中创建一个新元素，并返回线性地址。
+
+该函数通过`last_pkmap_nr`记录上一次遍历`pkmap_count`数组的位置，也就是`pkmap_page_table`页表中被使用的最后一项。也就是说，每一次的搜索都是从最后一次调用`map_new_virtual()`函数留下的位置开始。
+
+当`pkmap_count`数组的最后一个计数器时，重新从索引为0的计数器开始。但是，在继续之前，`map_new_virtual()`函数会调用`flush_all_zero_pkmaps()`函数，遍历所有值为1的计数器。计数器的值为1，表示`pkmap_page_table`表中的项是空闲的，但是相应的TLB项还没有被刷新。`flush_all_zero_pkmaps()`函数会将所有的这类计数器复位为0，从`page_address_htable`哈希表中删除掉，并对`pkmap_page_table`表中所有项发出TLB刷新请求。
+
+如果在`pkmap_count`数组中没有发现空计数器，`map_new_virtual()`函数会阻塞当前进程，直到其它进程释放`pkmap_page_table`页表中的某一项为止。实现方法就是，将当前进程插入到`pkmap_map_wait`等待队列中，并将当前进程的状态设置为`TASK_UNINTERRUPTIBLE`，然后调用`schedule()`放弃CPU的使用权。一旦该进程重新被唤醒，该函数调用`page_address()`检查该page是否被其它进程映射过；如果没有其它进程映射该page，那么再次启动一次遍历`pkmap_count`数组的循环。
+
+`kunmap()`函数负责销毁由`kmap()`函数创建的永久内核映射。如果参数`page`确实指向高端内存区域，继续调用`kunmap_high()`函数，释放该内存，代码类似于下面的代码：
+
+```c
+void kunmap_high(struct page * page)
+{
+    spin_lock(&kmap_lock);
+    if ((--pkmap_count[((unsigned long)page_address(page)-PKMAP_BASE)>>PAGE_SHIFT]) == 1)
+        if (waitqueue_active(&pkmap_map_wait))
+            wake_up(&pkmap_map_wait);
+    spin_unlock(&kmap_lock);
+}
+```
+
+该函数实现的功能是，根据page所指向的线性地址计算出指向`pkmap_count`数组的索引。由该索引所指向的数组元素，也就是对应的计数器减1，并与1进行比较。如果相等，则说明没有进程使用该`page`。则唤醒由`map_new_virtual()`函数加入等待队列的进程，如果有的话。
+
+#### 7.2 临时内核映射
+
+临时内核映射要比永久内核映射简单，更重要的是，它可以应用在中断处理程序或延时函数中，因为它不会阻塞当前进程。
+
+Linux内核在内核地址空间中保留了非常小的一个窗口，专门用来映射高端内存的某个页帧。
+
+每个CPU都有一组窗口（13个），使用`enum km_type`枚举类型表示。该枚举结构中的每个符号，比如`KM_BOUNCE_READ`、`KM_USER0`或`km_pte0`，都表示对应的窗口的线性地址。
+
+Linux内核必须保证每个窗口不能被内核中的两段代码同时使用。所以，`km_type`枚举中的每个元素代表的窗口，都是某个内核组件专用的，其命名也是根据组件名称命名的。枚举中的最后一个元素`KM_TYPE_NR`，表示每个CPU可用的窗口数量。
+
+`km_type`中每个元素，除了最后一个表示窗口数量之外，都是某个固定线性地址的索引。枚举类型的`fixed_addresses`数据结构，包含符号`FIX_KMAP_BEGIN`和`FIX_KMAP_END`，后者等于`FIX_KMAP_BEGIN + (KM_TYPE_NR * NR_CPUS)-1`的索引。系统中，每个CPU具有`KM_TYPE_NR`固定映射的线性地址。内核使用`fix_to_virt(FIX_KMAP_BEGIN)`对应的页表项的地址初始化`kmap_pte`变量。
+
+为了建立临时内核映射，需要调用函数`kmap_atomic()`，其代码大概如下所示：
+
+```c
+void * kmap_atomic(struct page * page, enum km_type type)
+{
+    enum fixed_addresses idx;
+    unsigned long vaddr;
+    current_thread_info()->preempt_count++;
+    if (!PageHighMem(page))
+        return page_address(page);
+    idx = type + KM_TYPE_NR * smp_processor_id();
+    vaddr = fix_to_virt(FIX_KMAP_BEGIN + idx);
+    set_pte(kmap_pte-idx, mk_pte(page, 0x063));
+    __flush_tlb_single(vaddr);
+    return (void *) vaddr;
+}
+```
+
+参数`type`，结合CPU的标识符（可以通过`smp_processor_id()`函数获得），就能够指定，请求的`page`页应该映射到哪个固定的线性地址上。如果该`page`不属于高端内存，则返回该页帧的线性地址；否则，它将为该页帧物理地址对应的线性地址建立页表项，并设置`Present`、`Accessed`、`Read/Write`和`Dirty`内存标志位。最后，刷新正确的TLB项，并返回该线性地址。
+
+对应的，销毁临时内核映射关系，使用函数`kunmap_atomic()`。在80x86架构中，该函数对当前进程的`preempt_count`成员进行减1操作。如果发起请求临时内核映射的内核代码之前是可抢占的，那么在销毁了临时内核映射之后，它将再次成为可抢占式的代码。更进一步，`kunmap_atomic()`函数会检查当前进程的`TIF_NEED_RESCHED`标志，如果被设置，则调用`schedule()`函数，进行重新调度。
+
 
 ## 8 Buddy系统算法
 
