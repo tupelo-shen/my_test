@@ -2,20 +2,6 @@
 
 众所周知，内存管理存在一个重要的难题-`内存碎片化`：频繁地请求和释放不同大小的连续物理内存，就会导致在已分配的物理内存块之间存在一些无法使用的小块物理内存。很多时候，明明还有许多空闲的内存，却总是申请不成功。
 
-应对这种内存碎片化问题，有两种方向：
-
-* Use the paging circuitry to map groups of noncontiguous free page frames into intervals of contiguous linear addresses.
-
-* Develop a suitable technique to keep track of the existing blocks of free contiguous page frames, avoiding as much as possible the need to split up a large free block to satisfy a request for a smaller one.
-
-The second approach is preferred by the kernel for three good reasons:
-
-* In some cases, contiguous page frames are really necessary, because contiguous linear addresses are not sufficient to satisfy the request. A typical example is a memory request for buffers to be assigned to a DMA processor (see Chapter 13). Because most DMAs ignore the paging circuitry and access the address bus directly while transferring several disk sectors in a single I/O operation, the buffers requested must be located in contiguous page frames.
-
-* Even if contiguous page frame allocation is not strictly necessary, it offers the big advantage of leaving the kernel paging tables unchanged. What’s wrong with modifying the Page Tables? As we know from Chapter 2, frequent Page Table modifications lead to higher average memory access times, because they make the CPU flush the contents of the translation lookaside buffers.
-
-* Large chunks of contiguous physical memory can be accessed by the kernel through 4 MB pages. This reduces the translation lookaside buffers misses, thus significantly speeding up the average memory access time (see the section “Translation Lookaside Buffers (TLB)” in Chapter 2).
-
 Linux内核解决`外部碎片化`的问题是采用著名的伙伴系统算法（buddy system）。具体的做法就是，将所有的空闲页帧分为11个链表，每个链表的元素大小分别为1、2、4、8、16、32、64、128、256、512和1024个连续的页帧。这样的话，伙伴系统最大可以请求的连续物理地址就是4M，对应1024个连续页帧。如下图所示。链表中每个内存块元素的第一个页帧的物理地址是内存块大小的整数倍。比如，16个页帧的内存块的初始地址就是16*2^12的整数倍（2^12=4K，常规页大小）。
 
 <img id="Figure_8-3" src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/qemu/Linux_kernel_analysis/images/understanding_linux_kernel_8_3.PNG">
@@ -24,60 +10,39 @@ Linux内核解决`外部碎片化`的问题是采用著名的伙伴系统算法�
 
 假设请求1MB大小的连续物理内存（256个连续页帧）。伙伴系统首先检查第8个链表（元素大小为256个连续页帧）中是否存在空闲块。如果没有这样的块，伙伴系统会遍历更大的块链表，第9个链表（元素大小为512个连续页帧）。如果这样的块存在，则将512个连续页帧块的256个页帧分配，剩余的256个页帧插入到第8个链表中。如果没有空闲的512页帧块，则继续寻找更大的块（1024页帧块，第10个链表）。如果这样的快存在，则分配1024个页帧中的256个页帧满足请求，将剩余的768个页帧中的头512个页帧插入第9个链表（元素大小为512个连续页帧）中，再将最后的256个页帧插入第8个链表中（元素大小为256个连续页帧）。如果连第10个链表（元素大小为1024个连续页帧）也为空，则算法终止，并发出错误信号。
 
-释放过程则相反。内核尝试将大小相同，而物理地址又连续的内存块合并为一个内存块
-The reverse operation, releasing blocks of page frames, gives rise to the name of this algorithm. The kernel attempts to merge pairs of free buddy blocks of size b together into a single block of size 2b. Two blocks are considered buddies if:
+释放过程则相反。内核尝试将大小相同，而物理地址又连续的内存块合并为一个内存块。假设有2个空闲内存块，它们的大小相同，都是`b`。内核将它们合并成为一个2b大小的内存块。
 
-* Both blocks have the same size, say b.
-* They are located in contiguous physical addresses.
-* The physical address of the first page frame of the first block is a multiple of 2 × b × 2^12.
+所以，如果两个内存块是伙伴关系，则应该具备如下条件：
 
-The algorithm is iterative; if it succeeds in merging released blocks, it doubles b and tries again so as to create even bigger blocks.
+* 具有相同大小；
+* 位于连续的物理地址上；
+* 第一个内存块的第一个页帧的物理地址是`2*b*2^12`的倍数。
 
+这是一个不断迭代的过程。如果合并后的内存块，还存在着相同大小的伙伴内存块，则继续合并为更大的内存块。
 
 ## 数据结构
 
-Linux 2.6 uses a different buddy system for each zone. Thus, in the 80 × 86 architecture, there are 3 buddy systems: the first handles the page frames suitable for ISA DMA, the second handles the “normal” page frames, and the third handles the highmemory page frames. Each buddy system relies on the following main data structures:
+Linux 2.6内核为每一个ZONE区建立一个buddy伙伴系统。因而，80x86架构下，一共有3个buddy系统：分别对应`ISA DMA`页帧，正常的页帧，高端内存页帧。每个buddy系统依赖于以下主要数据结构：
 
-* The mem_map array introduced previously. Actually, each zone is concerned with a
-subset of the mem_map elements. The first element in the subset and its number of
-elements are specified, respectively, by the zone_mem_map and size fields of the
-zone descriptor.
+* `mem_map`数组，记录所有的页描述符。事实上，每个ZONE区都与`mem_map`数组的一个子集有关。每个ZONE区的描述符中的成员`zone_mem_map`和`size`成员分别指定其所使用的第一个页描述符和描述符的总数。
 
-* An array consisting of eleven elements of type free_area, one element for each group size. The array is stored in the free_area field of the zone descriptor.
+* 一个数组，用于记录伙伴系统算法使用的11个链表和每个链表的元素个数。该数组存储在每个ZONE描述符的`free_area`成员中。
 
-Let us consider the kth element of the free_area array in the zone descriptor, which
-identifies all the free blocks of size 2k. The free_list field of this element is the head
-of a doubly linked circular list that collects the page descriptors associated with the
-free blocks of 2k pages. More precisely, this list includes the page descriptors of the
-starting page frame of every block of 2k free page frames; the pointers to the adjacent
-elements in the list are stored in the lru field of the page descriptor.*
+让我们考虑一种情况，假设ZONE描述符中的`free_area`数组的第k个链表，其链表中每个元素是大小为2^K的空闲内存块。链表的`free_list`成员指向一个双向链表的头，该双向链表记录着大小为2^K的空间内存块。更准确地说，该双向链表包含每个空闲内存块的起始页帧的页描述符；指向双向链表前后相邻元素的指针存储在页描述符的`lru`成员中。
 
-Besides the head of the list, the kth element of the free_area array includes also the
-field nr_free, which specifies the number of free blocks of size 2k pages. Of course, if
-there are no blocks of 2k free page frames, nr_free is equal to 0 and the free_list list
-is empty (both pointers of free_list point to the free_list field itself).
+`free_area`数组中，除了指向内存块的链表头之外，还包含该链表中包含的内存块（大小为2^K）个数，使用`nr_free`表示。如果某个链表中没有可用的空闲内存块，`nr_free`等于0，也就是说，`free_lish`链表头指向自身。
 
-Finally, the private field of the descriptor of the first page in a block of 2k free pages
-stores the order of the block, that is, the number k. Thanks to this field, when a
-block of pages is freed, the kernel can determine whether the buddy of the block is
-also free and, if so, it can coalesce the two blocks in a single block of 2k+1 pages. It
-should be noted that up to Linux 2.6.10, the kernel used 10 arrays of flags to encode
-this information.
+最后，解释一下每个内存块中第一个页描述符的`private`成员，存储着内存块，也就是链表的序号，K。通过`private`成员变量，释放某个内存块时，可以方便确定该块的伙伴关系内存块，以便于决定是否合并两个伙伴内存块为更大的内存块（大小为`2^(k+1)`）。
 
-## 申请一个block
+> <font>
+> 另外，需要特殊说明的是：Linux 2.6.10之前，内核使用10个链表管理伙伴系统的信息。也就是最大可以申请2M的连续物理内存。
+> </font>
 
-The __rmqueue() function is used to find a free block in a zone. The function takes
-two arguments: the address of the zone descriptor, and order, which denotes the
-logarithm of the size of the requested block of free pages (0 for a one-page block, 1
-for a two-page block, and so forth). If the page frames are successfully allocated, the
-__rmqueue() function returns the address of the page descriptor of the first allocated
-page frame. Otherwise, the function returns NULL.
+## 申请一个内存块
 
-The _ _rmqueue() function assumes that the caller has already disabled local interrupts
-and acquired the zone->lock spin lock, which protects the data structures of
-the buddy system. It performs a cyclic search through each list for an available block
-(denoted by an entry that doesn’t point to the entry itself), starting with the list for
-the requested order and continuing if necessary to larger orders:
+在某个ZONE区中，申请一个内存块使用`__rmqueue()`函数。该函数需要两个参数：指定ZONE的描述符地址和指定内存块大小的对数，order（比如，order等于0，表示申请一页的内存块，1表示申请2页的内存块，以此类推）。申请成功，`__rmqueue()`函数返回申请的第一个页帧的页描述符地址；否则，该函数返回`NULL`。
+
+使用`__rmqueue()`函数需要注意，它假定调用者已经关闭了局部中断并获取了`zone->lock`自旋锁，这将会保护伙伴系统的数据结构不受破坏。剩下的工作就很简单了，就是遍历11个链表，找到可用的空闲内存。如果在order指定的链表中，没有找到合适的内存块，则向更大块内存的链表中查找，代码如下所示：
 
 ```c
 struct free_area *area;
@@ -90,10 +55,7 @@ for (current_order=order; current_order<11; ++current_order) {
 return NULL;
 ```
 
-If the loop terminates, no suitable free block has been found, so _ _rmqueue( ) returns
-a NULL value. Otherwise, a suitable free block has been found; in this case, the
-descriptor of its first page frame is removed from the list and the value of free_pages
-in the zone descriptor is decreased:
+从上面的代码可以看出：如果循环结束，没有合适的空闲块，`__rmqueue()`函数返回`NULL`值。如果找到合适的空闲块，则跳转到`block_found`分支，代码如下所示。此时，将第一个页帧的描述符从对应的链表中删除，zone描述符中记录空闲页帧总数的`free_pages`减少申请的页帧数量：
 
 ```c
 block_found:
@@ -105,12 +67,7 @@ block_found:
     zone->free_pages -= 1UL << order;
 ```
 
-If the block found comes from a list of size curr_order greater than the requested size
-order, a while cycle is executed. The rationale behind these lines of codes is as follows:
-when it becomes necessary to use a block of 2k page frames to satisfy a request
-for 2h page frames (h < k), the program allocates the first 2h page frames and iteratively
-reassigns the last 2k – 2h page frames to the free_area lists that have indexes
-between h and k:
+如果是从更大块的链表中申请到的内存块，也就是说`curr_order`大于请求的`order`，执行一个while循环。该循环实现的内容是：如果必须使用更大块的内存块（大小为2^k）满足比它小的内存块（大小为2^h）请求（`h < k`），程序会分配第一个`2^h`大小的内存块，对于剩下的`2^k - 2^h`个页帧，则通过迭代插入到`free_area`数组中索引在`h-k`之间的链表中。
 
 ```c
 size = 1 << curr_order;
@@ -128,10 +85,94 @@ while (curr_order > order) {
 return page;
 ```
 
-Because the __rmqueue() function has found a suitable free block, it returns the address page of the page descriptor associated with the first allocated page frame.
+至此，整个申请过程完成。`__rmqueue()`函数返回申请的第一个页帧关联的页描述符的地址`page`。
 
-## 释放一个block
+## 释放一个内存块
 
+从伙伴系统中释放内存则调用函数`__free_pages_bulk()`，下面是其3个基本的输入参数：
 
+1. page
+
+    要释放的内存块中包含的第一个页帧的描述符地址；
+
+2. zone
+
+    zone描述符的地址；
+
+3. order
+
+    块的对数大小；
+
+同申请内存的`__rmqueue()`函数一样，假设调用者已经禁止局部中断并获取了`zone->lock`自旋锁。`__free_pages_bulk()`函数首先声明并初始化一些局部变量：
+
+```c
+struct page     *base = zone->zone_mem_map;
+unsigned long   buddy_idx, page_idx = page - base;
+struct page     *buddy, *coalesced;
+int             order_size = 1 << order;
+```
+
+`page_idx`变量记录要释放的内存块的第一个页帧到zone中的第一个页帧的索引。`order_size`变量记录本次释放的页帧数量，最后该变量的值会被加到zone区中总的空闲页帧的计数器中。
+
+```c
+zone->free_pages += order_size;
+```
+
+该循环最多执行10次，检查是否该块有需要合并的伙伴关系块。该函数从指定的块大小开始，一直到最大的内存块大小结束，代码如下：
+
+```c
+while (order < 10) {
+    buddy_idx = page_idx ^ (1 << order);
+    buddy = base + buddy_idx;
+    if (!page_is_buddy(buddy, order))
+        break;
+    list_del(&buddy->lru);
+    zone->free_area[order].nr_free--;
+    ClearPagePrivate(buddy);
+    buddy->private = 0;
+    page_idx &= buddy_idx;
+    order++;
+}
+```
+
+在循环内部，该函数会查找索引为`buddy_idx`的内存块，它和具有页描述符索引为`page_idx`的内存块为伙伴关系。计算方式为：
+
+```c
+buddy_idx = page_idx ^ (1 << order);
+```
+
+在这儿，通过和`1 << order`进行异或操作，`page_idx`的第`order`位会被改变。如果先前该位等于0，则`buddy_idx`等于`page_idx + order_size`；相反，如果先前该位等于1，则`buddy_idx`等于`page_idx - order_size`。通过这种运算，始终能找到`page_idx`内存块对应的伙伴关系块。
+
+一旦伙伴关系块被找到，伙伴关系块的页描述符就很容易计算得到：
+
+```c
+buddy = base + buddy_idx;
+```
+
+现在，调用`page_is_buddy()`函数，检查buddy是否满足空闲伙伴关系块的要求，代码如下：
+
+```c
+int page_is_buddy(struct page *page, int order)
+{
+    if (PagePrivate(buddy) && page->private == order &&
+            !PageReserved(buddy) && page_count(page) ==0)
+        return 1;
+    return 0;
+}
+```
+
+如你所见，伙伴关系块的第一个页帧必须是空闲的（`__count`等于`-1`），必须属于动态内存（`PG_reserved`标志位清空），它的`private`属性必须被设置（`PG_private`标志位设置），最后，必须保证该块的`private`设置为将要释放的内存块所在的链表序号。
+
+如果所有的条件满足，伙伴关系块被释放，并将其从序号为`order`的空闲块链表中移除。通过迭代过程，不断判断是否有2倍大的伙伴关系块。
+
+如果`page_is_buddy()`函数中某个条件不满足，将会退出循环，因为将要释放的空闲内存块不会进一步与其它内存块进行合并。将获取的空闲内存块插入恰当的伙伴关系链表中，同时，更新该空闲内存块的第一页帧的`private`成员为该块对应的链表序号。
+
+```c
+coalesced = base + page_idx;
+coalesced->private = order;
+SetPagePrivate(coalesced);
+list_add(&coalesced->lru, &zone->free_area[order].free_list);
+zone->free_area[order].nr_free++;
+```
 
 
