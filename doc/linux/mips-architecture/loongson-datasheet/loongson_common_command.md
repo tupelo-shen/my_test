@@ -18,6 +18,7 @@ TFTP引导启动方式：
     
     ifconfig syn0  128.0.7.140;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.7.80/kernel.bin
     ifconfig syn0  128.0.7.12;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.7.80/kernel.bin
+    ifconfig syn0  128.0.0.140;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.0.81/kernel.bin
 
     KER____Hello World____2020_0403_TFS____
     KER____Hello World____2019_1115_TFS____SleepOK_1203.E
