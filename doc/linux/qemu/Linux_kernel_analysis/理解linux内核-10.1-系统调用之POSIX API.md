@@ -106,20 +106,27 @@ set_system_gate(0x80, &system_call);
 
 #### 4.1 `system_call()`函数
 
-`system_call()`函数就是前面介绍的系统调用处理程序。它要干的工作就是保存`系统调用号`和异常处理程序使用的所有CPU寄存器。`eflags`、`cs`、`eip`、`ss`和 `esp`等寄存器由硬件自动保存，不需要软件干预。`SAVE_ALL`宏，实现寄存器的保存，包括将内核数据段的段选择器加载到`ds`和`es`寄存器中：
+`system_call()`函数就是前面介绍的系统调用处理程序。
 
-```c
-system_call:
-    pushl %eax
-    SAVE_ALL
-    movl $0xffffe000, %ebx /* or 0xfffff000 for 4-KB stacks */
-    andl %esp, %ebx
-```
+1. **保存当前进程堆栈信息，保证进入内核态可以正常使用寄存器。**
 
-The function then stores the address of the thread_info data structure of the current process in ebx (see the section “Identifying a Process” in Chapter 3). This is done by taking the value of the kernel stack pointer and rounding it up to a multiple of 4 or 8 KB (see the section “Identifying a Process” in Chapter 3).
+    它要干的工作就是保存`系统调用号`和异常处理程序使用的所有CPU寄存器。`eflags`、`cs`、`eip`、`ss`和 `esp`等寄存器由硬件自动保存，不需要软件干预。`SAVE_ALL`宏，实现寄存器的保存，包括将内核数据段的段选择器加载到`ds`和`es`寄存器中：
+
+    ```c
+    system_call:
+        pushl %eax
+        SAVE_ALL
+        movl $0xffffe000, %ebx /* or 0xfffff000 for 4-KB stacks */
+        andl %esp, %ebx
+    ```
+
+    该段代码的作用是：将发起系统调用的当前进程在内核态的线程信息（结构体`thread_info`）和栈保存到寄存器`ebx`中。具体做法就是，通过将内核态的堆栈指针的值向上取整，即为4K和8K的倍数，作为`thread_info`数据结构的地址，写入到寄存器`ebx`中。
+
+2. **`system_call()`函数检查该系统调用是否处于调试状态中，以及对传入的系统调用参数进行检查**。
 
 Next, the system_call() function checks whether either one of the TIF_SYSCALL_TRACE and TIF_SYSCALL_AUDIT flags included in the flags field of the thread_info structure is set—that is, whether the system call invocations of the executed program are being traced by a debugger. If this is the case, system_call() invokes the do_syscall_trace() function twice: once right before and once right after the execution of the system call service routine (as described later). This function stops current and thus allows the debugging process to collect information about it.
 
+    首先，检查`thread_info`结构体的`flags`成员，是否有`TIF_SYSCALL_TRACE`和`TIF_SYSCALL_AUDIT`标志。如果有`TIF_SYSCALL_TRACE`标志，则说明该系统调用正在被调试器进行跟踪（这就是`gdb`和`strace`等工具的shi
 A validity check is then performed on the system call number passed by the User Mode process. If it is greater than or equal to the number of entries in the system call dispatch table, the system call handler terminates:
 
 ```c
@@ -159,25 +166,11 @@ testw $0xffff, %cx
 je restore_all
 ```
 
-The flags field is at offset 8 in the thread_info structure; the mask 0xffff selects the
-bits corresponding to all flags listed in Table 4-15 except TIF_POLLING_NRFLAG. If none
-of these flags is set, the function jumps to the restore_all label: as described in the
-section “Returning from Interrupts and Exceptions” in Chapter 4, this code restores
-the contents of the registers saved on the Kernel Mode stack and executes an iret
-assembly language instruction to resume the User Mode process. (You might refer to
-the flow diagram in Figure 4-6.)
+The flags field is at offset 8 in the thread_info structure; the mask 0xffff selects the bits corresponding to all flags listed in Table 4-15 except TIF_POLLING_NRFLAG. If none of these flags is set, the function jumps to the restore_all label: as described in the section “Returning from Interrupts and Exceptions” in Chapter 4, this code restores the contents of the registers saved on the Kernel Mode stack and executes an iret assembly language instruction to resume the User Mode process. (You might refer to the flow diagram in Figure 4-6.)
 
-If any of the flags is set, then there is some work to be done before returning to User
-Mode. If the TIF_SYSCALL_TRACE flag is set, the system_call() function invokes for the
-second time the do_syscall_trace() function, then jumps to the resume_userspace
-label. Otherwise, if the TIF_SYSCALL_TRACE flag is not set, the function jumps to the
-work_pending label.
+If any of the flags is set, then there is some work to be done before returning to User Mode. If the TIF_SYSCALL_TRACE flag is set, the system_call() function invokes for the second time the do_syscall_trace() function, then jumps to the resume_userspace label. Otherwise, if the TIF_SYSCALL_TRACE flag is not set, the function jumps to the work_pending label.
 
-As explained in the section “Returning from Interrupts and Exceptions” in
-Chapter 4, that code at the resume_userspace and work_pending labels checks for
-rescheduling requests, virtual-8086 mode, pending signals, and single stepping; then
-eventually a jump is done to the restore_all label to resume the execution of the
-User Mode process.
+As explained in the section “Returning from Interrupts and Exceptions” in Chapter 4, that code at the resume_userspace and work_pending labels checks for rescheduling requests, virtual-8086 mode, pending signals, and single stepping; then eventually a jump is done to the restore_all label to resume the execution of the User Mode process.
 
 ## 5 通过`sysenter`指令发出系统调用
 
