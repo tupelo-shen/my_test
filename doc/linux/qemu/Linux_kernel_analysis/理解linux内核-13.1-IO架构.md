@@ -58,51 +58,27 @@ To lower costs, the same I/O port is often used for different purposes. For inst
 
     同上相反。
 
-While accessing I/O ports is simple, detecting which I/O ports have been assigned to
-I/O devices may not be easy, in particular, for systems based on an ISA bus. Often a
-device driver must blindly write into some I/O port to probe the hardware device; if,
-however, this I/O port is already used by some other hardware device, a system crash
-could occur. To prevent such situations, the kernel keeps track of I/O ports assigned
-to each hardware device by means of “resources.”
+While accessing I/O ports is simple, detecting which I/O ports have been assigned to I/O devices may not be easy, in particular, for systems based on an ISA bus. Often a device driver must blindly write into some I/O port to probe the hardware device; if, however, this I/O port is already used by some other hardware device, a system crash could occur. To prevent such situations, the kernel keeps track of I/O ports assigned to each hardware device by means of “resources.”
 
-A resource represents a portion of some entity that can be exclusively assigned to a
-device driver. In our case, a resource represents a range of I/O port addresses. The
-information relative to each resource is stored in a resource data structure, whose
-fields are shown in Table 13-1. All resources of the same kind are inserted in a treelike
-data structure; for instance, all resources representing I/O port address ranges
-are included in a tree rooted at the node ioport_resource.
+A resource represents a portion of some entity that can be exclusively assigned to a device driver. In our case, a resource represents a range of I/O port addresses. The information relative to each resource is stored in a resource data structure, whose fields are shown in Table 13-1. All resources of the same kind are inserted in a tree-like data structure; for instance, all resources representing I/O port address ranges are included in a tree rooted at the node ioport_resource.
 
 Table 13-1. The fields of the resource data structure
 
 | Type | Field | Description |
 | ---- | ----- | ----------- |
-| const char * | name | Description of owner of the resource |
-| unsigned long | start | Start of the resource range |
-| unsigned long | end | End of the resource range |
-| unsigned long | flags | Various flags |
-| struct resource * | parent | Pointer to parent in the resource tree |
-| struct resource * | sibling | Pointer to a sibling in the resource tree |
-| struct resource * | child | Pointer to first child in the resource tree |
+| const char *  | name  | 资源所有者的名称 |
+| unsigned long | start | 资源的起始位置 |
+| unsigned long | end   | 资源的结束位置 |
+| unsigned long | flags | 标志 |
+| struct resource * | parent  | 指向资源树中的父节点指针 |
+| struct resource * | sibling | 指向资源树中的兄弟节点指针 |
+| struct resource * | child   | 指向资源树中的第一个子节点 |
 
-The children of a node are collected in a list whose first element is pointed to by the
-child field. The sibling field points to the next node in the list.
+The children of a node are collected in a list whose first element is pointed to by the `child` field. The sibling field points to the next node in the list.
 
-Why use a tree? Well, consider, for instance, the I/O port addresses used by an IDE
-hard disk interface—let’s say from 0xf000 to 0xf00f. A resource with the start field
-set to 0xf000 and the end field set to 0xf00f is then included in the tree, and the conventional
-name of the controller is stored in the name field. However, the IDE device
+Why use a tree? Well, consider, for instance, the I/O port addresses used by an IDE hard disk interface—let’s say from 0xf000 to 0xf00f. A resource with the `start` field set to 0xf000 and the `end` field set to 0xf00f is then included in the tree, and the conventional name of the controller is stored in the name field. However, the IDE device driver needs to remember another bit of information, namely that the subrange from 0xf000 to 0xf007 is used for the master disk of the IDE chain, while the subrange from 0xf008 to 0xf00f is used for the slave disk. To do this, the device driver inserts two children below the resource corresponding to the whole range from 0xf000 to 0xf00f, one child for each subrange of I/O ports. As a general rule, each node of the tree must correspond to a subrange of the range associated with the parent. The root of the I/O port resource tree (ioport_resource) spans the whole I/O address space (from port number 0 to 65535).
 
-driver needs to remember another bit of information, namely that the subrange from
-0xf000 to 0xf007 is used for the master disk of the IDE chain, while the subrange
-from 0xf008 to 0xf00f is used for the slave disk. To do this, the device driver inserts
-two children below the resource corresponding to the whole range from 0xf000 to
-0xf00f, one child for each subrange of I/O ports. As a general rule, each node of the
-tree must correspond to a subrange of the range associated with the parent. The root
-of the I/O port resource tree (ioport_resource) spans the whole I/O address space
-(from port number 0 to 65535).
-
-Each device driver may use the following three functions, passing to them the root
-node of the resource tree and the address of a resource data structure of interest:
+Each device driver may use the following three functions, passing to them the root node of the resource tree and the address of a resource data structure of interest:
 
 1. request_resource()
 
@@ -116,20 +92,11 @@ node of the resource tree and the address of a resource data structure of intere
 
     Releases a given range previously assigned to an I/O device.
 
-The kernel also defines some shortcuts to the above functions that apply to I/O
-ports: request_region() assigns a given interval of I/O ports and release_region()
-releases a previously assigned interval of I/O ports. The tree of all I/O addresses currently
-assigned to I/O devices can be obtained from the /proc/ioports file.
+The kernel also defines some shortcuts to the above functions that apply to I/O ports: request_region() assigns a given interval of I/O ports and release_region() releases a previously assigned interval of I/O ports. The tree of all I/O addresses currently assigned to I/O devices can be obtained from the /proc/ioports file.
 
 ## 3 I/O接口
 
-An I/O interface is a hardware circuit inserted between a group of I/O ports and the
-corresponding device controller. It acts as an interpreter that translates the values in
-the I/O ports into commands and data for the device. In the opposite direction, it
-detects changes in the device state and correspondingly updates the I/O port that
-plays the role of status register. This circuit can also be connected through an IRQ
-line to a Programmable Interrupt Controller, so that it issues interrupt requests on
-behalf of the device.
+An I/O interface is a hardware circuit inserted between a group of I/O ports and the corresponding device controller. It acts as an interpreter that translates the values in the I/O ports into commands and data for the device. In the opposite direction, it detects changes in the device state and correspondingly updates the I/O port that plays the role of status register. This circuit can also be connected through an IRQ line to a Programmable Interrupt Controller, so that it issues interrupt requests on behalf of the device.
 
 There are two types of interfaces:
 
@@ -141,68 +108,57 @@ There are two types of interfaces:
 
     Used to connect several different hardware devices. Devices attached to a general-purpose I/O interface are usually external devices.
 
-#### 3.1 Custom I/O interfaces
+#### 3.1 专用I/O接口
 
-Just to give an idea of how much variety is encompassed by custom I/O interfaces—
-thus by the devices currently installed in a PC—we’ll list some of the most commonly
-found:
-Keyboard interface
-Connected to a keyboard controller that includes a dedicated microprocessor.
-This microprocessor decodes the combination of pressed keys, generates an
-interrupt, and puts the corresponding scan code in an input register.
-Graphic interface
-Packed together with the corresponding controller in a graphic card that has its
-own frame buffer, as well as a specialized processor and some code stored in a
-Read-Only Memory chip (ROM). The frame buffer is an on-board memory containing
-a description of the current screen contents.
-Disk interface
-Connected by a cable to the disk controller, which is usually integrated with the
-disk. For instance, the IDE interface is connected by a 40-wire flat conductor
-cable to an intelligent disk controller that can be found on the disk itself.
-Bus mouse interface
-Connected by a cable to the corresponding controller, which is included in the
-mouse.
-Network interface
-Packed together with the corresponding controller in a network card used to
-receive or transmit network packets. Although there are several widely adopted
-network standards, Ethernet (IEEE 802.3) is the most common.
+Just to give an idea of how much variety is encompassed by custom I/O interfaces—thus by the devices currently installed in a PC—we’ll list some of the most commonly found:
 
-#### 3.2 General-purpose I/O interfaces
+1. Keyboard interface
 
-Modern PCs include several general-purpose I/O interfaces, which connect a wide
-range of external devices. The most common interfaces are:
-Parallel port
-Traditionally used to connect printers, it can also be used to connect removable
-disks, scanners, backup units, and other computers. The data is transferred 1
-byte (8 bits) at a time.
-Serial port
-Like the parallel port, but the data is transferred 1 bit at a time. It includes a Universal
-Asynchronous Receiver and Transmitter (UART) chip to string out the
-bytes to be sent into a sequence of bits and to reassemble the received bits into
-bytes. Because it is intrinsically slower than the parallel port, this interface is
-mainly used to connect external devices that do not operate at a high speed, such
-as modems, mouses, and printers.
-PCMCIA interface
-Included mostly on portable computers. The external device, which has the
-shape of a credit card, can be inserted into and removed from a slot without
-rebooting the system. The most common PCMCIA devices are hard disks,
-modems, network cards, and RAM expansions.
-SCSI (Small Computer System Interface) interface
-A circuit that connects the main PC bus to a secondary bus called the SCSI bus.
-The SCSI-2 bus allows up to eight PCs and external devices—hard disks, scanners,
-CD-ROM writers, and so on—to be connected. Wide SCSI-2 and the SCSI-
-3 interfaces allow you to connect 16 devices or more if additional interfaces are
-present. The SCSI standard is the communication protocol used to connect
-devices via the SCSI bus.
-Universal serial bus (USB)
-A general-purpose I/O interface that operates at a high speed and may be used
-for the external devices traditionally connected to the parallel port, the serial
-port, and the SCSI interface.
+    Connected to a keyboard controller that includes a dedicated microprocessor. This microprocessor decodes the combination of pressed keys, generates an interrupt, and puts the corresponding scan code in an input register.
+
+2. Graphic interface
+
+    Packed together with the corresponding controller in a graphic card that has its own frame buffer, as well as a specialized processor and some code stored in a Read-Only Memory chip (ROM). The frame buffer is an on-board memory containing a description of the current screen contents.
+
+3. Disk interface
+
+    Connected by a cable to the disk controller, which is usually integrated with the disk. For instance, the IDE interface is connected by a 40-wire flat conductor cable to an intelligent disk controller that can be found on the disk itself.
+
+4. Bus mouse interface
+
+    Connected by a cable to the corresponding controller, which is included in the mouse.
+
+5. Network interface
+
+    Packed together with the corresponding controller in a network card used to receive or transmit network packets. Although there are several widely adopted network standards, Ethernet (IEEE 802.3) is the most common.
+
+#### 3.2 通用I/O接口
+
+Modern PCs include several general-purpose I/O interfaces, which connect a wide range of external devices. The most common interfaces are:
+
+1. Parallel port
+
+    Traditionally used to connect printers, it can also be used to connect removable disks, scanners, backup units, and other computers. The data is transferred 1 byte (8 bits) at a time.
+
+2. Serial port
+
+    Like the parallel port, but the data is transferred 1 bit at a time. It includes a Universal Asynchronous Receiver and Transmitter (UART) chip to string out the bytes to be sent into a sequence of bits and to reassemble the received bits into bytes. Because it is intrinsically slower than the parallel port, this interface is mainly used to connect external devices that do not operate at a high speed, such as modems, mouses, and printers.
+
+3. PCMCIA interface
+
+    Included mostly on portable computers. The external device, which has the shape of a credit card, can be inserted into and removed from a slot without rebooting the system. The most common PCMCIA devices are hard disks, modems, network cards, and RAM expansions.
+
+4. SCSI (Small Computer System Interface) interface
+
+    A circuit that connects the main PC bus to a secondary bus called the SCSI bus. The SCSI-2 bus allows up to eight PCs and external devices—hard disks, scanners, CD-ROM writers, and so on—to be connected. Wide SCSI-2 and the SCSI-3 interfaces allow you to connect 16 devices or more if additional interfaces are present. The SCSI standard is the communication protocol used to connect devices via the SCSI bus.
+
+5. Universal serial bus (USB)
+
+    A general-purpose I/O interface that operates at a high speed and may be used for the external devices traditionally connected to the parallel port, the serial port, and the SCSI interface.
 
 ## 4 设备控制器
 
-A complex device may require a device controller to drive it. Essentially, the controller
-plays two important roles:
+A complex device may require a device controller to drive it. Essentially, the controller plays two important roles:
 
 * It interprets the high-level commands received from the I/O interface and forces the device to execute specific actions by sending proper sequences of electrical signals to it.
 
@@ -210,51 +166,6 @@ plays two important roles:
 
 A typical device controller is the disk controller, which receives high-level commands such as a "write this block of data" from the microprocessor (through the I/O interface) and converts them into low-level disk operations such as "position the disk head on the right track" and "write the data inside the track". Modern disk controllers are very sophisticated, because they can keep the disk data in on-board fast disk caches and can reorder the CPU high-level requests optimized for the actual disk geometry.
 
-Simpler devices do not have a device controller; examples include the Programmable
-Interrupt Controller (see the section “Interrupts and Exceptions” in Chapter 4) and
-the Programmable Interval Timer (see the section “Programmable Interval Timer
-(PIT)” in Chapter 6).
+Simpler devices do not have a device controller; examples include the Programmable Interrupt Controller (see the section “Interrupts and Exceptions” in Chapter 4) and the Programmable Interval Timer (see the section “Programmable Interval Timer (PIT)” in Chapter 6).
 
-Several hardware devices include their own memory, which is often called I/O shared
-memory. For instance, all recent graphic cards include tens of megabytes of RAM in
-the frame buffer, which is used to store the screen image to be displayed on the
-monitor. We will discuss I/O shared memory in the section “Accessing the I/O
-Shared Memory” later in this chapter.
-
-## 5 设备驱动模型
-
-Earlier versions of the Linux kernel offered few basic functionalities to the device
-driver developers: allocating dynamic memory, reserving a range of I/O addresses or
-an IRQ line, activating an interrupt service routine in response to a device’s interrupt.
-Older hardware devices, in fact, were cumbersome and difficult to program,
-and two different hardware devices had little in common even if they were hosted on
-the same bus. Thus, there was no point in trying to offer a unifying model to the
-device driver developers.
-
-Things are different now. Bus types such as PCI put strong demands on the internal
-design of the hardware devices; as a consequence, recent hardware devices, even of
-different classes, support similar functionalities. Drivers for such devices should typically
-take care of:
-
-* Power management (handling of different voltage levels on the device’s power
-line)
-
-* Plug and play (transparent allocation of resources when configuring the device)
-
-* Hot-plugging (support for insertion and removal of the device while the system
-is running)
-
-Power management is performed globally by the kernel on every hardware device in
-the system. For instance, when a battery-powered computer enters the “standby”
-state, the kernel must force every hardware device (hard disks, graphics card, sound
-card, network card, bus controllers, and so on) in a low-power state. Thus, each
-driver of a device that can be put in the “standby” state must include a callback function
-that puts the hardware device in the low-power state. Moreover, the hardware
-devices must be put in the “standby” state in a precise order, otherwise some devices
-could be left in the wrong power state. For instance, the kernel must put in
-“standby” first the hard disks and then their disk controller, because in the opposite
-case it would be impossible to send commands to the hard disks.
-
-To implement these kinds of operations, Linux 2.6 provides some data structures
-and helper functions that offer a unifying view of all buses, devices, and device drivers
-in the system; this framework is called the device driver model.
+Several hardware devices include their own memory, which is often called I/O shared memory. For instance, all recent graphic cards include tens of megabytes of RAM in the frame buffer, which is used to store the screen image to be displayed on the monitor. We will discuss I/O shared memory in the section “Accessing the I/O Shared Memory” later in this chapter.
