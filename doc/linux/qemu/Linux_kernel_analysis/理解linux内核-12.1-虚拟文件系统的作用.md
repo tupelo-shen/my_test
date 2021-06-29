@@ -26,8 +26,28 @@ VFS支持的文件系统可以分为三类：
 
 * 磁盘文件系统
 
-    These manage memory space available in a local disk or in some other device that emulates a disk (such as a USB flash drive). Some of the well-known disk-based filesystems supported by the VFS are:
+    管理磁盘或模拟磁盘的设备，比如常见的硬盘或USB闪存。VFS支持的一些基于磁盘的著名文件系统有：
 
-    - Filesystems for Linux such as the widely used Second Extended Filesystem (Ext2), the recent Third Extended Filesystem (Ext3), and the Reiser Filesystems (ReiserFS)
+    - Linux支持的文件系统，比如`Ext2`、`Ext3`。
 
-    - 类UNIX操作系统支持的文件系统，比如`sysv`文件系统(System V, Coherent, Xenix), UFS (BSD, Solaris, NEXTSTEP), MINIX filesystem, and VERITAS VxFS (SCO UnixWare)
+    - 类UNIX操作系统支持的文件系统，比如`sysv`文件系统（`System V`、`Coherent`、`Xenix`）、`UFS`文件系统（`BSD`、`Solaris`、`NEXTSTEP`）、`MINIX`文件系统和`VERITAS VxFS`（`SCO UnixWare`）。
+    
+    - 微软系文件系统，比如`MS-DOS`、`VFAT`（Win95及其后版本支持）和`NTFS`（Windows NT及其后版本支持）。
+    
+    - ISO9660光盘文件系统(以前的高塞拉文件系统)和通用磁盘格式(UDF) DVD文件系统。
+    
+    - 其它专有文件系统，如IBM的OS/2 (HPFS)、苹果的Macintosh (HFS)、Amiga的快速文件系统(AFFS)和Acorn磁盘文件系统(ADFS)。
+    
+    - 其它类型的日志文件系统，比如`IBM`的`JFS`、`SGI`的`XFS`。
+
+* 网络文件系统
+
+    可以方便访问其它网络计算机的文件系统中的文件。比如，`NFS`文件系统。
+
+* 特殊文件系统
+
+    `/proc`文件系统就是一个典型的例子。
+
+鉴于篇幅，我们只详细讲解`ext2`和`ext3`文件系统。
+
+我们知道，类Unix文件系统都是以`/`目录作为`root`节点
