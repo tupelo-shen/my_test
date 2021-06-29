@@ -22,6 +22,7 @@
 2. [Douglas Thain教授的在线课程](https://www3.nd.edu)，关于计算机科学的。
 3. [我们的Linux内核之旅](http://www.kerneltravel.net/)，关于linux的一些资源的介绍。
 4. [consen的个人博客](https://consen.github.io/)，里面只有很少的博文，但是都是非常深入的技术点。
+5. [https://www.kernel.org/](https://www.kernel.org/)
 
 ## XEN
 
