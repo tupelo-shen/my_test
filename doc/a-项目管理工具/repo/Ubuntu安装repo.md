@@ -61,11 +61,11 @@ Android源码包含数百个git库，仅仅是下载这么多git库就是一项�
 
 9. 在工作目录中创建`.repo/repo`目录
 
-        mkdir -R .repo/repo
+        mkdir .repo/repo
 
 10. 将下载的git-repo目录下的内容拷贝到新创建的repo目录下。
 
-        cp -R ~/git-repo/* ~/git-repo/.  .repo/repo
+        cp -r ~/git-repo/* ~/git-repo/.  .repo/repo
 
 11. 初始化仓库
 
