@@ -19,6 +19,12 @@ TFTP引导启动方式：
     ifconfig syn0  128.0.7.140;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.7.80/kernel.bin
     ifconfig syn0  128.0.7.12;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.7.80/kernel.bin
     ifconfig syn0  128.0.0.140;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.0.81/kernel.bin
+    ifconfig syn0  128.0.0.141;  boot -r -o 0x10200000 -e 0x10200200 tftp://128.0.0.101/kernel.bin
+    ifaddr syn0 128.0.7.174;load -f 0xbe200000 -r tftp://128.0.7.80/kernel.bin
+    ifaddr syn0 128.0.7.174;load -f 0xbe200000 -r tftp://128.0.7.80/K-CU12-RTS-M6.bin
+
+    EXT_WriteRetainMacAddr,128,00,00,121,98,89,11
+    EXT_WriteRetainMacAddr,129,00,00,105,212,253,10
 
     KER____Hello World____2020_0403_TFS____
     KER____Hello World____2019_1115_TFS____SleepOK_1203.E

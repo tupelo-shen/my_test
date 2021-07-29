@@ -112,5 +112,3 @@ Docker Engine is installed and running. The `docker` group is created but no use
 
 运行：`sudo apt-get update`，重新安装最新版本。
 
-
-
