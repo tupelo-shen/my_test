@@ -30,14 +30,16 @@ make
 
 编辑`iso/boot/grub/grub.cfg`：
 
-    set default=0
-    set timeout=3
-    GRUB_TERMINAL="console serial"
-    GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1"
-    menuentry ACRN hypervisor {
-    echo Load apic ...
-            multiboot --quirk-modules-after-kernel /boot/grub/bin/apic.elf
-    }
+```
+set default=0
+set timeout=3
+GRUB_TERMINAL="console serial"
+GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1"
+menuentry ACRN hypervisor {
+echo Load apic ...
+        multiboot --quirk-modules-after-kernel /boot/grub/bin/apic.elf
+}
+```
 
 制作镜像：
 

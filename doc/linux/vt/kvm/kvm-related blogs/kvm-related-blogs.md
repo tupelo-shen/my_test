@@ -1,0 +1,1 @@
+Blogs from people active in KVM-related virtualization development are syndicated at [http://planet.virt-tools.org/](http://planet.virt-tools.org/)
