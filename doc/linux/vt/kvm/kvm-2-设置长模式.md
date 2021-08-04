@@ -49,31 +49,32 @@ What is long mode and why set it up? Since the introduction of the x86-64 proces
     ret
 ```
 
-#### 3.2 x86 or x86-64
+#### 3.2 检测是否支持长模式（x86 或x86-64）
 
-Now that CPUID is available we have to check whether long mode can be used or not. Long mode can only be detected using the extended functions of CPUID (> 0x80000000), so we have to check if the function that determines whether long mode is available or not is actually available:
+现在，CPUID指令已经可用，需要检查长模式是否可用。长模式只能通过CPUID指令的扩展功能（`>0x80000000`）进行检测。首先，检测是否支持扩展功能：
 
 ```c
-    mov eax, 0x80000000    // Set the A-register to 0x80000000.
-    cpuid                  // CPU identification.
-    cmp eax, 0x80000001    // Compare the A-register with 0x80000001.
+    mov eax, 0x80000000    // 设置eax寄存器为0x80000000
+    cpuid                  // 调用CPUID指令
+    cmp eax, 0x80000001    // 比较eax寄存器值和0x80000001.
     jb .NoLongMode         // It is less, there is no long mode.
 ```
-Now that we know that extended function is available we can use it to detect long mode:
+
+检测是否支持长模式：
 
 ```c
-    mov eax, 0x80000001    // Set the A-register to 0x80000001.
-    cpuid                  // CPU identification.
-    test edx, 1 << 29      // Test if the LM-bit, which is bit 29, is set in the D-register.
-    jz .NoLongMode         // They aren't, there is no long mode.
+    mov eax, 0x80000001    // 设置eax寄存器为0x80000001
+    cpuid                  // 调用CPUID指令，结果存储在edx寄存器
+    test edx, 1 << 29      // 测试长模式标志位，也就是BIT29
+    jz .NoLongMode         // 如果等于0，则说明不支持长模式
 ```
-Now that we know if long mode is actually supported by the processor, we can actually use it.
+至此，我们就可以知道处理器是否支持长模式了。
 
 ## 4 设置长模式
 
-Entering long mode can be both done from real mode and protected mode, however only protected mode is covered in the Intel and AMD64 manuals. Early AMD documentation explains this process works from real mode as well.
+可以从实模式或者保护模式进入长模式，但是，英特尔和AMD手册中只提及了保护模式进入长模式的方式。早期版本的AMD文档中解释了实模式也可以进入长模式。
 
-Before anything, it is recommended that you enable the [A20 Line](https://wiki.osdev.org/A20_Line); otherwise only odd MiBs can be accessed.
+在此之前，应该先使能[A20地址线](https://wiki.osdev.org/A20_Line)；否则，只能访问奇数顺序的M大小的空间。
 
 #### 4.1 建立分页
 
