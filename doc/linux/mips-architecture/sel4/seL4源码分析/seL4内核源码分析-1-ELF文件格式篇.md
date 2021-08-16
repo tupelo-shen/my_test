@@ -75,3 +75,12 @@ ELF格式可以表达四种类型的二进制对象文件(object files):
 在不同阶段，我们可以用不同视角来理解`ELF`文件，整体布局如下图所示:
 
 <img src="">
+
+从上图可见，`ELF`格式文件整体可分为四大部分:
+
+* `ELF Header`: 在文件的开始，描述整个文件的组织.即`readelf -h app`看到的内容
+* `Program Header Table`: 告诉系统如何创建进程映像。用来构造进程映像的目标文件必须具有程序头部表，可重定位文件可以不需要这个表。表描述所有段(`Segment`)信息，即`readelf -l app`看到的前半部分内容
+* Segments:段(Segment)由若干区(Section)组成.是从加载器角度来描述 ELF 文件.加载器只关心 ELF header， Program header table 和 Segment 这三部分内容。 在加载阶段可以忽略 section header table 来处理程序（所以很多加固手段删除了section header table）
+* Sections: 是从链接器角度来描述 ELF 文件. 链接器只关心 ELF header，Sections 以及 Section header table 这三部分内容。在链接阶段，可以忽略 program header table 来处理文件.
+* Section Header Table:描述区(Section)信息的数组，每个元素对应一个区，通常包含在可重定位文件中，可执行文件中为可选(通常包含) 即readelf -S app看到的内容
+* 从图中可以看出 `Segment:Section`(M:N)是多对多的包含关系.Segment是由多个Section组成，Section也能属于多个段.
