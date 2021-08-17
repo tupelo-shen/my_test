@@ -19,7 +19,7 @@
 
 `ELF`一体两面，面对不同的场景扮演不同的角色，这是理解ELF的关键。链接器只关注1，3(区)，4 的内容；加载器只关注1，2，3(段)的内容；
 
-鸿蒙对`ELF`的定义在` kernel\extended\dynload\include\los_ld_elf_pri.h`文件中：
+`seL4`对`ELF`的定义在`~/projects/musllibc/include/elf.h`文件中：
 
 ## 2 ELF关键词（中英文对照）
 
@@ -363,7 +363,7 @@ typedef struct {
 用`readelf -s`读出示例程序中的符号表，如下所示:
 
 ```
-$ arm-linux-gnueabi-readelf -s sel4test-driver-image-arm-zynq7000 
+$ arm-linux-gnueabi-readelf -s sel4test-tests 
 
 Symbol table '.symtab' contains 5388 entries:
    Num:    Value  Size Type    Bind   Vis      Ndx Name
