@@ -104,6 +104,10 @@
 
 ---
 
+[TOC]
+
+---
+
 <h1 id="1">1 ARM体系结构简介</h1>
 
 本章主要介绍ARM架构。
@@ -258,21 +262,25 @@ This manual describes the following extensions to the ISA:
 
     Is an OPTIONAL extension to VMSAv7 that provides an address translation system supporting physical addresses of up to 40 bits at a fine grain of translation. The Large Physical Address Extension requires implementation of the Multiprocessing Extensions.
 
-* **Virtualization Extensions**
+* **虚拟化扩展**
 
-    Are an OPTIONAL set of extensions to VMSAv7 that provides hardware support for virtualizing the Non-secure state of a VMSAv7 implementation. This supports system use of a virtual machine monitor, also called a hypervisor, to switch Guest operating systems.
+    是`VMSAv7`的一组可选扩展，为基于`VMSAv7`架构实现的处理器的非安全状态的虚拟化，提供硬件支持。该功能支持系统使用虚拟机监视器(`VMM`，也称为`hypervisor`)来切换客户机操作系统。
 
-    The Virtualization Extensions require implementation of:
-    * the Security Extensions
-    * the Large Physical Address Extension
-    * the v7.1 Debug architecture, see Scope of part C of this manual on page C1-2022.
-    If an implementation that includes the Virtualization Extensions also implements:
-    * The Performance Monitors Extension, then it must implement version 2 of that extension, PMUv2, see About the Performance Monitors on page C12-2302.
-    * A trace macrocell, that trace macrocell must support the Virtualization Extensions. In particular, if the trace macrocell is:
-        - an Embedded Trace Macrocell (ETM), the macrocell must implement ETMv3.5 or later, see the Embedded Trace Macrocell Architecture Specification
-        - a Program Trace Macrocell (PTM), the macrocell must implement PFTv1.1 or later, see the CoreSight Program Flow Trace Architecture Specification.
+    虚拟化扩展需要其它技术的支持：
 
-    In some tables in this manual, an ARMv7-A implementation that includes the Virtualization Extensions is described as ARMv7VE, or as v7VE.
+    * 安全扩展（`TrustZone`）；
+    * 大物理地址扩展（`PAE`）；
+    * `v7.1 Debug`版本，请参考本手册的C1部分；
+     
+    如果实现的处理器想要支持虚拟化扩展，还要实现：
+
+    * 性能监控扩展，基于`PMUv2`版本。具体参考C12部分；
+    * 实现跟踪宏单元，也就是`trace`功能必须能够支持虚拟化扩展。尤其是：
+        
+        - 如果是嵌入式跟踪宏单元（`Embedded Trace Macrocell(ETM)`），必须基于`ETMv3.5`版本及以后的版本。具体可以参考`the Embedded Trace Macrocell Architecture Specification`；
+        - 如果是可编程跟踪宏单元（`Program Trace Macrocell(PTM)`），必须基于`PFTv1.1`版本及以后的版本。具体可以参考`the CoreSight Program Flow Trace Architecture Specification`。
+
+    本手册的某些表中，基于`ARMv7-A`的虚拟化扩展，会描述为`ARMv7VE`或`v7VE`。
 
 * **Generic Timer Extension**
 
@@ -436,6 +444,67 @@ ARM架构应用级内存模型使用一个2^32个8位字节大小的平面地址
 <h2 id="3.9">3.9 Cache和内存体系结构</h2>
 
 
+# B10 系统级-编程模型
+## 10.1 关于系统级编程模型
 
+## 10.2 系统级概念及术语
+
+## 10.3 ARM处理器模型和ARM内核寄存器
+
+## 10.4 指令集状态
+
+## 10.5 安全扩展
+
+## 10.6 大物理地址扩展
+
+
+## 10.7 虚拟化扩展
+
+The Virtualization Extensions are an OPTIONAL extension to the ARMv7-A architecture profile. Any implementation that includes the Virtualization Extensions must include the Security Extensions, the Large Physical Address Extension, and the Multiprocessing Extensions.
+
+When implemented, the Virtualization Extensions provide a set of hardware features that support virtualizing the Non-secure state of an ARM VMSAv7 implementation. The basic model of a virtualized system involves:
+
+* a hypervisor, running in Non-secure Hyp mode, that is responsible for switching Guest operating systems
+* a number of Guest operating systems, each of which runs in the Non-secure PL1 and PL0 modes
+* for each Guest operating system, applications, that usually run in User mode.
+
+> A Guest OS runs on a virtual machine. However, its own view is that it is running on an ARM processor. Normally, a Guest OS is completely unaware:
+> 
+> * that it is running on a virtual machine
+> * of any other Guest OS.
+
+Another way of describing virtualization is that:
+
+* a Guest operating system, including all applications and tasks running under that operating system, runs on a virtual machine
+* a hypervisor switches between virtual machines.
+
+Each virtual machine is identified by a `virtual machine identifier` (VMID), assigned by the hypervisor.
+
+Many features of the architecture are extended to integrate with the Virtualization Extensions, and because of this integration of the Virtualization Extensions into the architecture, features of the Virtualization Extensions are described in many sections of this manual. The key features are:
+
+
+## 10.8 异常处理
+
+## 10.9 异常描述
+
+## 10.10 协处理器和系统控制
+
+## 10.11 高级SIMD和浮点支持
+
+## 10.12 Thumb执行环境
+
+## 10.13 Jazelle直接字节码执行
+
+## 10.14 Traps to the hypervisor
+
+# B11 通用内存架构
+
+## 11.1 关于内存架构
+
+## 11.2 缓存和分支预测器
+
+## 11.3 IMPLEMENTION DEFINED memory system features
+
+## 11.4 Pseudocode details of general memory system operations
 
 <div style="text-align: right"><a href="#0">回到顶部</a><a name="_label0"></a></div>
