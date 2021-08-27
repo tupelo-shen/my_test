@@ -8,9 +8,7 @@ Although ARM's virtualization extensions seem to be very similar to Intel's appr
 
 ## 1 总体架构
 
-The ARM virtualization extensions are based on the security extensions, commonly known as TrustZone. For more information about TrustZone, refer to our [previously published article](http://genode.org/documentation/articles/trustzone). To realize the switching between different virtual machines, a new privilege level was introduced within the normal world of the processor, including one new processor execution mode - the "hyp" mode.
-
-ARM虚拟化扩展
+ARM虚拟化扩展是基于`TrustZone`安全扩展的。关于`TrustZone`，可以参考一篇文章[https://genode.org/documentation/articles/trustzone](https://genode.org/documentation/articles/trustzone)。为了实现在不同虚机之间进行切换，ARM架构引入了一个新的特权级别-`hyp`模式。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/vt/ARM%E8%99%9A%E6%8B%9F%E5%8C%96%E6%89%A9%E5%B1%95/images/arm_virtual_extension_1_1.png">
 
