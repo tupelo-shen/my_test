@@ -1,6 +1,8 @@
 [TOC]
 
-虚拟化扩展是`ARMv7-A`架构的一个可选项。任何基于虚拟化扩展的实现都必须包含`安全扩展`、`大物理地址扩展`和`多处理器扩展`。
+## 1 虚拟化
+
+虚拟化扩展是`ARMv7-A`架构的一个可选项。基于该虚拟化扩展的实现都必须包含`安全扩展`、`大物理地址扩展`和`多处理器扩展`。
 
 在实现时，虚拟化扩展提供了一组硬件特性，支持对`VMSAv7`实现的非安全状态进行虚拟化。虚拟化系统的基本模型包括:
 
@@ -33,9 +35,9 @@
 * 通过安全扩展，虚拟化扩展控制中断和异步数据`Abort`异常路由到正确的接收方，比如：
 
     - 当前的客户机OS
-    - 当前
-    - the hypervisor
-    - the Secure monitor.
+    - 当前没有运行的客户机OS
+    - `hypervisor`
+    - 安全监控软件（`monitor`）
 
 * When an implementation includes the Virtualization Extensions, it provides independent translation regimes for memory accesses from:
 
@@ -52,16 +54,15 @@
 
     For more information, see About address translation on page B3-1311.
 
-Impact of the Virtualization Extensions on the modes and exception model gives more information about many of
-these features.
+Impact of the Virtualization Extensions on the modes and exception model gives more information about many of these features.
 
-## 1 Impact of the Virtualization Extensions on the modes and exception model
+## 1 虚拟化扩展对工作模式和异常模型的影响
 
 This section summarizes the effect of the Virtualization Extensions on the modes and exception model. An implementation that includes the Virtualization Extensions:
 
-* Implements a new Non-secure mode, Hyp mode. Hyp mode on page B1-1141 summarizes how Hyp mode differs from the other processor modes.
+* 实现一个新的非安全模式：`Hyp`模式。在[ARMv7_A&R_技术参考手册_B_1_3_ARM工作模式和核心寄存器]()一文中，总结了`hyp`模式与其它工作模式的不同之处。
 
-* Implements new exceptions, see:
+* 需要实现新的异常，包括：
 
     - Hypervisor Call (HVC) exception on page B1-1212
     - Hyp Trap exception on page B1-1209
