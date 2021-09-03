@@ -12,37 +12,37 @@ ARM虚拟化扩展是基于`TrustZone`安全扩展的。关于`TrustZone`，可�
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/vt/ARM%E8%99%9A%E6%8B%9F%E5%8C%96%E6%89%A9%E5%B1%95/images/arm_virtual_extension_1_1.png">
 
-The figure above presents an overview of all privilege levels and modes an ARM processor may execute code in. As depicted, virtual machines can be executed in TrustZone's "normal world" only. Processor instructions that support VM separation and world switches can be used in either hyp or monitor mode only. Thereby, the first design question was whether the hypervisor-related code shall be executed in the normal world solely, or if at least parts of the hypervisor should run in the "secure world"? Which of both TrustZone worlds should host normal user-land applications, not related to virtualization?
+上图展示了`ARMv7`架构处理器的所有特权级别和工作模式。虚拟机只能运行在TrustZone的非安全空间中。那些用来支持虚拟机隔离和切换的指令只能在`hyp`或`monitor`模式下可用。因此，第一个设计问题来了：hypervisor的代码是应该运行在非安全模式下，还是其中的部分代码可以运行在安全模式下？与虚拟化无关的用户态程序是应该运行在安全模式还是非安全模式？
 
-Until now, Genode used to be executed in either the normal world or the secure world, depending on the platform. For instance, when using the Pandaboard, the secure world is already locked by OEM firmware during the boot process, and Genode is restricted to the normal world. In contrast, on the ARNDALE board, the Genode system is free to use both the secure and normal world. We decided to ignore the secure world here and to execute everything in the normal world. Thereby, Genode is able to accommodate all possible platforms including those where the TrustZone features are already locked by the vendor.
+到目前为止，Genode代码既可以在非安全模式，也可以在安全模式下执行，具体却决于平台。比如，使用`Pandaboard`开发板时，引导阶段，安全空间已经被OEM厂商的固件程序锁住，那Genode只能运行在非安全模式下。相反，在`ARNDALE`开发板上，Genode系统可以自由使用安全和非安全空间。所以，假设我们忽略安全和非安全的概念，只讨论非安全的情况。因此，Genode能够适应所有可能的平台，包括那些`TrustZone`特性已经被供应商锁定的平台。
 
-Starting point of the current work was Genode's integrated ARM kernel that we call "base-hw" ("hw" representing Genode running on bare hardware as opposed to running it on a third-party kernel). On this platform, Genode's core process runs partly in kernel mode (PL1) but most code is running in user mode (PL0). The rationale behind this design is explained in our TrustZone article. We broadened this approach by extending the core process with hypervisor-specific code running in hyp mode (PL2), thereby gaining a binary that has a global view on the hardware resources yet is executed in three different privilege levels. The concept of the base-hw platform hosting different virtual machines from a bird's perspective is depicted in the following figure.
+我们讨论的平台是`Genode+ARM核`。也就是说，Genode直接运行在裸机之上，而不是运行在第三方内核上。英文原文中，称为`base-hw`。在这样的平台上，Genode的Core进程的部分代码运行在内核模式（PL1），但是，大部分代码运行在用户模式（PL0）。这样设计的根本原因，我们在[TrustZone](http://genode.org/documentation/articles/trustzone)文章中解释过。在此基础上，我们通过在`hyp`模式下（PL2）运行`hypervisor`专有代码，这样我们得到的系统既可以访问全局的硬件资源，又可以运行在三个特权级别下。下图就是一个托管不通虚拟机的`base-hw`平台的鸟瞰图。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/vt/ARM%E8%99%9A%E6%8B%9F%E5%8C%96%E6%89%A9%E5%B1%95/images/arm_virtual_extension_1_2.png">
 
-Ideally, the part of the core process, which runs in hyp mode comprises hypervisor-specific code only. This includes the code to switch between different virtual machines as well as the Genode world denoted as Dom0 in the picture. To keep its complexity as low as possible, the hypervisor should stay free from any device emulation. If possible its functionality should come down to reloading general purpose and system registers, and managing guest-physical to host-physical memory translations.
+理想情况下，core进程运行在hyp模式下的代码，只是与hypervisor相关的代码。这部分代码完成虚机的切换，包括称为Dom0的Genode系统。为了尽可能的降低hypervisor的复杂性，hypervisor不管任何设备的模拟。如果可能，最好就是只加载通用目的和系统寄存器，完成客户机物理地址到主机的物理地址转换。
 
-In contrast to the low-complexity hypervisor, the user-level VMM can be complex without putting the system's security at risk. It contains potentially complex device-emulation code and assigns hardware resources such as memory and interrupts to the VM. The VMM is an ordinary application running unprivileged and can be re-instantiated per VM. By instantiating one VMM per VM, different VMs are well separated from each other. Even in the event that one VMM breaks, the other VMs stay unaffected. Of course, a plain user-land application is not able to directly use the hardware virtualization extensions. These extensions are available in hyp mode only, which is exclusive to the kernel. Hence an interface between VMM and the kernel is needed to share the state of a virtual machine. We faced a similar problem when building a VMM for our former TrustZone experiments. It was natural to build upon the available solution, extending it wherever necessary. Core provides a so called VM service. Each VM corresponds to a session of this service. The session provides the following interface:
+相比于极其简单的hypervisor，用户态的VMM可以很复杂，而不会影响系统的安全。它可以包含负责的设备模拟，分配硬件资源比如内存和中断给VM。VMM就是运行在非特权级别下的普通程序，可以为每个VM实例化一个VMM。通过实例化单独的VMM，不同的VM彼此之间实现隔离。即使是在一个VM奔溃的情况下，其它VMs也不会受影响。当然了，普通的用户态程序是不能直接使用硬件虚拟化扩展的。这些扩展，只有在`hyp`模式才可用，所以是内核独有的。为了共享虚拟机的状态，需要在VMM和内核之间建立接口。Core进程提供VM虚拟机服务。每个VM对应于该服务的一个会话。这个会话提供下面所示的接口：
 
 * **CPU state**
 
-    The CPU-state function returns a dataspace containing the virtual machine's state. It is initially filled by the VMM before starting the VM, gets updated by the hypervisor whenever it switches away from the VM, and can be used by the VMM to interpret the behavior of the guest OS. Moreover, it can be updated after the virtual machine monitor emulated instructions for the VM. This mechanism can be compared to the VMCS structure in the x86 architecture.
+    该功能返回虚拟机状态的数据。启动VM时，VMM会给虚拟机一个初始状态，VM进行切换时，hypervisor就会更新CPU的状态数据。VMM用这些数据来解释客户机OS的行为。更重要的是，它可以在VMM为VM模拟了指令后更新。这种机制可以与x86架构里的VMCS结构进行比较。
 
 * **Exception handler**
 
-    The second function is used to register a signal handler that gets informed whenever the VM produces a virtualization fault.
+    注册异常处理程序，当VM产生虚拟化Fault时，该异常处理程序就会被通知。
 
 * **Run**
 
-    The run function starts or resumes the execution of the VM.
+    run功能可以用于启停虚拟机。
 
 * **Pause**
 
-    The pause function removes the VM from the kernel's scheduler.
+    pause功能将VM从内核的调度器中移除。
 
-Given this high-level architecture the remainder of the article covers the technical challenges to realize it. We start with explaining what had to be done to initially bootstrap the platform from secure to normal world. We encountered memory as the first hardware resource we had to address. Section [Memory Virtualization](https://genode.org/documentation/articles/arm_virtualization#Memory_Virtualization) explains our approach to virtualizing memory. The most substantial part is the virtualization of the CPU, which is covered in section [CPU Virtualization](https://genode.org/documentation/articles/arm_virtualization#CPU_Virtualization). It is followed by the explanation of the pitfalls and positive surprises while virtualizing interrupts and time in sections [Virtualizing Interrupts](https://genode.org/documentation/articles/arm_virtualization#Virtualizing_Interrupts) and [Virtual Time](https://genode.org/documentation/articles/arm_virtualization#Virtual_Time). Finally, the article closes with a summary of the current state.
+接下来，我们主要讨论实现它的技术难点。
 
-## Bootstrap into Genode's "Dom0"
+## 2 引导进入Genode的Dom0
 
 To practically start exploring the virtualization extensions, we used the ARNDALE development platform containing a Samsung Exynos5 SoC, which is based on two Cortex A15 CPU cores. Using this board was beneficial as Genode's base-hw platform already supported ARNDALE with most device drivers already covered. Moreover, this low-cost device offers UART and JTAG connectors, which are greatly advantageous when investigating new processor features.
 
@@ -90,6 +90,7 @@ To reduce the necessity of TLB maintenance operations when switching between dif
 
 ## 4 CPU虚拟化
 
+完成内存虚拟化后，接下来的步骤是实现关于CPU状态的全局切换。
 After experimenting successfully with memory virtualization, the next consequential step was to realize the world-switch regarding the CPU state. We started with a very simple VMM that used the VM session interface described in section Overall Architecture to provide the VM's initial register set to the hypervisor. The register set, denoted as VM state in the following, at first comprised merely the general purpose registers (r0-r15), the "current program status register" (CPSR), and "banked" copies of some of these registers related to the different execution modes.
 
 At first, the VMM requests the dataspace containing the VM state via its VM session from core. It prepares the state by providing corresponding reset values. Using the VM session, it registers a signal handler and starts the execution of the VM. After that, the VMM waits for virtualization events that are delivered to its signal handler.
