@@ -2,9 +2,9 @@
 
 原文地址:[https://genode.org/documentation/articles/arm_virtualization](https://genode.org/documentation/articles/arm_virtualization)
 
-Recent high end ARM CPUs include support for hardware virtualization. Due to limitations of former ARM architectures, virtualizing the hardware tended to be slow and expensive. Some privileged instructions did not necessarily trap when executed in non-privileged mode. This effectively prevented a hypervisor to run the kernel code of the guest operating system unmodified in non-privileged mode and to handle privileged instructions using a trap-and-emulate approach. Instead of modifying the architecture in a way to close the virtualization holes, meaning to always trap when privileged parts of the CPU state shall be modified, ARM decided to stay backwards compatible and extended the ARM v7 architecture to support virtualization. ARM went a similar path like Intel when VT was introduced for the x86 architecture.
+高端ARM架构CPU已经包含了硬件虚拟化的支持。由于早期ARM架构的限制，虚拟化硬件性能不高且代价高昂。当运行在非特权模式下时，一些特权指令不能被捕获。这有效阻止了`hypervisor`未经修改地在非特权模式下运行客户机操作系统的内核代码，也不能使用`异常捕获-模拟指令（trap-and-emulate）`的方式，处理那些特权指令。为了处理这种情况，ARM没有选择修改CPU架构去实现CPU所有的特权指令都能够被捕获，从而修复之前架构关于虚拟化的缺陷，而是选择向后兼容，扩展ARMv7架构，实现虚拟化的支持。在这一点上，ARM选择了和Intel的`VTx`虚拟化技术一样的方式。
 
-Although ARM's virtualization extensions seem to be very similar to Intel's approach, the devil is in the details. We were looking forward to explore them for quite some time and are happy to share the insights of our research with you. When starting with this line of work on ARM virtualization, one of the most interesting questions for us was: How can we integrate virtualization into Genode without increasing the trusted computing base (TCB) of applications that run beside virtual machines? Moreover, how can we make the virtual machine monitor (VMM) of one virtual machine (VM) independent of others, similar to the approach taken by the [NOVA OS virtualization architecture](http://hypervisor.org/)?
+尽管ARM虚拟化扩展和Intel的方法相似，但是细节却不同。本文就是对这些细节的一些探索。现在，我们提出一些有意思的问题：如何在不增加运行在虚机侧的应用程序的可信计算基（TCB）的前提下，将虚拟化技术集成到Genode操作系统框架中？更重要的是，如何保证虚拟机的VMM各自独立，互不干扰？方法是否与[NOVA OS 虚拟化架构](http://hypervisor.org/)相似？
 
 ## 1 总体架构
 
@@ -44,23 +44,24 @@ ARM虚拟化扩展是基于`TrustZone`安全扩展的。关于`TrustZone`，可�
 
 ## 2 引导进入Genode的Dom0
 
-To practically start exploring the virtualization extensions, we used the ARNDALE development platform containing a Samsung Exynos5 SoC, which is based on two Cortex A15 CPU cores. Using this board was beneficial as Genode's base-hw platform already supported ARNDALE with most device drivers already covered. Moreover, this low-cost device offers UART and JTAG connectors, which are greatly advantageous when investigating new processor features.
+为了开始实机环境的虚拟化扩展探索，我们选择使用ARNDALE开发板，该平台包含一个`Samsung`的`Exynos5 SoC`芯片，由2个`Cortex A15`的CPU核组成。选择这个开发板的目的是，已经有许多设备驱动程序可用。更重要的是，该开发板还提供UART和JTAG连接器，这在调试程序的时候是非常方便的。
 
 <img src="https://raw.githubusercontent.com/tupelo-shen/my_test/master/doc/linux/vt/ARM%E8%99%9A%E6%8B%9F%E5%8C%96%E6%89%A9%E5%B1%95/images/arm_virtual_extension_1_3.png">
 
-As already mentioned, the ARNDALE board boots into the secure world of TrustZone. As we decided to run the whole system within the normal world, the first step was to bootstrap into the hyp mode of the normal world. Before leaving the secure world, the following adjustments were needed to allow the normal world to access all hardware resources. The "non-secure access control register" (NSACR) had to be configured to allow access to all co-processors and to allow tweaking multi-processor related bits of the "auxiliary control register" (ACTLR). Moreover, all interrupts had to be marked as non-secure at the interrupt controller so that the normal world is able to receive them.
+上电复位后，ARNDALE开发板首先被引导到TrustZone的安全空间中。如果我们想在非安全空间中运行整个系统，第一步就是引导进入`hyp`模式。在离开安全模式之前，我们需要做如下的调整，允许非安全空间下可以访问所有的硬件资源。非安全访问控制寄存器（`NSACR`必须被配置，允许访问所有的协处理器，并允许调整辅助控制寄存器（`ACTLR`）的多核处理器相关标志位。还有，所有中断必须在中断控制器上被标记为非安全的（`Non-Secure`），保证能够被正常接收。
 
 When doing so, we discovered a tricky detail regarding the interrupt controller that caused us some headache. ARM's generic interrupt controller (GIC) is split into a CPU interface that exists for each core and a global module called "distributor". Normally, all properties adjusted at the distributor are concerning all cores including the security classification of an interrupt that determines whether it shall be received within the secure or normal world. But this doesn't apply to the first 32 interrupts that are private to each core. During our first experiments, we let the boot CPU mark all interrupts as being non-secure. Everything went fine until the point where the second CPU core had to receive an inter-processor interrupt (IPI) from the first one. That IPI, however, is a core-private interrupt. Hence, its security classification needed to be set by each CPU core during initialization, not merely once by the first core.
+当我们在实现上述内容的时候，发现了一个问题：私有化中断的问题。我们知道，ARM的通用中断控制器（`GIC`）被模块化了两部分：一个通用模块，称为分配器（`distributor`）；每个核都与之有对应的接口。正常情况下，
 
 After conquering the trouble with the interrupt controller, we finally configured the "secure configuration register" (SCR) to:
 
-* Enable the hypervisor call,
+* 使能HVC调用
 
-* Disable the secure monitor call,
+* 禁用SMC调用
 
-* Not trap to the secure world, thereby effectively locking the secure world,
+* 没有异常陷入到安全空间，有效地锁定安全空间
 
-* Switch to the normal world.
+* 切到非安全空间
 
 With these steps, the CPU ends up in hypervisor mode. Before continuing the regular kernel boot process, the CPU had to drop the hypervisor privilege level PL2 and enter the kernel's regular privilege level (PL1). Running the existent kernel code within the hypervisor mode without modifications would not work. There are few incompatibilities that prevent the execution of code written for PL1 within PL2. For instance, when using the multiple-load instruction (LDM) to access user-mode specific registers or to return from an exception, the result is undefined in hypervisor mode. To be able to re-enter the hypervisor mode from the kernel parts that run in lower privilege levels, some further preparations had to be done. First, an exception vector table had to be installed, which is a table of functions that are called when a hypervisor-related exception occurs. After setting up the hypervisor's exception vector table via the "hyp vector base address register" (HVBAR), the regular boot process could continue outside of the hypervisor mode.
 
