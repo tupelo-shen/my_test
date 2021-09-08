@@ -1,0 +1,3 @@
+1. [搭建qemu gdb调试kernel的环境](http://liujunming.top/2019/11/02/%E6%90%AD%E5%BB%BAqemu-gdb%E8%B0%83%E8%AF%95kernel%E7%9A%84%E7%8E%AF%E5%A2%83/)
+2. [use qemu and gdb to debug kernel](http://liujunming.top/2019/11/02/use-qemu-and-gdb-to-debug-kernel/)
+3. Xilinx官网wiki上的一篇博客[Debugging Guest Applications with QEMU and GDB](https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/821624963/Debugging+Guest+Applications+with+QEMU+and+GDB)
