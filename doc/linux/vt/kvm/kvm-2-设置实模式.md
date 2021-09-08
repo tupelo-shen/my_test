@@ -1,3 +1,5 @@
+原文地址：[https://wiki.osdev.org/Real_Mode](https://wiki.osdev.org/Real_Mode)
+
 Real Mode is a simplistic 16-bit mode that is present on all x86 processors. Real Mode was the first x86 mode design and was used by many early operating systems before the birth of Protected Mode. For compatibility purposes, all x86 processors [begin execution](https://wiki.osdev.org/Boot_Sequence) in Real Mode.
 
 [TOC]
